@@ -9,7 +9,12 @@ struct NodeDataType {
 
 class NodeData {
  public:
+  explicit NodeData() = default;
   virtual ~NodeData() = default;
+  NodeData(NodeData const &) = delete;
+  NodeData &operator=(NodeData const &) = delete;
+  NodeData(NodeData &&) = delete;
+  NodeData &operator=(NodeData &&) = delete;
 
   virtual bool sameType(NodeData const &nodeData) const {
     return (this->type().id == nodeData.type().id);
@@ -26,16 +31,16 @@ class NodeData {
 template <typename T, const char *id, const char *name>
 class NodeData_ : public NodeData {
  public:
-  NodeData_() {}
+  NodeData_() = default;
 
-  NodeData_(T data) : _data(data) {}
+  explicit NodeData_(T data) : _data(data) {}
 
   NodeDataType type() const override { return NodeDataType{id, name}; }
 
   const T data() { return _data; }
 
  private:
-  const T _data;
+  const T _data{};
 };
 
 }  // namespace tg

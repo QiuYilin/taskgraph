@@ -6,7 +6,6 @@ namespace tg{
     class MatchTemplateNode: public CvNode{
     public:
         MatchTemplateNode();
-        ~MatchTemplateNode()=default;
         void compute() override;
         void setInPortData(unsigned int index,std::shared_ptr<NodeData> data) override;
         std::shared_ptr<NodeData> getOutPortData(unsigned int) override;

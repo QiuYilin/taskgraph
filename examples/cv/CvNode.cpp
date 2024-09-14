@@ -2,6 +2,6 @@
 
 namespace tg {
   CvNode::CvNode() {
-    _name = "CvNode";
+    setName("CvNode");
   }
 }

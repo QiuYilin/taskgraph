@@ -4,7 +4,6 @@ namespace tg{
     class PointCloudReaderNode: public PclNode{
     public:
         PointCloudReaderNode();
-        ~PointCloudReaderNode()=default;
         void compute() override;
         void setInPortData(unsigned int index,std::shared_ptr<NodeData> data) override;
         std::shared_ptr<NodeData> getOutPortData(unsigned int) override;

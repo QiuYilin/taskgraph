@@ -1,14 +1,19 @@
 #include "AddNode.hpp"
 
 namespace tg {
-AddNode::AddNode() { _name = "AddNode"; }
+AddNode::AddNode() { 
+  setName("AddNode");
+}
 
 void AddNode::compute() {
-  auto data1_in = std::dynamic_pointer_cast<IntData_t>(_in_data1.lock())->data();
-  auto data2_in = std::dynamic_pointer_cast<IntData_t>(_in_data2.lock())->data();
+  auto data1_in =
+      std::dynamic_pointer_cast<IntData_t>(_in_data1.lock())->data();
+  auto data2_in =
+      std::dynamic_pointer_cast<IntData_t>(_in_data2.lock())->data();
   _out_data = std::make_shared<IntData_t>(data1_in + data2_in);
   std::cout << "AddNode: " << data1_in << " + " << data2_in << " = "
-            << std::dynamic_pointer_cast<IntData_t>(_out_data)->data()<< std::endl;
+            << std::dynamic_pointer_cast<IntData_t>(_out_data)->data()
+            << std::endl;
   return;
 }
 
