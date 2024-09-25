@@ -4,7 +4,6 @@ namespace tg {
 class PointCloudWriterNode : public PclNode {
  public:
   PointCloudWriterNode();
-  ~PointCloudWriterNode() = default;
   void compute() override;
   void setInPortData(unsigned int index,
                      std::shared_ptr<NodeData> data) override;

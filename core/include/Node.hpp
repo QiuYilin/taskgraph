@@ -14,8 +14,15 @@ class Node {
     std::string name;
     SfrVariant value;
   };
-  Node();
+  
+  Node() = default;
   virtual ~Node() = default;
+  Node(const Node&) = delete;
+  Node& operator=(const Node&) = delete;
+  Node(Node&&) = delete;
+  Node& operator=(Node&&) = delete;
+
+public:
   // TODO public methods
   bool initCompute();
   virtual void compute();
@@ -48,7 +55,5 @@ class Node {
  protected:
   std::string _name;
   std::vector<std::shared_ptr<Property>> _properties;
-  // PointCloudNodeData in_data_;
-  // PointCloudNodeData _out_data;
 };
 }  // namespace tg
