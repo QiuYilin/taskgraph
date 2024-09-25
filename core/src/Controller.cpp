@@ -1,8 +1,6 @@
 #include "Controller.hpp"
 
 namespace tg {
-Controller::~Controller() {}
-
 void Controller::run(tg::Graph& graph) {
   std::cout << graph._taskflow.dump() << std::endl;
   _executor.run(graph._taskflow)

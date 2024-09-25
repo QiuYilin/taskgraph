@@ -1,10 +1,6 @@
 #include "Node.hpp"
 
 namespace tg {
-  Node::Node() {
-    
-  }
-
   bool Node::initCompute() {
     return true;
   }

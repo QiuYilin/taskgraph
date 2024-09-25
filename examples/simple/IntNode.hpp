@@ -5,7 +5,6 @@ namespace tg {
 class IntNode : public Node {
  public:
   IntNode();
-  ~IntNode() = default;
   // TODO public methods
   void compute() override;
   void setInPortData(unsigned int index,
