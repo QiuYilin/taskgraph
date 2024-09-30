@@ -4,7 +4,7 @@ namespace tg {
 void Controller::run(tg::Graph& graph) {
   std::cout << graph._taskflow.dump() << std::endl;
   _executor.run(graph._taskflow)
-      .get();  // TODO 这是否会导致阻塞 多个taskflow无法并发执行
+      .get();  // TODO(qiuyilin) Will this cause blocking? Multiple taskflows cannot be executed concurrently.
 }
 
 void Controller::addGraph(std::shared_ptr<Graph> graph) {

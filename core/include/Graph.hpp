@@ -1,5 +1,6 @@
 #pragma once
 #include <taskflow/taskflow.hpp>
+#include <utility>
 
 #include "Node.hpp"
 
@@ -9,7 +10,7 @@ class Graph {
 
  public:
   Graph() = default;
-  explicit Graph(std::string name) : _name(name) {}
+  explicit Graph(std::string name) : _name(std::move(name)) {}
   void addNode(std::shared_ptr<Node> node);
   void removeNode(std::shared_ptr<Node> node);
   bool connect(std::shared_ptr<Node> from, unsigned int port_out,

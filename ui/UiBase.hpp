@@ -1,4 +1,4 @@
-//imgui version >= 1.90.7
+// imgui version >= 1.90.7
 #pragma once
 #include <GLFW/glfw3.h>
 #include <stdio.h>
@@ -22,7 +22,8 @@ class UiBase {
   UiBase() {
     glfwSetErrorCallback(ErrorCallback);
 
-    if (!glfwInit()) std::exit(1);  // TODO throw exception or put it in Init()
+    if (!glfwInit())
+      std::exit(1);  // TODO(qiuyilin) throw exception or put it in Init()
 
       // Decide GL+GLSL versions
 #if defined(IMGUI_IMPL_OPENGL_ES2)
@@ -49,8 +50,9 @@ class UiBase {
 
     // Create _window with graphics context
     _window = glfwCreateWindow(1280, 720, "Default Ui", nullptr, nullptr);
-    if (_window == nullptr)
-      std::exit(1);  // TODO throw exception or put it in Init()
+    if (_window == nullptr) {
+      std::exit(1);  // TODO(qiuyilin) throw exception or put it in Init()
+    }
     // glfwSetWindowSize(_window, 1920, 1080);
     glfwMakeContextCurrent(_window);
     glfwSwapInterval(1);  // Enable vsync
@@ -197,6 +199,11 @@ class UiBase {
     glfwTerminate();
   }
 
+  UiBase(const UiBase&) = delete;
+  UiBase& operator=(const UiBase&) = delete;
+  UiBase(UiBase&&) = delete;
+  UiBase& operator=(UiBase&&) = delete;
+
   void Run() {
     // Initialize the underlying app
     StartUp();
@@ -224,7 +231,7 @@ class UiBase {
 
       // Rendering
       ImGui::Render();
-      int display_w, display_h;
+      int display_w{}, display_h{};
       glfwGetFramebufferSize(_window, &display_w, &display_h);
       glViewport(0, 0, display_w, display_h);
       glClearColor(_clear_color.x * _clear_color.w,
@@ -262,7 +269,7 @@ class UiBase {
 
  private:
   GLFWwindow* _window = nullptr;
-  ImVec4 _clear_color = ImVec4(0.1058, 0.1137f, 0.1255f, 1.00f);
+  ImVec4 _clear_color = ImVec4(0.1058f, 0.1137f, 0.1255f, 1.00f);
 
  protected:
   ImGuiIO _io;

@@ -16,4 +16,4 @@ namespace tg{
         //用什么容器保存属性？？
         std::shared_ptr<Property> _file_path;
     };
-}
+}//namespace tg

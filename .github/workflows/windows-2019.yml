@@ -1,0 +1,46 @@
+name: vcpkg-windows-2019
+
+on:
+  push:
+    branches: [ "main","feature_git_action_vcpkg" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: ${{ matrix.config.os }}
+
+    strategy:
+      # Set fail-fast to false to ensure that feedback is delivered for all matrix combinations. Consider changing this to true when your workflow is stable.
+      fail-fast: false
+
+      matrix:
+        config:
+        - os: windows-2019
+          vcpkg_triplet: x64-windows-release
+
+    steps:
+    - uses: actions/checkout@v4                                
+    - name: vcpkg install
+      uses: johnwason/vcpkg-action@v6
+      id: vcpkg
+      with:
+        triplet: ${{ matrix.config.vcpkg_triplet }}
+        cache-key: ${{ matrix.config.os }}
+        revision: 67cc1677c3bf5c23ea14b9d2416c7422fdeac492
+        token: ${{ github.token }}
+        github-binarycache: true
+        manifest-dir: ${{ github.workspace }}/.github/manifest
+        extra-args: --x-feature=ui --x-feature=examples
+        fetch-depth: 0
+    - name: configure cmake
+      run: |
+        cmake -S ${{ github.workspace }} -B ${{ github.workspace }}/build -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=${{ matrix.config.vcpkg_triplet }}
+    - name: cmake build
+      run: cmake --build ${{github.workspace}}/build --config Release
+    - name: upload vcpkg log files
+      if: steps.vcpkg.outcome == 'failure'
+      uses: actions/upload-artifact@v4
+      with:
+        name: vcpkg-log
+        path: ${{ github.workspace }}/vcpkg/buildtrees/**/*.log

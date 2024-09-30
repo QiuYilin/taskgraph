@@ -3,7 +3,7 @@
 namespace tg {
 IntNode::IntNode() { 
   setName("IntNode");
-  _int_value = addProperty("value", int(0));
+  _int_value = addProperty("value", 0);
 }
 
 void IntNode::setProperty(int property) { _int_value->value = property; }

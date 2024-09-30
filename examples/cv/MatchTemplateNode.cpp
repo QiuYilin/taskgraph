@@ -1,5 +1,7 @@
 #include "MatchTemplateNode.hpp"
 
+#include <cmath>
+
 #include <memory>
 #include <opencv2/opencv.hpp>
 
@@ -40,14 +42,15 @@ void MatchTemplateNode::compute() {
                     image_mask);
 
   cv::Point max_loc;
-  double max_val;
-  cv::minMaxLoc(result_matrix, 0, &max_val, 0, &max_loc);
+  double max_val = NAN;
+  cv::minMaxLoc(result_matrix, nullptr, &max_val, nullptr, &max_loc);
   cv::Mat display;
   image_in.copyTo(display);
+  const cv::Scalar GREEN_COLOR(0, 255, 0);
   cv::rectangle(
       display, max_loc,
       cv::Point(max_loc.x + image_tml.cols, max_loc.y + image_tml.rows),
-      cv::Scalar(0, 255, 0), 2);
+      GREEN_COLOR, 2);
 
   // 显示结果图像
   cv::imshow("Template Matching Result", display);

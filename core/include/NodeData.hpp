@@ -33,14 +33,16 @@ class NodeData_ : public NodeData {
  public:
   NodeData_() = default;
 
-  explicit NodeData_(T data) : _data(data) {}
+  explicit NodeData_(T data) : _data(std::move(data)) {}
 
-  NodeDataType type() const override { return NodeDataType{id, name}; }
+  NodeDataType type() const override {
+    return NodeDataType{std::string(id), std::string(name)};
+  }
 
   const T data() { return _data; }
 
  private:
-  const T _data{};
+  T _data{};
 };
 
 }  // namespace tg

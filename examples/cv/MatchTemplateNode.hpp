@@ -16,7 +16,7 @@ namespace tg{
         std::weak_ptr<NodeData> _image_in;
         std::weak_ptr<NodeData> _image_tml;
         std::weak_ptr<NodeData> _image_mask;
-        std::shared_ptr<NodeData> _loc_out;//TODO 先写个最简单的模板匹配看看框架
+        std::shared_ptr<NodeData> _loc_out;
         std::shared_ptr<Property> _pyramid_layers;
     };
-}
+}//namespace tg

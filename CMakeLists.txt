@@ -1,10 +1,18 @@
 cmake_minimum_required(VERSION 3.11)
+cmake_policy(SET CMP0074 NEW)
+cmake_policy(SET CMP0144 NEW)
 
 set(project_name "taskgraph")
 
 set(INSTALL_CMAKEDIR share/${project_name})
 option(BUILD_EXAMPLES "Build examples" ON)
+if(BUILD_EXAMPLES)
+  list(APPEND VCPKG_MANIFEST_FEATURES "examples")
+endif()
 option(BUILD_UI "Build ui" ON)
+if(BUILD_UI)
+  list(APPEND VCPKG_MANIFEST_FEATURES "ui")
+endif()
 
 project(${project_name})
 
