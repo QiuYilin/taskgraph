@@ -12,11 +12,10 @@ namespace tg {
   void Node::computeAndUpdateData(){
     //auto control_logic = compute();
     compute();
-    //TODO update data;
     for(auto& connection : this->_next){
       connection.adj->setInPortData(connection.port_in, this->getOutPortData(connection.port_out));
     }
     //return control_logic;
     return;
   }
-}
+}// namespace tg

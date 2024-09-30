@@ -1,0 +1,35 @@
+{
+    "name": "taskgraph",
+    "version-string": "latest",
+    "dependencies": [
+        {
+            "name": "taskflow",
+            "version>=": "3.7.0"
+        }
+    ],
+    "features": {
+        "ui": {
+            "description": "Build Ui part",
+            "dependencies": [                 
+                {
+                "name": "imgui",
+                "version>=": "1.90.7",
+                "features": [
+                  "glfw-binding",
+                  "opengl3-binding",
+                  "docking-experimental"
+                ]
+            },
+            "opengl" 
+            ]
+          },
+        "examples":{
+            "description": "Build examples",
+            "dependencies": [
+                "opencv4",
+                "pcl"
+            ]
+        }
+    },
+    "builtin-baseline": "67cc1677c3bf5c23ea14b9d2416c7422fdeac492"
+}

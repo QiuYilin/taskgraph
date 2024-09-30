@@ -23,7 +23,6 @@ class Node {
   Node& operator=(Node&&) = delete;
 
 public:
-  // TODO public methods
   bool initCompute();
   virtual void compute();
   void computeAndUpdateData();
@@ -31,11 +30,11 @@ public:
                              std::shared_ptr<NodeData> data) = 0;
   virtual std::shared_ptr<NodeData> getOutPortData(unsigned int) = 0;
   std::string getName() { return _name; }
-  virtual void setName(std::string name) { _name = name; }
+  virtual void setName(std::string&& name) { _name = std::move(name); }
 
   std::shared_ptr<Property> addProperty(std::string name, SfrVariant property) {
     Property prop;
-    prop.name = name;
+    prop.name = std::move(name);
     prop.value = property;
     auto prop_ptr = std::make_shared<Property>(prop);
     _properties.push_back(prop_ptr);
@@ -51,8 +50,6 @@ public:
   tf::Task _task;
   std::vector<ConnectionInfo> _previous;
   std::vector<ConnectionInfo> _next;
-
- protected:
   std::string _name;
   std::vector<std::shared_ptr<Property>> _properties;
 };

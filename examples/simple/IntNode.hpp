@@ -5,7 +5,6 @@ namespace tg {
 class IntNode : public Node {
  public:
   IntNode();
-  // TODO public methods
   void compute() override;
   void setInPortData(unsigned int index,
                      std::shared_ptr<NodeData> data) override;
