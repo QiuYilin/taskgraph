@@ -14,10 +14,8 @@ class PointCloudWriterNode : public PclNode {
   void setTimeSuffixProp(bool time_suffix);
 
  private:
-  // using PclNode::_pointcloud_out;
   std::weak_ptr<NodeData> _pointcloud_in;
   using PclNode::_image_type;
-  using PclNode::_properties;
   // 用什么容器保存属性？？
   std::shared_ptr<Property> _file_path,_file_format,_time_suffix;
 };

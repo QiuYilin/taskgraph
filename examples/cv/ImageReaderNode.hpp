@@ -17,4 +17,4 @@ namespace tg{
         //using CvNode::_image_type;
         std::shared_ptr<Property> _file_path;
     };
-}
+} //namespace tg

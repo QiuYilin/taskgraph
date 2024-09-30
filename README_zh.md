@@ -1,3 +1,9 @@
+[![vcpkg-windows-2019](https://github.com/QiuYilin/taskgraph/actions/workflows/windows-2019.yml/badge.svg)](https://github.com/QiuYilin/taskgraph/actions/workflows/windows-2019.yml)
+
+[![vcpkg-ubuntu-20.04](https://github.com/QiuYilin/taskgraph/actions/workflows/ubuntu-20.04.yml/badge.svg)](https://github.com/QiuYilin/taskgraph/actions/workflows/ubuntu-20.04.yml)
+
+[![vcpkg-macos-12](https://github.com/QiuYilin/taskgraph/actions/workflows/macos-12.yml/badge.svg)](https://github.com/QiuYilin/taskgraph/actions/workflows/macos-12.yml)
+
 # taskgraph
 对并行任务框架taskflow[https://github.com/taskflow/taskflow]的包装，使其能够满足数据流编程的需求，并且提供界面组件。
 

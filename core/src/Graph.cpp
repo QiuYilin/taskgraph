@@ -5,7 +5,7 @@
 namespace tg {
 void Graph::addNode(std::shared_ptr<Node> node) {
   _nodes.push_back(node);
-  std::function<void()> task = std::bind(&Node::computeAndUpdateData, node);
+  std::function<void()> task = [node] { node->computeAndUpdateData(); };
   node->_task =
       _taskflow.emplace(task);  // Node保存一个task_主要是删除的时候有用
   node->_task.name(node->getName());
@@ -18,7 +18,7 @@ void Graph::removeNode(std::shared_ptr<Node> node) {
 
 bool Graph::connect(std::shared_ptr<Node> from, unsigned int port_out,
                     std::shared_ptr<Node> to, unsigned int port_in) {
-  // TODO some check
+  // TODO(qiuyilin) some check
   from->_next.push_back(ConnectionInfo{to, port_out, port_in});
   to->_previous.push_back(ConnectionInfo{from, port_out, port_in});
   from->_task.precede(to->_task);
