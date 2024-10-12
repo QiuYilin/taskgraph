@@ -6,7 +6,7 @@ set(HPP_HEADER_FILES
 
 find_package(OpenGL REQUIRED)
 find_package(imgui REQUIRED)
-add_library(${component} INTERFACE ${HPP_HEADER_FILES} ${CPP_SOURCE_FILES})
+add_library(${component} INTERFACE)
 
 add_library(${project_name}::${component} ALIAS ${component})
 
