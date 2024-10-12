@@ -1,4 +1,4 @@
-find_package(PCL CONFIG REQUIRED)
+find_package(PCL REQUIRED COMPONENTS io)
 
 add_executable(pcl_example main.cpp
                            PclNodeData.hpp
