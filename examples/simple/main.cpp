@@ -23,8 +23,6 @@ int main(){
     graph->removeNode(node5);
     graph->connect(node1,0,node3,0);
     graph->connect(node2,0,node3,1);
-    graph->connect(node3,0,node5,0);
-    graph->connect(node4,0,node5,1);
     project.run(*graph);
 
     Ui ui(project);

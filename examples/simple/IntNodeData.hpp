@@ -1,7 +1,4 @@
 #pragma once
-#include <pcl/point_cloud.h>
-#include <pcl/point_types.h>
-
 #include <NodeData.hpp>
 const char int_id[] = "IntData";
 const char int_name[] = "Int";
