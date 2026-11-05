@@ -8,6 +8,22 @@
 
 A wrapper for the parallel task framework taskflow[https://github.com/taskflow/taskflow] to enable it to meet the needs of data flow programming and provide Ui components.
 
+# Dependencies
+
+This library is built with C++17. Use [vcpkg](https://github.com/microsoft/vcpkg), and take Taskflow 3.11.0 from [QiuYilin/vcpkg-registry](https://github.com/QiuYilin/vcpkg-registry). That registry keeps the last Taskflow release that compiles as C++17.
+
+## Classic mode
+
+Copy the `registries` entry from [`.github/manifest/vcpkg-configuration.json`](.github/manifest/vcpkg-configuration.json) into `vcpkg-configuration.json` at the vcpkg root. Add `default-registry`, and set its `baseline` to the commit of that vcpkg checkout. `taskflow` is resolved from the personal registry. Other ports stay on that checkout.
+
+```
+vcpkg install taskflow
+```
+
+## Manifest mode
+
+Use [`.github/manifest/vcpkg.json`](.github/manifest/vcpkg.json) and [`.github/manifest/vcpkg-configuration.json`](.github/manifest/vcpkg-configuration.json). `BUILD_UI` and `BUILD_EXAMPLES` select the `ui` and `examples` features.
+
 # Usage
 
 Demo
