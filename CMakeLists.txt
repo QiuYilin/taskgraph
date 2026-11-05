@@ -18,6 +18,11 @@ endif()
 
 project(${project_name})
 
+# Without this, MSVC reads UTF-8 sources as the system code page.
+if(MSVC)
+  add_compile_options(/utf-8)
+endif()
+
 set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)#temp
 
 set(CMAKE_CXX_STANDARD 20)
