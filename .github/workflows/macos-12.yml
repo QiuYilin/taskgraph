@@ -1,4 +1,4 @@
-name: vcpkg-macos-12
+name: vcpkg-macos-15
 
 on:
   push:
@@ -16,39 +16,25 @@ jobs:
 
       matrix:
         config:
-        - os: macos-12
-          vcpkg_triplet: x64-osx-release
+        - os: macos-15
+          vcpkg_triplet: arm64-osx
 
     steps:
     - uses: actions/checkout@v4 
-    - name: install system packages
-      if: matrix.config.os == 'ubuntu-20.04'
-      run: |
-          sudo apt-get update
-          sudo apt-get install -y libxi-dev libxtst-dev \
-                                  libxrandr-dev         \
-                                  libxinerama-dev libxcursor-dev xorg-dev libglu1-mesa-dev pkg-config \
-                                  
     - name: vcpkg install
-      uses: johnwason/vcpkg-action@v6
+      uses: johnwason/vcpkg-action@v8
       id: vcpkg
       with:
         triplet: ${{ matrix.config.vcpkg_triplet }}
         cache-key: ${{ matrix.config.os }}
-        revision: 67cc1677c3bf5c23ea14b9d2416c7422fdeac492
+        revision: 817892b0ecbc6af994dd6df999c73faf795adbf2
         token: ${{ github.token }}
-        github-binarycache: true
         manifest-dir: ${{ github.workspace }}/.github/manifest
         extra-args: --x-feature=ui --x-feature=examples
+        collect-logs: on-failure
         fetch-depth: 0
     - name: configure cmake
       run: |
         cmake -S ${{ github.workspace }} -B ${{ github.workspace }}/build -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=${{ matrix.config.vcpkg_triplet }}
     - name: cmake build
       run: cmake --build ${{github.workspace}}/build --config Release
-    - name: upload vcpkg log files
-      if: steps.vcpkg.outcome == 'failure'
-      uses: actions/upload-artifact@v4
-      with:
-        name: vcpkg-log
-        path: ${{ github.workspace }}/vcpkg/buildtrees/**/*.log
