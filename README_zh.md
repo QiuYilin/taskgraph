@@ -7,6 +7,22 @@
 # taskgraph
 对并行任务框架taskflow[https://github.com/taskflow/taskflow]的包装，使其能够满足数据流编程的需求，并且提供界面组件。
 
+# 依赖
+
+本库使用 C++17。建议用 [vcpkg](https://github.com/microsoft/vcpkg) 安装依赖，并从 [QiuYilin/vcpkg-registry](https://github.com/QiuYilin/vcpkg-registry) 获取 Taskflow 3.11.0。这个注册表保留最后一个可以按 C++17 编译的 Taskflow 版本。
+
+## 全局模式
+
+把 [`.github/manifest/vcpkg-configuration.json`](.github/manifest/vcpkg-configuration.json) 里的 `registries` 放进 vcpkg 根目录的 `vcpkg-configuration.json`，并补上 `default-registry`，把它的 `baseline` 写成这份 vcpkg 检出的提交。`taskflow` 从个人注册表解析，其余端口仍来自这份检出。
+
+```
+vcpkg install taskflow
+```
+
+## 清单模式
+
+使用 [`.github/manifest/vcpkg.json`](.github/manifest/vcpkg.json) 和 [`.github/manifest/vcpkg-configuration.json`](.github/manifest/vcpkg-configuration.json)。`BUILD_UI` 和 `BUILD_EXAMPLES` 分别打开 `ui` 与 `examples` 特性。
+
 # 用法
 
 示例
