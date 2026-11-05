@@ -1,42 +1,23 @@
 #include "UiBase.hpp"
-// #include "implot_internal.h"
-#include <taskgraph.hpp>
-#include <iostream>
-#include <string>
+#include "imgui_internal.h"
+
 #include <imgui_stdlib.h>
+#include <string>
 
-//#include <graphviz/gvc.h>
+#include <taskgraph.hpp>
 
-// Helper to display a little (?) mark which shows a tooltip when hovered.
-// In your own code you may want to display an actual icon if you are using a
-// merged icon fonts (see docs/FONTS.md)
-static void HelpMarker(const char* desc) {
-  ImGui::TextDisabled("(?)");
-  if (ImGui::BeginItemTooltip()) {
-    ImGui::PushTextWrapPos(ImGui::GetFontSize() * 35.0f);
-    ImGui::TextUnformatted(desc);
-    ImGui::PopTextWrapPos();
-    ImGui::EndTooltip();
-  }
-}
-
+// 在当前表格里画一个节点，展开后编辑它的属性。
 static void ShowPlaceholderObject(const char* prefix,
                                   std::shared_ptr<tg::Node> node) {
-  // Use object uid as identifier. Most commonly you could also use the object
-  // pointer as a base ID.
   auto uid = std::hash<std::shared_ptr<tg::Node>>{}(node);
   ImGui::PushID(static_cast<int>(uid));
 
-  // Text and Tree nodes are less high than framed widgets, using
-  // AlignTextToFramePadding() we add vertical spacing to make the tree lines
-  // equal high.
   ImGui::TableNextRow();
   ImGui::TableSetColumnIndex(0);
   ImGui::AlignTextToFramePadding();
-  bool node_open =
-      ImGui::TreeNode(node->getName().c_str(), "%s_%zu", prefix,static_cast<unsigned int>(uid));
+  bool node_open = ImGui::TreeNode(node->getName().c_str(), "%s_%zu", prefix,
+                                   static_cast<unsigned int>(uid));
   ImGui::TableSetColumnIndex(1);
-  // ImGui::Text("my sailor is rich");
 
   if (node_open) {
     for (int i = 0; i < node->getProperties().size(); i++) {
@@ -52,7 +33,6 @@ static void ShowPlaceholderObject(const char* prefix,
 
       ImGui::TableSetColumnIndex(1);
       ImGui::SetNextItemWidth(-FLT_MIN);
-      // ImGui::DragFloat("##value", &placeholder_members, 0.01f);
       if (node->getProperties()[i]->value.index() == 0) {
         ImGui::InputInt("input int", &std::get<int>(properties[i]->value));
       }
@@ -73,57 +53,74 @@ static void ShowPlaceholderObject(const char* prefix,
   ImGui::PopID();
 }
 
-static void ShowPlaceholderObject(const char* prefix,
+// 在当前表格里画一张图，展开后画出其中的节点。
+static void ShowPlaceholderObject(const char*,
                                   std::shared_ptr<tg::Graph> graph) {
-  // Use object uid as identifier. Most commonly you could also use the object
-  // pointer as a base ID.
   auto uid = std::hash<std::shared_ptr<tg::Graph>>{}(graph);
   ImGui::PushID(static_cast<int>(uid));
 
-  // Text and Tree nodes are less high than framed widgets, using
-  // AlignTextToFramePadding() we add vertical spacing to make the tree lines
-  // equal high.
   ImGui::TableNextRow();
   ImGui::TableSetColumnIndex(0);
   ImGui::AlignTextToFramePadding();
   bool node_open = ImGui::TreeNode(graph->getName().c_str());
   ImGui::TableSetColumnIndex(1);
-  // ImGui::Text("my sailor is rich");
 
   if (node_open) {
-    // for (int i = 0; i < 8; i++) {
-    //   ImGui::PushID(i);  // Use field index as identifier.
     for (const auto& node : graph->getNodes()) {
       ShowPlaceholderObject(node->getName().c_str(), node);
     }
-    //   ImGui::PopID();
-    // }
     ImGui::TreePop();
   }
   ImGui::PopID();
 }
 
 class Ui : public UiBase<Ui> {
-  static std::vector<std::vector<tg::SfrVariant>> properties_;
-
  public:
-  explicit Ui(tg::Controller& controller) : _controller(controller){};
+  explicit Ui(tg::Controller& controller) : _controller(controller) {}
 
-  // Anything that needs to be called once OUTSIDE of the main application loop
   void StartUp() {}
 
-  // Anything that needs to be called cyclically INSIDE of the main application
-  // loop
   void Update() {
-    //ImGui::ShowDemoWindow();
-    // 画出controller中的graph列表，单击某个graph，显示graph中的node列表，单击某个node，显示node的属性列表
-    ImGui::SetNextWindowSize(ImVec2(430, 450), ImGuiCond_FirstUseEver);
+    const ImGuiViewport* viewport = ImGui::GetMainViewport();
+    ImGui::SetNextWindowPos(viewport->WorkPos);
+    ImGui::SetNextWindowSize(viewport->WorkSize);
+    ImGui::SetNextWindowViewport(viewport->ID);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+    const ImGuiWindowFlags host_flags =
+        ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse |
+        ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
+        ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus |
+        ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoBackground;
+    // Begin / End：铺满工作区的停靠宿主，Toolbar 和 Project 停在里面。
+    ImGui::Begin("MainDockHost", nullptr, host_flags);
+    ImGui::PopStyleVar(3);
+
+    const ImGuiID dockspace_id = ImGui::GetID("MainDock");
+    if (ImGui::DockBuilderGetNode(dockspace_id) == nullptr) {
+      ImGui::DockBuilderRemoveNode(dockspace_id);
+      ImGui::DockBuilderAddNode(dockspace_id, ImGuiDockNodeFlags_DockSpace);
+      ImGui::DockBuilderSetNodeSize(dockspace_id, viewport->WorkSize);
+      ImGuiID dock_toolbar = 0;
+      ImGuiID dock_main = 0;
+      ImGui::DockBuilderSplitNode(dockspace_id, ImGuiDir_Up, 0.08f,
+                                  &dock_toolbar, &dock_main);
+      ImGui::DockBuilderDockWindow("Toolbar", dock_toolbar);
+      ImGui::DockBuilderDockWindow("Project", dock_main);
+      ImGui::DockBuilderFinish(dockspace_id);
+    }
+    ImGui::DockSpace(dockspace_id, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_None);
+    ImGui::End();
+
+    // Begin / End：工程树。窗口折叠时 Begin 返回假，仍然要 End。
     if (!ImGui::Begin("Project")) {
       ImGui::End();
       return;
     }
 
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(2, 2));
+    // BeginTable / EndTable：左列是树，右列是内容。
     if (ImGui::BeginTable("##split", 2,
                           ImGuiTableFlags_BordersOuter |
                               ImGuiTableFlags_Resizable |
@@ -132,8 +129,6 @@ class Ui : public UiBase<Ui> {
       ImGui::TableSetupColumn("Graphs");
       ImGui::TableSetupColumn("Contents");
       ImGui::TableHeadersRow();
-
-      // Iterate placeholder objects (all the same data)
 
       for (const auto& graph : _controller.getGraphs()) {
         ShowPlaceholderObject("Graphs", graph);
@@ -144,8 +139,8 @@ class Ui : public UiBase<Ui> {
     ImGui::PopStyleVar();
     ImGui::End();
 
+    // Begin / End：选择一张图并运行。
     ImGui::Begin("Toolbar");
-
     ImGui::SameLine();
     static int selected_item = 0;
     if (ImGui::Button("Run")) {
@@ -162,46 +157,19 @@ class Ui : public UiBase<Ui> {
     for (int i = 0; i < graph_names.size(); i++) {
       items[i] = graph_names[i].c_str();
     }
-    if(ImGui::Combo("##combo", &selected_item, items.data(), static_cast<int>(items.size()))){
-        //画出当前的graviz图
-    }
+    ImGui::Combo("##combo", &selected_item, items.data(),
+                 static_cast<int>(items.size()));
     ImGui::End();
-
   }
 
-  // The callbacks are updated and called BEFORE the Update loop is entered
-  // It can be assumed that inside the Update loop all callbacks have already
-  // been processed
-  static void MouseButtonCallback(GLFWwindow* window, int button, int action,
-                                  int mods) {
-    // For Dear ImGui to work it is necessary to queue if the mouse signal is
-    // already processed by Dear ImGui Only if the mouse is not already captured
-    // it should be used here.
-    ImGuiIO& _io = ImGui::GetIO();
-    if (!_io.WantCaptureMouse) {
-    }
-  }
+  // 鼠标按键。ImGui 的 GLFW 后端会先收到事件，这里目前不处理。
+  static void MouseButtonCallback(GLFWwindow*, int, int, int) {}
 
-  //TODO(qiuyilin) Use macros to avoid duplication of function parameter types 
-  static void CursorPosCallback(GLFWwindow* window, double xpos, double ypos) {
-    // For Dear ImGui to work it is necessary to queue if the mouse signal is
-    // already processed by Dear ImGui Only if the mouse is not already captured
-    // it should be used here.
-    ImGuiIO& _io = ImGui::GetIO();
-    if (!_io.WantCaptureMouse) {
-    }
-  }
+  // 光标移动。ImGui 的 GLFW 后端会先收到事件，这里目前不处理。
+  static void CursorPosCallback(GLFWwindow*, double, double) {}
 
-  //TODO(qiuyilin) Use macros to avoid duplication of function parameter types 
-  static void KeyCallback(GLFWwindow* window, int key, int scancode,
-                          int actions, int mods) {
-    // For Dear ImGui to work it is necessary to queue if the keyboard signal is
-    // already processed by Dear ImGui Only if the keyboard is not already
-    // captured it should be used here.
-    ImGuiIO& _io = ImGui::GetIO();
-    if (!_io.WantCaptureKeyboard) {
-    }
-  }
+  // 键盘。ImGui 的 GLFW 后端会先收到事件，这里目前不处理。
+  static void KeyCallback(GLFWwindow*, int, int, int, int) {}
 
  private:
   tg::Controller& _controller;
