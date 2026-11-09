@@ -1,8 +1,8 @@
-name: vcpkg-ubuntu-22.04
+name: vcpkg-macos-15
 
 on:
   push:
-    branches: [ "main","feature_git_action_vcpkg" ]
+    branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
 
@@ -16,20 +16,11 @@ jobs:
 
       matrix:
         config:
-        - os: ubuntu-22.04
-          vcpkg_triplet: x64-linux
+        - os: macos-15
+          vcpkg_triplet: arm64-osx
 
     steps:
     - uses: actions/checkout@v4 
-    - name: install system packages
-      if: matrix.config.os == 'ubuntu-22.04'
-      run: |
-          sudo apt-get update
-          sudo apt-get install -y autoconf autoconf-archive automake libtool \
-                                  libxi-dev libxtst-dev \
-                                  libxrandr-dev         \
-                                  libxinerama-dev libxcursor-dev xorg-dev libglu1-mesa-dev pkg-config \
-                                  
     - name: vcpkg install
       uses: johnwason/vcpkg-action@v8
       id: vcpkg
@@ -46,4 +37,7 @@ jobs:
       run: |
         cmake -S ${{ github.workspace }} -B ${{ github.workspace }}/build -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=${{ matrix.config.vcpkg_triplet }}
     - name: cmake build
-      run: cmake --build ${{github.workspace}}/build --config Release
+      run: cmake --build ${{github.workspace}}/build --config Release --parallel
+    - name: ctest
+      working-directory: ${{ github.workspace }}/build
+      run: ctest --output-on-failure --build-config Release

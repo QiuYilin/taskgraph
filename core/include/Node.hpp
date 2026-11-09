@@ -1,9 +1,15 @@
 #pragma once
+#include <memory>
+#include <string>
+#include <utility>
+#include <variant>
+#include <vector>
+
 #include <taskflow/taskflow.hpp>
 #include "ConnectionInfo.hpp"
 #include "NodeData.hpp"
 namespace tg {
-using SfrVariant = std::variant<int, std::string, bool>;
+using PropertyValue = std::variant<int, std::string, bool>;
 class Graph;
 class Node {
   friend class Graph;
@@ -12,7 +18,7 @@ class Node {
   class Property {
    public:
     std::string name;
-    SfrVariant value;
+    PropertyValue value;
   };
   
   Node() = default;
@@ -29,10 +35,10 @@ public:
   virtual void setInPortData(unsigned int index,
                              std::shared_ptr<NodeData> data) = 0;
   virtual std::shared_ptr<NodeData> getOutPortData(unsigned int) = 0;
-  std::string getName() { return _name; }
+  const std::string& getName() const { return _name; }
   virtual void setName(std::string&& name) { _name = std::move(name); }
 
-  std::shared_ptr<Property> addProperty(std::string name, SfrVariant property) {
+  std::shared_ptr<Property> addProperty(std::string name, PropertyValue property) {
     Property prop;
     prop.name = std::move(name);
     prop.value = property;
@@ -41,10 +47,12 @@ public:
     return prop_ptr;
   }
 
-  void setProperty(int index, SfrVariant value) {
+  void setProperty(int index, PropertyValue value) {
     _properties[index]->value = value;
   }
-  std::vector<std::shared_ptr<Property>> getProperties() { return _properties; }
+  const std::vector<std::shared_ptr<Property>>& getProperties() const {
+    return _properties;
+  }
 
  private:
   tf::Task _task;

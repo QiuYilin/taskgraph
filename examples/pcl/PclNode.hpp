@@ -8,6 +8,6 @@ class PclNode : public Node {
   
  protected:
   std::shared_ptr<NodeData> _pointcloud_out;
-  SfrVariant _image_type;
+  PropertyValue _image_type;
 };
 }  // namespace tg

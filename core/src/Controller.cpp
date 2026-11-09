@@ -1,5 +1,7 @@
 #include "Controller.hpp"
 
+#include <iostream>
+
 namespace tg {
 void Controller::run(tg::Graph& graph) {
   std::cout << graph._taskflow.dump() << std::endl;
@@ -16,5 +18,7 @@ void Controller::removeGraph(std::shared_ptr<Graph> graph) {
                 _graphs.end());
 }
 
-std::vector<std::shared_ptr<Graph>> Controller::getGraphs() { return _graphs; }
+const std::vector<std::shared_ptr<Graph>>& Controller::getGraphs() const {
+  return _graphs;
+}
 }  // namespace tg

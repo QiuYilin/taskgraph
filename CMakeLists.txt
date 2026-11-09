@@ -25,6 +25,9 @@ endif()
 
 set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)#temp
 
+# Ninja and Makefile generators write compile_commands.json for the C++ language service.
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)#use ISO standard
@@ -43,13 +46,20 @@ configure_file(${PROJECT_SOURCE_DIR}/cmake/${project_name}Config.cmake
   @ONLY
 )
 
-install(FILES
-  ${CMAKE_BINARY_DIR}/${project_name}Config.cmake
-  ${CMAKE_BINARY_DIR}/${project_name}ConfigVersion.cmake
-  DESTINATION ${INSTALL_CMAKEDIR}
-)
+# TODO(qiuyilin): 以后加上 install 部分。
+# install(FILES
+#   ${CMAKE_BINARY_DIR}/${project_name}Config.cmake
+#   ${CMAKE_BINARY_DIR}/${project_name}ConfigVersion.cmake
+#   DESTINATION ${INSTALL_CMAKEDIR}
+# )
+
+include(CTest)
 
 add_subdirectory(core)
+
+if(BUILD_TESTING)
+  add_subdirectory(tests)
+endif()
 
 if(BUILD_EXAMPLES)
 add_subdirectory(examples)

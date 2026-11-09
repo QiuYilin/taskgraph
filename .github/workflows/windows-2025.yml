@@ -2,7 +2,7 @@ name: vcpkg-windows-2025
 
 on:
   push:
-    branches: [ "main","feature_git_action_vcpkg" ]
+    branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
 
@@ -37,4 +37,7 @@ jobs:
       run: |
         cmake -S ${{ github.workspace }} -B ${{ github.workspace }}/build -G "Visual Studio 18 2026" -A x64 -T host=x64 -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=${{ matrix.config.vcpkg_triplet }}
     - name: cmake build
-      run: cmake --build ${{github.workspace}}/build --config Release
+      run: cmake --build ${{github.workspace}}/build --config Release --parallel
+    - name: ctest
+      working-directory: ${{ github.workspace }}/build
+      run: ctest --output-on-failure --build-config Release
