@@ -13,6 +13,6 @@ class CvNode : public Node {
 
  protected:
   std::shared_ptr<NodeData> _image_out;
-  //SfrVariant _image_type;
+  //PropertyValue _image_type;
 };
 }  // namespace tg

@@ -18,6 +18,7 @@ class UiBase {
   UiBase() {
     glfwSetErrorCallback(ErrorCallback);
 
+    // GLFW 初始化失败就没法建窗口，直接退出。
     if (!glfwInit())
       std::exit(1);
 
@@ -42,12 +43,14 @@ class UiBase {
     int work_y = 0;
     int work_w = 1280;
     int work_h = 720;
+    // 有主显示器就按它的可用工作区放窗口，没有就退回默认的 1280x720。
     if (GLFWmonitor* monitor = glfwGetPrimaryMonitor()) {
       int area_x = 0;
       int area_y = 0;
       int area_w = 0;
       int area_h = 0;
       glfwGetMonitorWorkarea(monitor, &area_x, &area_y, &area_w, &area_h);
+      // 工作区宽高要有效才采用。
       if (area_w > 0 && area_h > 0) {
         work_x = area_x;
         work_y = area_y;
@@ -63,6 +66,7 @@ class UiBase {
     const int restored_h = 720;
     _window =
         glfwCreateWindow(restored_w, restored_h, "Default Ui", nullptr, nullptr);
+    // 窗口建不出来，后续所有 GL 调用都没意义，直接退出。
     if (_window == nullptr) {
       std::exit(1);
     }
@@ -81,6 +85,7 @@ class UiBase {
     const int min_y = work_y + frame_top;
     const int max_x = work_x + work_w - frame_right - restored_w;
     const int max_y = work_y + work_h - frame_bottom - restored_h;
+    // 把内容区居中到工作区里，再夹到工作区边界内，避免窗口跑到屏幕外。
     if (content_x < min_x || max_x < min_x) {
       content_x = min_x;
     } else if (content_x > max_x) {
@@ -101,6 +106,7 @@ class UiBase {
     glfwGetWindowContentScale(_window, &content_scale_x, &content_scale_y);
     float content_scale =
         content_scale_x > content_scale_y ? content_scale_x : content_scale_y;
+    // 缩放比低于 1 时按 1 算，界面不会被缩小。
     if (content_scale < 1.0f) {
       content_scale = 1.0f;
     }
@@ -121,6 +127,7 @@ class UiBase {
     ImGui::StyleColorsDark();
 
     ImGuiStyle& style = ImGui::GetStyle();
+    // 开了多视口时，窗口圆角和外框背景要去掉，否则弹出窗口带黑边。
     if (_io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable) {
       style.WindowRounding = 0.0f;
       style.Colors[ImGuiCol_WindowBg].w = 1.0f;
@@ -149,6 +156,7 @@ class UiBase {
   void Run() {
     StartUp();
 
+    // 主循环：窗口没被要求关闭就一直画下一帧。
     while (!glfwWindowShouldClose(_window)) {
       glfwPollEvents();
 
@@ -168,6 +176,7 @@ class UiBase {
       glClear(GL_COLOR_BUFFER_BIT);
       ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
+      // 开了多视口时，平台窗口要在各自上下文里画完再切回来。
       if (_io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable) {
         GLFWwindow* backup_current_context = glfwGetCurrentContext();
         ImGui::UpdatePlatformWindows();

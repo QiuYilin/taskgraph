@@ -20,11 +20,12 @@ void PointCloudReaderNode::setFilePathProp(std::string file_path) {
 
 void PointCloudReaderNode::compute() {
   std::string filepath = std::get<std::string>(_file_path->value);
-  pcl::PointCloud<pcl::PointXYZ> cloud;
-  if (pcl::io::load(filepath, cloud) == -1) {
-    throw std::runtime_error("file path is wrong");
+  // 点云直接建在堆上，load 往里写，句柄再 move 进 NodeData_，避免读到局部变量再拷一次。
+  auto cloud = std::make_shared<pcl::PointCloud<pcl::PointXYZ>>();
+  if (pcl::io::load(filepath, *cloud) == -1) {
+    throw std::runtime_error("failed to load point cloud file: " + filepath);
   }
-  _pointcloud_out = std::make_shared<PointCloudXyzData_t>(cloud);
+  _pointcloud_out = std::make_shared<PointCloudXyzData_t>(std::move(cloud));
   return;
 }
 
