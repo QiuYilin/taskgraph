@@ -1,7 +1,7 @@
 #pragma once
 #include <NodeData.hpp>
-const char int_id[] = "IntData";
-const char int_name[] = "Int";
+inline constexpr char int_id[] = "IntData";
+inline constexpr char int_name[] = "Int";
 using IntData_t =
     tg::NodeData_<int, int_id, int_name>;
 

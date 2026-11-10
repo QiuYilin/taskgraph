@@ -14,3 +14,13 @@ CMakePresets.json
 out
 build*
 *build
+
+# UML 源文件与导出图不入库
+*.puml
+*.plantuml
+*.iuml
+*.pu
+*.uml
+*.wsd
+/*-diagram.png
+/*-diagram.svg

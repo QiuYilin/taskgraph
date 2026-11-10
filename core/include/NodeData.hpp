@@ -1,5 +1,6 @@
 #pragma once
-#include <iostream>
+#include <string>
+#include <utility>
 
 namespace tg {
 struct NodeDataType {
@@ -39,7 +40,18 @@ class NodeData_ : public NodeData {
     return NodeDataType{std::string(id), std::string(name)};
   }
 
-  const T data() { return _data; }
+  /** \brief 取得载荷的只读引用。
+   *
+   *  不复制载荷。引用的有效期与持有本对象的 NodeData 相同，取用时先 lock
+   *  出上游的 shared_ptr 并保持到用完，不要写 weak.lock()->data() 这种一行式，
+   *  临时 shared_ptr 当场销毁会让引用立刻悬空。
+   *
+   *  下游只能读；需要修改时自行复制一份，例如点云
+   *  std::make_shared<pcl::PointCloud<PointT>>(*handle)、图像 mat.clone()。
+   *
+   *  \return 载荷的只读引用。载荷类型本身是句柄时可能为空，例如 PointCloud::ConstPtr。
+   */
+  const T& data() const { return _data; }
 
  private:
   T _data{};

@@ -1,5 +1,9 @@
 #include "PointCloudWriterNode.hpp"
 
+#include <iostream>
+#include <stdexcept>
+#include <string>
+
 #include <pcl/io/ifs_io.h>
 #include <pcl/io/pcd_io.h>
 #include <pcl/io/ply_io.h>
@@ -32,8 +36,24 @@ void PointCloudWriterNode::compute() {
   std::string file_name = std::get<std::string>(_file_path->value);
   bool time_suffix_flag = std::get<bool>(_time_suffix->value);
   auto src = _pointcloud_in.lock();
-  auto cloud = std::make_shared<pcl::PointCloud<pcl::PointXYZ>>(
-      std::dynamic_pointer_cast<PointCloudXyzData_t>(src)->data());
+  // 端口未连、上游已销毁或上游本轮没产出数据时 lock 返回空。
+  if (src == nullptr) {
+    throw std::runtime_error("Input port of PointCloudWriterNode has no data!");
+  }
+  auto cloud_data = std::dynamic_pointer_cast<PointCloudXyzData_t>(src);
+  // 接入的节点产出的不是 XYZ 点云，转型失败，不能继续解引用。
+  if (cloud_data == nullptr) {
+    throw std::runtime_error(
+        std::string("Input port of PointCloudWriterNode expects \"") +
+        point_cloud_id + "\", but got \"" + src->type().id + "\"!");
+  }
+  // 载荷是只读句柄，可能为空：上游构造了 NodeData 却没填点云。
+  if (!cloud_data->data()) {
+    throw std::runtime_error(
+        "Input point cloud of PointCloudWriterNode is empty!");
+  }
+  // 只读引用，零拷贝：saveXXXFile 收的都是 const PointCloud<PointT>&。
+  const auto& cloud = cloud_data->data();
   if (file_name.empty()) {
     throw std::runtime_error("File name cannot be empty!");
   }
@@ -62,30 +82,54 @@ void PointCloudWriterNode::compute() {
     std::strftime(buffer.data(), sizeof(buffer), "%Y%m%d_%H%M%S", time_info);
     file_name.append("_").append(buffer.data());
   }
-  switch (std::get<int>(_file_format->value)) {
-    case 0: {
-      std::cout << "save pcd file " << file_name.append(".pcd") << std::endl;
-      pcl::io::savePCDFile(file_name.append(".pcd"), *cloud, false);
-    } break;
+  const int file_format = std::get<int>(_file_format->value);
+  const char* extension = nullptr;
+  [[maybe_unused]] const char* format_name = nullptr;
+  switch (file_format) {
+    case 0:
     case 1:
-      pcl::io::savePCDFile(file_name.append(".pcd"), *cloud, true);
-      break;
     case 2:
-      pcl::io::savePCDFileBinaryCompressed(file_name.append(".pcd"), *cloud);
+      extension = ".pcd";
+      format_name = "pcd";
       break;
     case 3:
-      pcl::io::savePLYFile(file_name.append(".ply"), *cloud, false);
-      break;
     case 4:
-      pcl::io::savePLYFile(file_name.append(".ply"), *cloud, true);
+      extension = ".ply";
+      format_name = "ply";
       break;
     case 5:
-      pcl::io::saveIFSFile(file_name.append(".ifs"), *cloud);
+      extension = ".ifs";
+      format_name = "ifs";
       break;
     default:
       throw std::runtime_error("Invalid file format!");
   }
-  return;
+  const std::string full_path = file_name + extension;
+
+#ifndef NDEBUG
+  std::cout << "save " << format_name << " file " << full_path << std::endl;
+#endif
+
+  switch (file_format) {
+    case 0:
+      pcl::io::savePCDFile(full_path, *cloud, false);
+      break;
+    case 1:
+      pcl::io::savePCDFile(full_path, *cloud, true);
+      break;
+    case 2:
+      pcl::io::savePCDFileBinaryCompressed(full_path, *cloud);
+      break;
+    case 3:
+      pcl::io::savePLYFile(full_path, *cloud, false);
+      break;
+    case 4:
+      pcl::io::savePLYFile(full_path, *cloud, true);
+      break;
+    case 5:
+      pcl::io::saveIFSFile(full_path, *cloud);
+      break;
+  }
 }
 
 void PointCloudWriterNode::setInPortData(unsigned int index,

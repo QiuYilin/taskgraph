@@ -2,8 +2,8 @@
 #include <NodeData.hpp>
 #include <opencv2/opencv.hpp>
 namespace tg {
-const char image_id[] = "ImageData";
-const char point_cloud_name[] = "Image";
+inline constexpr char image_id[] = "ImageData";
+inline constexpr char image_name[] = "Image";
 using ImageData_t =
-    NodeData_<cv::Mat, image_id, point_cloud_name>;
+    NodeData_<cv::Mat, image_id, image_name>;
 }// namespace tg

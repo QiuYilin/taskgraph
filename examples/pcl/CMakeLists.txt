@@ -8,7 +8,6 @@ add_executable(pcl_example main.cpp
                            PointCloudReaderNode.cpp
                            PointCloudWriterNode.hpp
                            PointCloudWriterNode.cpp
-                           #imgui_demo.cpp
                            )
 
 target_link_libraries(pcl_example PRIVATE ${PCL_LIBRARIES})#https://github.com/PointCloudLibrary/pcl/issues/4422

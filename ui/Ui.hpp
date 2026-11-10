@@ -1,14 +1,30 @@
 #include "UiBase.hpp"
 #include "imgui_internal.h"
 
+#include <algorithm>
 #include <imgui_stdlib.h>
 #include <string>
 
 #include <taskgraph.hpp>
 
+// 按属性值存的类型画对应控件，取到哪个类型的指针就画哪个。
+static void ShowPropertyValueEditor(tg::PropertyValue& value) {
+  // 属性值是 int，画整数输入框。
+  if (auto* v = std::get_if<int>(&value)) {
+    ImGui::InputInt("input int", v);
+  }
+  // 属性值是 string，画文本输入框。
+  else if (auto* v = std::get_if<std::string>(&value)) {
+    ImGui::InputText("input text", v);
+  }
+  // 属性值是 bool，画勾选框。
+  else if (auto* v = std::get_if<bool>(&value)) {
+    ImGui::Checkbox("enable", v);
+  }
+}
+
 // 在当前表格里画一个节点，展开后编辑它的属性。
-static void ShowPlaceholderObject(const char* prefix,
-                                  std::shared_ptr<tg::Node> node) {
+static void ShowNodeRow(const char* prefix, std::shared_ptr<tg::Node> node) {
   auto uid = std::hash<std::shared_ptr<tg::Node>>{}(node);
   ImGui::PushID(static_cast<int>(uid));
 
@@ -19,9 +35,12 @@ static void ShowPlaceholderObject(const char* prefix,
                                    static_cast<unsigned int>(uid));
   ImGui::TableSetColumnIndex(1);
 
+  // 节点展开才画属性行，收起时右列空着。
   if (node_open) {
-    for (int i = 0; i < node->getProperties().size(); i++) {
-      auto properties = node->getProperties();
+    // 属性表只取一次引用，循环里不再每次拷贝整个 vector。
+    const auto& properties = node->getProperties();
+    // 每个属性单独 PushID，否则同名的控件会共用一个 ImGui ID。
+    for (int i = 0; i < static_cast<int>(properties.size()); i++) {
       ImGui::PushID(i);
       ImGui::TableNextRow();
       ImGui::TableSetColumnIndex(0);
@@ -33,17 +52,7 @@ static void ShowPlaceholderObject(const char* prefix,
 
       ImGui::TableSetColumnIndex(1);
       ImGui::SetNextItemWidth(-FLT_MIN);
-      if (node->getProperties()[i]->value.index() == 0) {
-        ImGui::InputInt("input int", &std::get<int>(properties[i]->value));
-      }
-      if (node->getProperties()[i]->value.index() == 1) {
-        std::get<std::string>(properties[i]->value).resize(1024);
-        ImGui::InputText("input text",
-                         &std::get<std::string>(properties[i]->value));
-      }
-      if (node->getProperties()[i]->value.index() == 2) {
-        ImGui::Checkbox("enable", &std::get<bool>(properties[i]->value));
-      }
+      ShowPropertyValueEditor(properties[i]->value);
       ImGui::NextColumn();
       ImGui::PopID();
     }
@@ -54,20 +63,21 @@ static void ShowPlaceholderObject(const char* prefix,
 }
 
 // 在当前表格里画一张图，展开后画出其中的节点。
-static void ShowPlaceholderObject(const char*,
-                                  std::shared_ptr<tg::Graph> graph) {
+static void ShowGraphRow(std::shared_ptr<tg::Graph> graph) {
   auto uid = std::hash<std::shared_ptr<tg::Graph>>{}(graph);
   ImGui::PushID(static_cast<int>(uid));
 
   ImGui::TableNextRow();
   ImGui::TableSetColumnIndex(0);
   ImGui::AlignTextToFramePadding();
-  bool node_open = ImGui::TreeNode(graph->getName().c_str());
+  bool graph_open = ImGui::TreeNode(graph->getName().c_str());
   ImGui::TableSetColumnIndex(1);
 
-  if (node_open) {
+  // 图展开才画它的节点行，收起时右列空着。
+  if (graph_open) {
+    // 图里的每个节点各占一行，画法交给 ShowNodeRow。
     for (const auto& node : graph->getNodes()) {
-      ShowPlaceholderObject(node->getName().c_str(), node);
+      ShowNodeRow(node->getName().c_str(), node);
     }
     ImGui::TreePop();
   }
@@ -98,6 +108,7 @@ class Ui : public UiBase<Ui> {
     ImGui::PopStyleVar(3);
 
     const ImGuiID dockspace_id = ImGui::GetID("MainDock");
+    // 布局节点只在第一次没有时建，重建会丢掉用户拖好的停靠位置。
     if (ImGui::DockBuilderGetNode(dockspace_id) == nullptr) {
       ImGui::DockBuilderRemoveNode(dockspace_id);
       ImGui::DockBuilderAddNode(dockspace_id, ImGuiDockNodeFlags_DockSpace);
@@ -130,8 +141,9 @@ class Ui : public UiBase<Ui> {
       ImGui::TableSetupColumn("Contents");
       ImGui::TableHeadersRow();
 
+      // 每张图占一行，图内节点交给 ShowGraphRow 展开后递归画。
       for (const auto& graph : _controller.getGraphs()) {
-        ShowPlaceholderObject("Graphs", graph);
+        ShowGraphRow(graph);
       }
 
       ImGui::EndTable();
@@ -142,23 +154,35 @@ class Ui : public UiBase<Ui> {
     // Begin / End：选择一张图并运行。
     ImGui::Begin("Toolbar");
     ImGui::SameLine();
-    static int selected_item = 0;
-    if (ImGui::Button("Run")) {
-      _controller.run(*_controller.getGraphs()[selected_item]);
+    // 每帧只取一次图列表，判空、画按钮和下拉框都用这同一份。
+    const auto& graphs = _controller.getGraphs();
+    // 图可能被删空或变短，先把选中下标夹回有效范围，后面取图才不会越界。
+    if (!graphs.empty()) {
+      _selected_item = std::clamp(_selected_item, 0,
+                                  static_cast<int>(graphs.size()) - 1);
+    }
+    // 有图才画 Run，列表为空时按下也无图可跑。
+    if (!graphs.empty() && ImGui::Button("Run")) {
+      _controller.run(*graphs[_selected_item]);
     }
 
     ImGui::SameLine();
-    std::vector<std::string> graph_names;
-    for (const auto& graph : _controller.getGraphs()) {
-      graph_names.push_back(graph->getName());
-    }
+    // 有图才画下拉框，空列表没有可选项。
+    if (!graphs.empty()) {
+      std::vector<std::string> graph_names;
+      // 先收集所有图名，再转成 Combo 需要的 const char* 数组。
+      for (const auto& graph : graphs) {
+        graph_names.push_back(graph->getName());
+      }
 
-    std::vector<const char*> items(graph_names.size());
-    for (int i = 0; i < graph_names.size(); i++) {
-      items[i] = graph_names[i].c_str();
+      std::vector<const char*> items(graph_names.size());
+      // 逐个取 c_str 填进指针数组，Combo 只认这种列表。
+      for (int i = 0; i < static_cast<int>(graph_names.size()); i++) {
+        items[i] = graph_names[i].c_str();
+      }
+      ImGui::Combo("##combo", &_selected_item, items.data(),
+                   static_cast<int>(items.size()));
     }
-    ImGui::Combo("##combo", &selected_item, items.data(),
-                 static_cast<int>(items.size()));
     ImGui::End();
   }
 
@@ -173,4 +197,5 @@ class Ui : public UiBase<Ui> {
 
  private:
   tg::Controller& _controller;
+  int _selected_item = 0;
 };
