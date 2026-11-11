@@ -19,6 +19,9 @@ build*
 .cursor/rules/private/*
 !.cursor/rules/private/README.md
 
+# 运行时日志，不进 Git
+logs/
+
 # UML 暂时只留在本机，不进 Git
 uml/
 *.puml

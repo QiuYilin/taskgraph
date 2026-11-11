@@ -6,7 +6,9 @@
 
 # TaskGraph
 
-A wrapper for the parallel task framework taskflow[https://github.com/taskflow/taskflow] to enable it to meet the needs of data flow programming and provide Ui components.
+A wrapper for the parallel task framework [taskflow](https://github.com/taskflow/taskflow) to enable it to meet the needs of data flow programming and provide Ui components.
+
+![simple example UI](docs/images/simple-ui.png)
 
 # Dependencies
 

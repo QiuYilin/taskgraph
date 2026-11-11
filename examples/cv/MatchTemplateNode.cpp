@@ -1,5 +1,7 @@
 #include "MatchTemplateNode.hpp"
 
+#include "Log.hpp"
+
 #include <cmath>
 
 #include <memory>
@@ -43,6 +45,7 @@ NodeDataType MatchTemplateNode::fixedDataType(PortType port_type,
 // }
 
 void MatchTemplateNode::compute() {
+  logInfo("[{}]computing ...", "MatchTemplateNode");
   //可以提前计算的部分，创建ncc模型
       //创建不同角度的模板图片和掩膜图片的金字塔
   
@@ -121,6 +124,8 @@ void MatchTemplateNode::compute() {
   // 线程创建和刷新。所以先把标注好的图放到输出端口，等 UI 能显示图像后再由主线程
   // 去画，不要再放回 compute()。
   _image_out = std::make_shared<ImageData_t>(display);
+  logInfo("[{}]result: score {} at ({}, {})", "MatchTemplateNode", max_val,
+          max_loc.x, max_loc.y);
   return;
 }
 

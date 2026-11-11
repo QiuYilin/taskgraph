@@ -1,0 +1,31 @@
+---
+description: 代码要能在 CI 的 Windows、Ubuntu、macOS 上通过编译
+alwaysApply: true
+---
+
+# 同时支持 CI 里的系统
+
+本仓库要能在持续集成用的几套系统上编过。以 `.github/workflows/` 为准，当前是：
+
+| 工作流 | 系统 | vcpkg triplet |
+| --- | --- | --- |
+| `windows-2025.yml` | windows-2025 | x64-windows |
+| `ubuntu-22.04.yml` | ubuntu-22.04 | x64-linux |
+| `macos-15.yml` | macos-15 | arm64-osx |
+
+写或改代码时，不要只用其中一套系统的接口。MSVC 专有、POSIX 专有或 Apple 专有的 API，要么换成三套都能用的写法，要么用预处理器按平台分开，并保证每一套都能编过。
+
+工作流或 matrix 里的系统、triplet 有增减时，先改这条规则里的表，再改代码。
+
+```cpp
+// ❌ BAD：只有 MSVC 有 fopen_s，Ubuntu 和 macOS 编不过
+if (fopen_s(&file, path, "rb") != 0) {
+  return false;
+}
+
+// ✅ GOOD：三套系统都能用
+std::FILE* file = std::fopen(path, "rb");
+if (file == nullptr) {
+  return false;
+}
+```
