@@ -5,6 +5,8 @@ namespace tg{
     class AddNode: public Node{
     public:
         AddNode();
+        unsigned int nFixedPorts(PortType port_type) const override;
+        NodeDataType fixedDataType(PortType port_type, unsigned int index) const override;
         void compute() override;
         void setInPortData(unsigned int index,std::shared_ptr<NodeData> data) override;
         std::shared_ptr<NodeData> getOutPortData(unsigned int) override;

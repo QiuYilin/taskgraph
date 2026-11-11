@@ -7,9 +7,75 @@
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
 
+// https://learn.microsoft.com/windows/apps/design/signature-experiences/typography
+inline constexpr float kBodyFontSizeEpx = 14.0f;
+// https://learn.microsoft.com/windows/apps/design/signature-experiences/geometry
+inline constexpr float kControlCornerRadiusEpx = 4.0f;
+inline constexpr float kOverlayCornerRadiusEpx = 8.0f;
+// https://learn.microsoft.com/windows/apps/design/basics/content-basics
+inline constexpr float kSurfaceTextMarginEpx = 16.0f;
+inline constexpr float kBetweenControlsEpx = 8.0f;
+inline constexpr float kControlLabelSpacingEpx = 12.0f;
+// WinUI 命令栏收起高度，以及按钮的最小高度。
+inline constexpr float kCommandBarHeightEpx = 48.0f;
+inline constexpr float kStandardControlHeightEpx = 32.0f;
+inline constexpr float kFramePaddingSideCount = 2.0f;
+
+inline constexpr const char* kSegoeUiVariablePath = "C:\\Windows\\Fonts\\SegUIVar.ttf";
+inline constexpr const char* kSegoeUiPath = "C:\\Windows\\Fonts\\segoeui.ttf";
+
 // GLFW 出错时把错误码和说明打印到标准错误。
 static void ErrorCallback(int error, const char* description) {
   std::fprintf(stderr, "Glfw Error %d: %s\n", error, description);
+}
+
+// 判断这个字体文件能不能打开。
+static bool FontFileExists(const char* path) {
+  std::FILE* file = std::fopen(path, "rb");
+  // 打不开就没有这份字体。
+  if (file == nullptr) {
+    return false;
+  }
+  std::fclose(file);
+  return true;
+}
+
+// 装入 Windows 正文用的 Segoe 字体。两种都不在时保持 ImGui 默认字体。
+static void LoadBodyFont(ImGuiIO& io) {
+  const char* chosen = nullptr;
+  // 系统里有 Segoe UI Variable 就用它做正文。
+  if (FontFileExists(kSegoeUiVariablePath)) {
+    chosen = kSegoeUiVariablePath;
+  }
+  // 没有可变字体时，改用普通 Segoe UI。
+  if (chosen == nullptr && FontFileExists(kSegoeUiPath)) {
+    chosen = kSegoeUiPath;
+  }
+  // 两种字体都不在，保持 ImGui 默认字体。
+  if (chosen == nullptr) {
+    return;
+  }
+  ImFont* font = io.Fonts->AddFontFromFileTTF(chosen, kBodyFontSizeEpx);
+  // 字体文件打得开但装不进图集时，仍用默认字体。
+  if (font != nullptr) {
+    io.FontDefault = font;
+  }
+}
+
+// 按 Windows 的圆角、间距和控件高度设置样式。数值是有效像素，调用方再按缩放放大。
+static void ApplyWindowsMetrics(ImGuiStyle& style) {
+  style.WindowPadding = ImVec2(kSurfaceTextMarginEpx, kSurfaceTextMarginEpx);
+  style.FramePadding = ImVec2(
+      kControlLabelSpacingEpx,
+      (kStandardControlHeightEpx - kBodyFontSizeEpx) / kFramePaddingSideCount);
+  style.ItemSpacing = ImVec2(kBetweenControlsEpx, kBetweenControlsEpx);
+  style.ItemInnerSpacing = ImVec2(kBetweenControlsEpx, kBetweenControlsEpx);
+  style.CellPadding = ImVec2(kBetweenControlsEpx, kBetweenControlsEpx);
+  style.FrameRounding = kControlCornerRadiusEpx;
+  style.GrabRounding = kControlCornerRadiusEpx;
+  style.ScrollbarRounding = kControlCornerRadiusEpx;
+  style.TabRounding = kControlCornerRadiusEpx;
+  style.PopupRounding = kOverlayCornerRadiusEpx;
 }
 
 template <typename Derived>
@@ -124,10 +190,14 @@ class UiBase {
     io.ConfigDpiScaleViewports = true;
     _io = io;
 
+    LoadBodyFont(io);
+
     ImGui::StyleColorsDark();
 
     ImGuiStyle& style = ImGui::GetStyle();
+    ApplyWindowsMetrics(style);
     // 开了多视口时，窗口圆角和外框背景要去掉，否则弹出窗口带黑边。
+    // 窗口最大化或面板边缘相接时，圆角也是 0。
     if (_io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable) {
       style.WindowRounding = 0.0f;
       style.Colors[ImGuiCol_WindowBg].w = 1.0f;

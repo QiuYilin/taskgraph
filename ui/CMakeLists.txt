@@ -6,6 +6,7 @@ set(HPP_HEADER_FILES
 
 find_package(OpenGL REQUIRED)
 find_package(imgui REQUIRED)
+find_package(unofficial-imgui-node-editor CONFIG REQUIRED)
 add_library(${component} INTERFACE)
 
 add_library(${project_name}::${component} ALIAS ${component})
@@ -16,7 +17,9 @@ target_include_directories(${component} INTERFACE
     )
 
 target_link_libraries(${component} INTERFACE
-    imgui::imgui OpenGL::GL
+    imgui::imgui
+    unofficial::imgui-node-editor::imgui-node-editor
+    OpenGL::GL
     )
 # ###############
 # # For Windows export

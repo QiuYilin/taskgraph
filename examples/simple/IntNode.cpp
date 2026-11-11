@@ -6,6 +6,24 @@ IntNode::IntNode() {
   _int_value = addProperty("value", 0);
 }
 
+unsigned int IntNode::nFixedPorts(PortType port_type) const {
+  constexpr unsigned int kOutputPortCount = 1;
+  switch (port_type) {
+    case PortType::Out:
+      return kOutputPortCount;
+    case PortType::In:
+      return 0;
+  }
+  return 0;
+}
+
+NodeDataType IntNode::fixedDataType(PortType port_type, unsigned int index) const {
+  if (port_type == PortType::Out && index == 0) {
+    return IntData_t{}.type();
+  }
+  return {};
+}
+
 void IntNode::setProperty(int property) { _int_value->value = property; }
 
 void IntNode::compute() {

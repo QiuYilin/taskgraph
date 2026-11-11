@@ -20,7 +20,11 @@
                   "docking-experimental"
                 ]
             },
-            "opengl" 
+            "opengl",
+                {
+                    "name": "imgui-node-editor",
+                    "version>=": "0.9.3"
+                }
             ]
           },
         "examples":{

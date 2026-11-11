@@ -31,17 +31,10 @@ void Graph::removeNode(std::shared_ptr<Node> node) {
       continue;
     }
     auto& next = other->_next;
-    next.erase(std::remove_if(next.begin(), next.end(),
-                              [&node](const ConnectionInfo& conn) {
-                                return conn.adj == node;
-                              }),
-               next.end());
+    next.remove_if([&node](const ConnectionInfo& conn) { return conn.adj == node; });
     auto& previous = other->_previous;
-    previous.erase(std::remove_if(previous.begin(), previous.end(),
-                                  [&node](const ConnectionInfo& conn) {
-                                    return conn.adj == node;
-                                  }),
-                   previous.end());
+    previous.remove_if(
+        [&node](const ConnectionInfo& conn) { return conn.adj == node; });
   }
 
   // 被删节点自己的连边也清掉，它若被外部持有也不会再向图里传数据。

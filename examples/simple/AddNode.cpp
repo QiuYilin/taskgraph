@@ -4,9 +4,32 @@
 #include <stdexcept>
 #include <string>
 
+namespace {
+constexpr unsigned int kInputPortCount = 2;
+constexpr unsigned int kOutputPortCount = 1;
+}  // namespace
+
 namespace tg {
-AddNode::AddNode() { 
-  setName("AddNode");
+AddNode::AddNode() { setName("AddNode"); }
+
+unsigned int AddNode::nFixedPorts(PortType port_type) const {
+  switch (port_type) {
+    case PortType::In:
+      return kInputPortCount;
+    case PortType::Out:
+      return kOutputPortCount;
+  }
+  return 0;
+}
+
+NodeDataType AddNode::fixedDataType(PortType port_type, unsigned int index) const {
+  if (port_type == PortType::In && index < kInputPortCount) {
+    return IntData_t{}.type();
+  }
+  if (port_type == PortType::Out && index == 0) {
+    return IntData_t{}.type();
+  }
+  return {};
 }
 
 void AddNode::compute() {

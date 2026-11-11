@@ -28,13 +28,18 @@ class NodeData {
 /// @brief Completely defined nodedata template.
 /// @tparam T type of data
 /// @tparam id  id of nodedata
-/// @tparam name name of nodedata
+/// @tparam name name of nodedata. Ports show this name.
 template <typename T, const char *id, const char *name>
 class NodeData_ : public NodeData {
  public:
   NodeData_() = default;
 
   explicit NodeData_(T data) : _data(std::move(data)) {}
+
+  /** \brief 界面上显示的类型名。
+   *  \return 类型模板参数里的 name。不需要先构造一份数据。
+   */
+  static const char* displayName() { return name; }
 
   NodeDataType type() const override {
     return NodeDataType{std::string(id), std::string(name)};
