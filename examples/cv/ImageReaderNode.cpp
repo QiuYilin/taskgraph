@@ -1,4 +1,7 @@
 #include "ImageReaderNode.hpp"
+
+#include "Log.hpp"
+
 #include <opencv2/opencv.hpp>
 
 namespace tg {
@@ -35,9 +38,16 @@ void ImageReaderNode::setFilePathProp(std::string file_path) {
 // }
 
 void ImageReaderNode::compute() {
+  logInfo("[{}]computing ...", "ImageReaderNode");
   std::string filepath = std::get<std::string>(_file_path->value);
   cv::Mat image = cv::imread(filepath);
   _image_out = std::make_shared<ImageData_t>(image);
+  // 读不到图时没有宽高可报，结果里写明路径。
+  if (image.empty()) {
+    logInfo("[{}]result: image is empty, path {}", "ImageReaderNode", filepath);
+  } else {
+    logInfo("[{}]result: {}x{}", "ImageReaderNode", image.cols, image.rows);
+  }
   return;
 }
 

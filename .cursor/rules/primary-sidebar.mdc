@@ -1,0 +1,29 @@
+---
+description: 主侧栏列出多张 graph，每张下面是创建在该图上的节点
+alwaysApply: true
+---
+
+# 主侧栏按 graph 列节点
+
+主侧栏对应 [VS Code 工作台](https://code.visualstudio.com/api/ux-guidelines/overview) 的主侧栏，窗口是 `Nodes###Project`。
+
+里面是多张 graph。每张 graph 是一项，下面只列出用 `Graph::addNode` 创建在这张 graph 上的节点。节点跟它所属的 graph 走，不挂到别的 graph 下面。
+
+节点种类不常驻。标题右侧有两个新建按钮，对应 Explorer 的新建文件和新建文件夹：`+ Node` 弹出种类列表，选中后节点创建在当前 graph 下面；`+ Graph` 新建一张空 graph。
+
+`+ Graph` 新建后立刻就地命名。图右键菜单：`New Node`、`Rename`、`Delete`。节点右键菜单：`New Node`、`Delete`。节点名固定，不能重命名。`F2` 仅在没有选中节点时重命名当前图。点选图名时清掉节点选中，并在编辑区打开该图页签。已选中且不在改文本时，`Delete` 或 `Backspace`：有选中节点就删节点，否则删当前图。画布里对选中节点的删除走同一条 `removeNode`。
+
+编辑区对照 VS Code 编辑器：启动时没有画布；只有打开的 graph 才显示对应画布页签；页签可叉掉关闭（不删图）；全部叉掉后编辑区再次为空。`+ Graph` 只在 Explorer 里建图，不自动打开页签。
+
+示例启动时没有 graph，两张都由 `+ Graph` 按钮创建。
+
+```text
+主侧栏 Explorer
+  [+ Node] [+ Graph]
+  Graph
+    Int
+    Add
+  Graph 2
+```
+
+一张 graph 还没有节点时，这一项仍然留在主侧栏里，下面是空的。没有 graph 时，`+ Node` 不可用。

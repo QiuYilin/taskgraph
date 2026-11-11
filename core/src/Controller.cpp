@@ -1,12 +1,18 @@
 #include "Controller.hpp"
 
-#include <iostream>
+#include <exception>
+
+#include "Log.hpp"
 
 namespace tg {
 void Controller::run(tg::Graph& graph) {
-  std::cout << graph._taskflow.dump() << std::endl;
-  _executor.run(graph._taskflow)
-      .get();  // TODO(qiuyilin) Will this cause blocking? Multiple taskflows cannot be executed concurrently.
+  logInfo("{}", graph._taskflow.dump());
+  try {
+    _executor.run(graph._taskflow).get();
+  } catch (const std::exception& error) {
+    // 节点抛出的异常记到输出视图，界面这一帧继续跑。
+    logError("{}", error.what());
+  }
 }
 
 void Controller::addGraph(std::shared_ptr<Graph> graph) {

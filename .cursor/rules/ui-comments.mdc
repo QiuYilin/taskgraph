@@ -16,7 +16,7 @@ alwaysApply: false
 4. 判断语句，包括 `if` / `else` / `switch` / 循环条件里的判断。说明这个条件在判断什么、为什么要这么判断，一行讲清就够。
 
 ```cpp
-// Begin / End：铺满工作区的停靠宿主，Toolbar 和 Project 停在里面。
+// Begin / End：铺满工作区的停靠宿主，主侧栏停在里面。
 ImGui::Begin("MainDockHost", nullptr, host_flags);
 
 // 鼠标按键。ImGui 的 GLFW 后端会先收到事件，这里目前不处理。

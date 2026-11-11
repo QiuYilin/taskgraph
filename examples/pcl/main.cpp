@@ -5,8 +5,6 @@
 #include "Ui.hpp"
 int main() {
   tg::Controller controller;
-  auto graph = std::make_shared<tg::Graph>();
-  controller.addGraph(graph);
 
   Ui ui(controller);
   ui.addNodeKind("PointCloudReader",

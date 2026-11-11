@@ -1,8 +1,9 @@
 #include "PointCloudWriterNode.hpp"
 
-#include <iostream>
 #include <stdexcept>
 #include <string>
+
+#include "Log.hpp"
 
 #include <pcl/io/ifs_io.h>
 #include <pcl/io/pcd_io.h>
@@ -52,6 +53,7 @@ void PointCloudWriterNode::setTimeSuffixProp(bool time_suffix) {
 // }
 
 void PointCloudWriterNode::compute() {
+  logInfo("[{}]computing ...", "PointCloudWriterNode");
   std::string file_name = std::get<std::string>(_file_path->value);
   bool time_suffix_flag = std::get<bool>(_time_suffix->value);
   auto src = _pointcloud_in.lock();
@@ -103,7 +105,7 @@ void PointCloudWriterNode::compute() {
   }
   const int file_format = std::get<int>(_file_format->value);
   const char* extension = nullptr;
-  [[maybe_unused]] const char* format_name = nullptr;
+  const char* format_name = nullptr;
   switch (file_format) {
     case 0:
     case 1:
@@ -125,9 +127,8 @@ void PointCloudWriterNode::compute() {
   }
   const std::string full_path = file_name + extension;
 
-#ifndef NDEBUG
-  std::cout << "save " << format_name << " file " << full_path << std::endl;
-#endif
+  logInfo("[{}]result: save {} file {}", "PointCloudWriterNode", format_name,
+          full_path);
 
   switch (file_format) {
     case 0:

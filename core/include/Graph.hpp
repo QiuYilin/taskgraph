@@ -36,6 +36,12 @@ class Graph {
                std::shared_ptr<Node> to, unsigned int port_in);
   const std::vector<std::shared_ptr<Node>>& getNodes() const { return _nodes; }
   const std::string& getName() const { return _name; }
+
+  /** \brief 设置图的显示名。
+   *  \param[in] name 新名称。
+   */
+  void setName(std::string name) { _name = std::move(name); }
+
   std::string dump();
 
  private:

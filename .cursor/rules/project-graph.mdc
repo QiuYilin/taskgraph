@@ -1,0 +1,17 @@
+---
+description: 一个 project 可以有多张 graph，节点属于创建它所在的那张图
+alwaysApply: true
+---
+
+# 一个 project 多张 graph
+
+一个 project 可以有多张 graph。示例里的 project 就是 `tg::Controller`，graph 就是 `tg::Graph`。
+
+节点属于创建它的那张 graph。用 `Graph::addNode` 加进去，不挂到别的 graph 上。主侧栏怎么列出这些 graph，按主侧栏规则。
+
+```cpp
+tg::Controller project;
+project.addGraph(graph_a);
+project.addGraph(graph_b);
+graph_a->addNode(node);
+```
