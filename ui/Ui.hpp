@@ -12,6 +12,23 @@
 
 #include <taskgraph.hpp>
 
+// 红色专留给类型不符；合法连线不得用红。
+inline const ImVec4 kTypeMismatchLinkColor = ImVec4(1.0f, 0.25f, 0.25f, 1.0f);
+// 与示例 NodeData_ 模板 id 对齐的固定线色。
+inline const ImVec4 kIntDataLinkColor = ImVec4(0.35f, 0.75f, 0.45f, 1.0f);
+inline const ImVec4 kImageDataLinkColor = ImVec4(0.95f, 0.75f, 0.2f, 1.0f);
+inline const ImVec4 kPointCloudDataLinkColor = ImVec4(0.35f, 0.65f, 0.95f, 1.0f);
+inline const ImVec4 kUntypedLinkColor = ImVec4(0.55f, 0.55f, 0.55f, 1.0f);
+constexpr float kLinkColorSaturation = 0.65f;
+constexpr float kLinkColorValue = 0.95f;
+constexpr float kLinkColorMinHue = 0.08f;
+constexpr float kLinkColorMaxHue = 0.92f;
+constexpr unsigned int kLinkColorHashBuckets = 1000;
+constexpr const char* kIntDataTypeId = "IntData";
+constexpr const char* kImageDataTypeId = "ImageData";
+constexpr const char* kPointCloudXyzDataTypeId = "PointCloudXyzData";
+constexpr float kDefaultLinkThickness = 2.0f;
+
 // 属性字符串变长时，把输入缓冲扩到这份字符串上。
 static int ResizePropertyText(ImGuiInputTextCallbackData* data) {
   // 只处理变长请求，别的输入事件这里不改字符串。
@@ -21,6 +38,38 @@ static int ResizePropertyText(ImGuiInputTextCallbackData* data) {
     data->Buf = text->data();
   }
   return 0;
+}
+
+// 同类型 id 得到同一颜色；空类型用灰色；避开红色相。
+static ImVec4 ColorForTypeId(const std::string& type_id) {
+  if (type_id.empty()) {
+    return kUntypedLinkColor;
+  }
+  if (type_id == kIntDataTypeId) {
+    return kIntDataLinkColor;
+  }
+  if (type_id == kImageDataTypeId) {
+    return kImageDataLinkColor;
+  }
+  if (type_id == kPointCloudXyzDataTypeId) {
+    return kPointCloudDataLinkColor;
+  }
+  unsigned int hash = 0;
+  for (unsigned char ch : type_id) {
+    constexpr unsigned int kHashShift = 5;
+    hash = hash * kHashShift + ch;
+  }
+  const float hue_span = kLinkColorMaxHue - kLinkColorMinHue;
+  const float hue =
+      kLinkColorMinHue +
+      static_cast<float>(hash % kLinkColorHashBuckets) /
+          static_cast<float>(kLinkColorHashBuckets) * hue_span;
+  float red = 0.0f;
+  float green = 0.0f;
+  float blue = 0.0f;
+  ImGui::ColorConvertHSVtoRGB(hue, kLinkColorSaturation, kLinkColorValue, red,
+                              green, blue);
+  return ImVec4(red, green, blue, 1.0f);
 }
 
 // 关掉新建停靠格上的标签，窄条才不会被标签盖住。
@@ -487,34 +536,118 @@ class Ui : public UiBase<Ui> {
       }
     }
 
-    // Begin / End：辅助侧栏里的属性表。点中 Explorer 或编辑区上的节点后编辑它的属性。
+    // Begin / End：辅助侧栏属性表。对照 VS Code 设置/属性：扁输入、发丝分隔、侧栏底。
     HideDockTab("Properties");
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, kVsCodeSidebarBackground);
     if (ImGui::Begin("Properties")) {
-      constexpr int kPropertyTableColumnCount = 2;
+      constexpr int kPropertyTableColumnCount = 3;
       constexpr float kFillColumnWidth = -FLT_MIN;
+      constexpr float kPropertyNameColumnRatio = 0.34f;
+      constexpr float kPropertyTypeColumnRatio = 0.22f;
+      constexpr float kPropertyValueColumnRatio =
+          1.0f - kPropertyNameColumnRatio - kPropertyTypeColumnRatio;
+      constexpr float kPropertyFrameRounding = 0.0f;
+      constexpr float kPropertyCellPadXEpx = 8.0f;
+      constexpr float kPropertyCellPadYEpx = 3.0f;
+      constexpr float kPropertyFramePadXEpx = 6.0f;
+      constexpr float kPropertyFramePadYEpx = 2.0f;
+      constexpr float kPropertyItemSpacingYEpx = 0.0f;
+      constexpr int kPropertyStyleVarCount = 4;
+      constexpr int kPropertyStyleColorCount = 3;
+      const float ui_scale = ImGui::GetStyle().FontScaleMain;
+      ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, kPropertyFrameRounding);
+      ImGui::PushStyleVar(
+          ImGuiStyleVar_CellPadding,
+          ImVec2(kPropertyCellPadXEpx * ui_scale,
+                 kPropertyCellPadYEpx * ui_scale));
+      ImGui::PushStyleVar(
+          ImGuiStyleVar_FramePadding,
+          ImVec2(kPropertyFramePadXEpx * ui_scale,
+                 kPropertyFramePadYEpx * ui_scale));
+      ImGui::PushStyleVar(
+          ImGuiStyleVar_ItemSpacing,
+          ImVec2(ImGui::GetStyle().ItemSpacing.x,
+                 kPropertyItemSpacingYEpx * ui_scale));
+      ImGui::PushStyleColor(ImGuiCol_TableBorderLight, kVsCodePanelBorder);
+      ImGui::PushStyleColor(ImGuiCol_TableBorderStrong, kVsCodePanelBorder);
+      ImGui::PushStyleColor(ImGuiCol_TableHeaderBg, kVsCodeSidebarBackground);
       // 有选中节点才画表，点在空白处时没有属性可改。
       if (selected_node != nullptr) {
         ImGui::PushID(selected_node.get());
-        // Begin / End：两列属性表，左列名称，右列可编辑的值。
-        if (ImGui::BeginTable("node_properties", kPropertyTableColumnCount,
-                              ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
-          ImGui::TableSetupColumn("Name");
-          ImGui::TableSetupColumn("Value");
+        // 表头 + 行间发丝线；列含 Type（对照 VS Code 属性检视）。
+        if (ImGui::BeginTable(
+                "node_properties", kPropertyTableColumnCount,
+                ImGuiTableFlags_SizingStretchProp |
+                    ImGuiTableFlags_BordersInnerH |
+                    ImGuiTableFlags_NoPadOuterX)) {
+          ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch,
+                                  kPropertyNameColumnRatio);
+          ImGui::TableSetupColumn("Type", ImGuiTableColumnFlags_WidthStretch,
+                                  kPropertyTypeColumnRatio);
+          ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch,
+                                  kPropertyValueColumnRatio);
           ImGui::TableHeadersRow();
           int property_index = 0;
-          for (const auto& property : selected_node->getProperties()) {
+          // 原生属性 + 全部输入槽：口模式只读，属性模式可改。
+          for (const auto& property : selected_node->getEditableProperties()) {
             ImGui::TableNextRow();
             ImGui::TableSetColumnIndex(0);
+            ImGui::AlignTextToFramePadding();
+            ImGui::PushStyleColor(ImGuiCol_Text,
+                                  ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
             ImGui::TextUnformatted(property->name.c_str());
+            ImGui::PopStyleColor();
+            const bool bound_input =
+                property->bound_input_index !=
+                tg::Node::kNativePropertyInputIndex;
+            const bool input_as_port =
+                bound_input &&
+                selected_node->isInputShownAsPort(
+                    static_cast<unsigned int>(property->bound_input_index));
             ImGui::TableSetColumnIndex(1);
-            ImGui::PushID(property_index);
-            // 属性值是整数，整数框直接改节点上的那一份。
-            if (auto* number = std::get_if<int>(&property->value)) {
-              ImGui::SetNextItemWidth(kFillColumnWidth);
-              ImGui::InputInt("##value", number);
+            ImGui::AlignTextToFramePadding();
+            ImGui::PushStyleColor(ImGuiCol_Text,
+                                  ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+            // 输入槽用 Port::data_type.name；原生属性按 PropertyValue 变体名。
+            if (bound_input) {
+              const tg::Node::Port* port = selected_node->inputPort(
+                  static_cast<unsigned int>(property->bound_input_index));
+              if (port != nullptr) {
+                ImGui::TextUnformatted(port->data_type.name.c_str());
+              }
+            } else if (std::holds_alternative<int>(property->value)) {
+              ImGui::TextUnformatted("int");
+            } else if (std::holds_alternative<std::string>(property->value)) {
+              ImGui::TextUnformatted("string");
+            } else if (std::holds_alternative<bool>(property->value)) {
+              ImGui::TextUnformatted("bool");
             }
-            // 属性值是字符串，输入框直接改节点上的那一份。
-            else if (auto* text = std::get_if<std::string>(&property->value)) {
+            ImGui::PopStyleColor();
+            ImGui::TableSetColumnIndex(2);
+            ImGui::PushID(property_index);
+            // 端口露面：属性表仍列出，但不可改（对照输入口即属性）。
+            if (input_as_port) {
+              ImGui::AlignTextToFramePadding();
+              ImGui::PushStyleColor(
+                  ImGuiCol_Text,
+                  ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+              if (const auto* number = std::get_if<int>(&property->value)) {
+                ImGui::Text("%d", *number);
+              } else if (const auto* text =
+                             std::get_if<std::string>(&property->value)) {
+                ImGui::TextUnformatted(text->c_str());
+              } else if (const auto* flag =
+                             std::get_if<bool>(&property->value)) {
+                ImGui::TextUnformatted(*flag ? "true" : "false");
+              }
+              ImGui::PopStyleColor();
+            } else if (auto* number = std::get_if<int>(&property->value)) {
+              // 整数：无 +/-，扁框（对照 VS Code 设置数字项）。
+              constexpr int kIntInputNoStep = 0;
+              ImGui::SetNextItemWidth(kFillColumnWidth);
+              ImGui::InputInt("##value", number, kIntInputNoStep);
+            } else if (auto* text = std::get_if<std::string>(&property->value)) {
+              // 字符串（图像/点云为导入路径）。
               constexpr std::size_t kTextTerminatorSize = 1;
               const std::size_t text_buffer_size =
                   text->capacity() + kTextTerminatorSize;
@@ -522,10 +655,28 @@ class Ui : public UiBase<Ui> {
               ImGui::InputText("##value", text->data(), text_buffer_size,
                                ImGuiInputTextFlags_CallbackResize,
                                ResizePropertyText, text);
-            }
-            // 属性值是布尔，勾选框直接改节点上的那一份。
-            else if (auto* flag = std::get_if<bool>(&property->value)) {
+            } else if (auto* flag = std::get_if<bool>(&property->value)) {
               ImGui::Checkbox("##value", flag);
+            }
+            // 绑定输入槽：口模式右键改为属性，属性模式右键改为端口。
+            if (bound_input &&
+                ImGui::BeginPopupContextItem("input_presentation_menu")) {
+              if (input_as_port) {
+                // 菜单用英文：当前字体无中文 glyph，中文会显示成问号。
+                if (ImGui::MenuItem("Convert to Property") && !graphs.empty()) {
+                  graphs[_selected_item]->setInputPresentation(
+                      selected_node,
+                      static_cast<unsigned int>(property->bound_input_index),
+                      tg::InputPresentation::Property);
+                }
+              } else if (ImGui::MenuItem("Convert to Port") &&
+                         !graphs.empty()) {
+                graphs[_selected_item]->setInputPresentation(
+                    selected_node,
+                    static_cast<unsigned int>(property->bound_input_index),
+                    tg::InputPresentation::Port);
+              }
+              ImGui::EndPopup();
             }
             ImGui::PopID();
             ++property_index;
@@ -534,8 +685,11 @@ class Ui : public UiBase<Ui> {
         }
         ImGui::PopID();
       }
+      ImGui::PopStyleColor(kPropertyStyleColorCount);
+      ImGui::PopStyleVar(kPropertyStyleVarCount);
     }
     ImGui::End();
+    ImGui::PopStyleColor();
 
     // 没在改文本时处理快捷键：F2 重命名图，Delete / Backspace 删除。
     if (!ImGui::GetIO().WantTextInput) {
@@ -881,13 +1035,17 @@ class Ui : public UiBase<Ui> {
         ImGui::BeginGroup();
         for (unsigned int port_index = 0; port_index < node->inputPortCount();
              ++port_index) {
+          // 属性模式下的输入槽不画引脚（输入口即属性）。
+          if (!node->isInputShownAsPort(port_index)) {
+            continue;
+          }
           const tg::Node::Port* port = node->inputPort(port_index);
           // Begin / End：输入引脚。身份就是基类里的端口对象。
           ax::NodeEditor::BeginPin(ax::NodeEditor::PinId(port),
                                    ax::NodeEditor::PinKind::Input);
-          // 有数据类型名才画字，没有对应数据的端口留空。
-          if (!port->name.empty()) {
-            ImGui::TextUnformatted(port->name.c_str());
+          // 画功能名；没有 caption 的端口留空。
+          if (!port->caption.empty()) {
+            ImGui::TextUnformatted(port->caption.c_str());
           }
           ax::NodeEditor::EndPin();
         }
@@ -900,9 +1058,9 @@ class Ui : public UiBase<Ui> {
           // Begin / End：输出引脚。身份就是基类里的端口对象。
           ax::NodeEditor::BeginPin(ax::NodeEditor::PinId(port),
                                    ax::NodeEditor::PinKind::Output);
-          // 有数据类型名才画字，没有对应数据的端口留空。
-          if (!port->name.empty()) {
-            ImGui::TextUnformatted(port->name.c_str());
+          // 画功能名；没有 caption 的端口留空。
+          if (!port->caption.empty()) {
+            ImGui::TextUnformatted(port->caption.c_str());
           }
           ax::NodeEditor::EndPin();
         }
@@ -917,13 +1075,21 @@ class Ui : public UiBase<Ui> {
               connection.adj == nullptr
                   ? nullptr
                   : connection.adj->inputPort(connection.port_in);
-          // 两端端口都还在，才把这条已有连边画出来。
-          if (output == nullptr || input == nullptr) {
+          // 两端端口都还在，且下游仍以端口露面，才把这条已有连边画出来。
+          if (output == nullptr || input == nullptr ||
+              connection.adj == nullptr ||
+              !connection.adj->isInputShownAsPort(connection.port_in)) {
             continue;
           }
+          // 类型不符用红；相符用类型色。
+          const ImVec4 link_color =
+              output->data_type.id == input->data_type.id
+                  ? ColorForTypeId(output->data_type.id)
+                  : kTypeMismatchLinkColor;
           ax::NodeEditor::Link(ax::NodeEditor::LinkId(&connection),
                                ax::NodeEditor::PinId(output),
-                               ax::NodeEditor::PinId(input));
+                               ax::NodeEditor::PinId(input), link_color,
+                               kDefaultLinkThickness);
         }
       }
       // Begin / End：处理正在拉的新连线。合法时只调用图已有的 connect。
@@ -947,16 +1113,22 @@ class Ui : public UiBase<Ui> {
             output = end;
             input = start;
           }
-          // 必须是一个输出对一个输入，并且不是同一个节点。
+          // 必须是一个输出对一个输入，并且不是同一个节点；属性模式入口拒连。
           if (output == nullptr || input == nullptr ||
               output->node == nullptr || input->node == nullptr ||
-              output->node == input->node) {
-            ax::NodeEditor::RejectNewItem();
-          } else if (ax::NodeEditor::AcceptNewItem()) {
-            graphs[_selected_item]->connect(output->node->shared_from_this(),
-                                            output->index,
-                                            input->node->shared_from_this(),
-                                            input->index);
+              output->node == input->node ||
+              !input->node->isInputShownAsPort(input->index)) {
+            ax::NodeEditor::RejectNewItem(kTypeMismatchLinkColor,
+                                          kDefaultLinkThickness);
+          } else if (output->data_type.id != input->data_type.id ||
+                     output->data_type.id.empty()) {
+            // 类型不符或无类型：红线预览并拒绝。
+            ax::NodeEditor::RejectNewItem(kTypeMismatchLinkColor,
+                                          kDefaultLinkThickness);
+          } else if (ax::NodeEditor::AcceptNewItem(
+                         ColorForTypeId(output->data_type.id),
+                         kDefaultLinkThickness)) {
+            graphs[_selected_item]->connect(output, input);
           }
         }
       }
@@ -987,6 +1159,35 @@ class Ui : public UiBase<Ui> {
         }
       }
       ax::NodeEditor::EndDelete();
+      // 引脚右键：输入口改为属性（对照 VS Code 上下文菜单，Suspend 后弹 ImGui）。
+      // PinId 只在 ShowPinContextMenu 为真的那一帧有效，必须存进成员供后续帧画菜单。
+      ax::NodeEditor::Suspend();
+      ax::NodeEditor::PinId context_pin_id;
+      if (ax::NodeEditor::ShowPinContextMenu(&context_pin_id)) {
+        auto* const port = context_pin_id.AsPointer<tg::Node::Port>();
+        if (port != nullptr && port->node != nullptr && !port->is_output) {
+          _pin_context_port = port;
+          ImGui::OpenPopup("Pin Context Menu");
+        }
+      }
+      if (ImGui::BeginPopup("Pin Context Menu")) {
+        if (_pin_context_port != nullptr &&
+            _pin_context_port->node != nullptr &&
+            !_pin_context_port->is_output) {
+          // 菜单用英文：当前字体无中文 glyph，中文会显示成问号。
+          if (ImGui::MenuItem("Convert to Property")) {
+            auto owned = _pin_context_port->node->shared_from_this();
+            graphs[_selected_item]->setInputPresentation(
+                owned, _pin_context_port->index,
+                tg::InputPresentation::Property);
+            _pin_context_port = nullptr;
+          }
+        }
+        ImGui::EndPopup();
+      } else {
+        _pin_context_port = nullptr;
+      }
+      ax::NodeEditor::Resume();
       // 侧栏点过的节点这一帧才画出来，先在编辑器里选中。
       if (_select_node_in_editor != nullptr) {
         ax::NodeEditor::SelectNode(
@@ -1434,6 +1635,8 @@ class Ui : public UiBase<Ui> {
   ax::NodeEditor::EditorContext* _editor = nullptr;
   tg::Node* _selected_node = nullptr;
   tg::Node* _select_node_in_editor = nullptr;
+  // 引脚右键菜单跨帧记住端口；ShowPinContextMenu 只在打开当帧给出 PinId。
+  tg::Node::Port* _pin_context_port = nullptr;
   int _selected_item = 0;
   int _create_on_graph = 0;
   bool _open_pick_node_kind = false;

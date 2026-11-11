@@ -12,10 +12,26 @@
 namespace {
 constexpr unsigned int kInputPortCount = 3;
 constexpr unsigned int kOutputPortCount = 2;
+constexpr unsigned int kImageInIndex = 0;
+constexpr unsigned int kImageTmlIndex = 1;
+constexpr unsigned int kImageMaskIndex = 2;
+constexpr unsigned int kImageOutIndex = 0;
+constexpr unsigned int kLocOutIndex = 1;
+constexpr const char* kImageInId = "image_in";
+constexpr const char* kImageTmlId = "image_tml";
+constexpr const char* kImageMaskId = "image_mask";
+constexpr const char* kImageOutId = "image_out";
+constexpr const char* kLocOutId = "loc_out";
 }  // namespace
 
 namespace tg {
-MatchTemplateNode::MatchTemplateNode() { setName("MatchTemplateNode"); 
+MatchTemplateNode::MatchTemplateNode()
+    : inport{PortRef{this, PortType::In, kImageInIndex},
+             PortRef{this, PortType::In, kImageTmlIndex},
+             PortRef{this, PortType::In, kImageMaskIndex}},
+      outport{PortRef{this, PortType::Out, kImageOutIndex},
+              PortRef{this, PortType::Out, kLocOutIndex}} {
+  setName("MatchTemplateNode");
   _pyramid_layers = addProperty("pyramid_layers", 1);
 }
 
@@ -34,10 +50,35 @@ NodeDataType MatchTemplateNode::fixedDataType(PortType port_type,
   if (port_type == PortType::In && index < kInputPortCount) {
     return ImageData_t{}.type();
   }
-  if (port_type == PortType::Out && index == 0) {
+  if (port_type == PortType::Out && index == kImageOutIndex) {
     return ImageData_t{}.type();
   }
   return {};
+}
+
+const char* MatchTemplateNode::fixedPortId(PortType port_type,
+                                           unsigned int index) const {
+  if (port_type == PortType::In && index == kImageInIndex) {
+    return kImageInId;
+  }
+  if (port_type == PortType::In && index == kImageTmlIndex) {
+    return kImageTmlId;
+  }
+  if (port_type == PortType::In && index == kImageMaskIndex) {
+    return kImageMaskId;
+  }
+  if (port_type == PortType::Out && index == kImageOutIndex) {
+    return kImageOutId;
+  }
+  if (port_type == PortType::Out && index == kLocOutIndex) {
+    return kLocOutId;
+  }
+  return "";
+}
+
+const char* MatchTemplateNode::fixedPortCaption(PortType port_type,
+                                                unsigned int index) const {
+  return fixedPortId(port_type, index);
 }
 
 // void MatchTemplateNode::setProperty(int index) {
@@ -55,51 +96,77 @@ void MatchTemplateNode::compute() {
 
   //②在最顶层确定ROI
   //③考虑重叠区域找出所有匹配点
-  
-  auto image_in_data = _image_in.lock();
-  // 待检测图像是必选输入，没有数据算不出结果。
-  if (image_in_data == nullptr) {
-    throw std::runtime_error(
-        "Input port 0 of MatchTemplateNode has no data!");
-  }
-  auto image_in_ptr = std::dynamic_pointer_cast<ImageData_t>(image_in_data);
-  // 端口 0 接入的不是图像数据，转型失败。
-  if (image_in_ptr == nullptr) {
-    throw std::runtime_error(
-        std::string("Input port 0 of MatchTemplateNode expects \"") + image_id +
-        "\", but got \"" + image_in_data->type().id + "\"!");
-  }
-  auto image_tml_data = _image_tml.lock();
-  // 模板图像是必选输入，没有数据无法匹配。
-  if (image_tml_data == nullptr) {
-    throw std::runtime_error(
-        "Input port 1 of MatchTemplateNode has no data!");
-  }
-  auto image_tml_ptr = std::dynamic_pointer_cast<ImageData_t>(image_tml_data);
-  // 端口 1 接入的不是图像数据，转型失败。
-  if (image_tml_ptr == nullptr) {
-    throw std::runtime_error(
-        std::string("Input port 1 of MatchTemplateNode expects \"") + image_id +
-        "\", but got \"" + image_tml_data->type().id + "\"!");
-  }
+
+  // 属性模式：输入口即属性，路径字符串导入图像。
+  const auto load_required_image =
+      [this](unsigned int index, const std::weak_ptr<NodeData>& weak,
+             const char* port_name) {
+        if (isInputShownAsProperty(index)) {
+          auto property = inputProperty(index);
+          if (property == nullptr) {
+            throw std::runtime_error(std::string("Property ") + port_name +
+                                     " of MatchTemplateNode is missing!");
+          }
+          const std::string& path = std::get<std::string>(property->value);
+          cv::Mat image = cv::imread(path);
+          if (image.empty()) {
+            throw std::runtime_error(std::string("Property ") + port_name +
+                                     " of MatchTemplateNode failed to load: " +
+                                     path);
+          }
+          return image;
+        }
+        auto data = weak.lock();
+        if (data == nullptr) {
+          throw std::runtime_error(std::string("Input port ") + port_name +
+                                   " of MatchTemplateNode has no data!");
+        }
+        auto typed = std::dynamic_pointer_cast<ImageData_t>(data);
+        if (typed == nullptr) {
+          throw std::runtime_error(
+              std::string("Input port ") + port_name +
+              " of MatchTemplateNode expects \"" + image_id + "\", but got \"" +
+              data->type().id + "\"!");
+        }
+        return typed->data();
+      };
+
   // 图像载荷与上游共享像素：这里只读，画图或修改前先 copyTo/clone。
-  // 下面几处 Mat 拷贝只复制矩阵头，不复制像素。
-  const cv::Mat& image_in = image_in_ptr->data();
-  const cv::Mat& image_tml = image_tml_ptr->data();
+  // 下面几处 Mat 拷贝只复制矩阵头，不复制像素。属性模式则持有本地 Mat。
+  cv::Mat image_in =
+      load_required_image(kImageInIndex, _image_in, kImageInId);
+  cv::Mat image_tml =
+      load_required_image(kImageTmlIndex, _image_tml, kImageTmlId);
 
   cv::Mat image_mask;
-  auto image_mask_data = _image_mask.lock();
-  // 掩膜是可选输入，端口没接就跳过；但接了就必须是图像类型。
-  if (image_mask_data != nullptr) {
-    auto image_mask_ptr =
-        std::dynamic_pointer_cast<ImageData_t>(image_mask_data);
-    // 端口 2 接了数据但不是图像，属于接线错误，不能静默忽略。
-    if (image_mask_ptr == nullptr) {
-      throw std::runtime_error(
-          std::string("Input port 2 of MatchTemplateNode expects \"") +
-          image_id + "\", but got \"" + image_mask_data->type().id + "\"!");
+  if (isInputShownAsProperty(kImageMaskIndex)) {
+    auto property = inputProperty(kImageMaskIndex);
+    if (property != nullptr) {
+      const std::string& path = std::get<std::string>(property->value);
+      // 掩膜可选：路径空则不加掩膜。
+      if (!path.empty()) {
+        image_mask = cv::imread(path);
+        if (image_mask.empty()) {
+          throw std::runtime_error(
+              "Property image_mask of MatchTemplateNode failed to load: " +
+              path);
+        }
+      }
     }
-    image_mask = image_mask_ptr->data();
+  } else {
+    auto image_mask_data = _image_mask.lock();
+    // 掩膜是可选输入，端口没接就跳过；但接了就必须是图像类型。
+    if (image_mask_data != nullptr) {
+      auto image_mask_ptr =
+          std::dynamic_pointer_cast<ImageData_t>(image_mask_data);
+      // 端口 2 接了数据但不是图像，属于接线错误，不能静默忽略。
+      if (image_mask_ptr == nullptr) {
+        throw std::runtime_error(
+            std::string("Input port 2 of MatchTemplateNode expects \"") +
+            image_id + "\", but got \"" + image_mask_data->type().id + "\"!");
+      }
+      image_mask = image_mask_ptr->data();
+    }
   }
 
   cv::Mat result_matrix(image_in.rows - image_tml.rows + 1,
@@ -129,18 +196,18 @@ void MatchTemplateNode::compute() {
   return;
 }
 
-void MatchTemplateNode::setInPortData(unsigned int index,
+void MatchTemplateNode::onSetInPortData(unsigned int index,
                                       std::shared_ptr<NodeData> data) {
   switch (index) {
-    case 0:
+    case kImageInIndex:
       _image_in = data;
       break;
 
-    case 1:
+    case kImageTmlIndex:
       _image_tml = data;
       break;
 
-    case 2:
+    case kImageMaskIndex:
       _image_mask = data;
       break;
 
@@ -153,13 +220,11 @@ void MatchTemplateNode::setInPortData(unsigned int index,
 std::shared_ptr<NodeData> MatchTemplateNode::getOutPortData(
     unsigned int index) {
   switch (index) {
-    case 0:
+    case kImageOutIndex:
       return _image_out;
-      break;
 
-    case 1:
+    case kLocOutIndex:
       return _loc_out;
-      break;
 
     default:
       break;

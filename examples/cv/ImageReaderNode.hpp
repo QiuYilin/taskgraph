@@ -1,22 +1,28 @@
-//创建预制的模板 输入模板图片和掩膜图片（提供掩膜工具？）
-
 #pragma once
 #include "CvNode.hpp"
-namespace tg{
-    class ImageReaderNode: public CvNode{
-    public:
-        ImageReaderNode();
-        unsigned int nFixedPorts(PortType port_type) const override;
-        NodeDataType fixedDataType(PortType port_type, unsigned int index) const override;
-        void compute() override;
-        void setInPortData(unsigned int index,std::shared_ptr<NodeData> data) override;
-        std::shared_ptr<NodeData> getOutPortData(unsigned int) override;
-        //void setProperty(int property);
-        void setFilePathProp(std::string file_path);
+namespace tg {
+class ImageReaderNode : public CvNode {
+ public:
+  struct OutPort {
+    PortRef image_out;
+  };
 
-    private:
-        using CvNode::_image_out;
-        //using CvNode::_image_type;
-        std::shared_ptr<Property> _file_path;
-    };
-} //namespace tg
+  ImageReaderNode();
+  unsigned int nFixedPorts(PortType port_type) const override;
+  NodeDataType fixedDataType(PortType port_type, unsigned int index) const override;
+  const char* fixedPortId(PortType port_type, unsigned int index) const override;
+  const char* fixedPortCaption(PortType port_type,
+                               unsigned int index) const override;
+  void compute() override;
+  void onSetInPortData(unsigned int index,
+                     std::shared_ptr<NodeData> data) override;
+  std::shared_ptr<NodeData> getOutPortData(unsigned int) override;
+  void setFilePathProp(std::string file_path);
+
+  OutPort outport;
+
+ private:
+  using CvNode::_image_out;
+  std::shared_ptr<Property> _file_path;
+};
+}  // namespace tg

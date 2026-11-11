@@ -1,12 +1,17 @@
 #pragma once
 #include <string>
+#include <type_traits>
 #include <utility>
+#include <variant>
 
 namespace tg {
 struct NodeDataType {
   std::string id;
   std::string name;
 };
+
+/** \brief 属性表可编辑值；与输入口绑定时由 NodeData 同步可映类型（如 int）。 */
+using PropertyValue = std::variant<int, std::string, bool>;
 
 class NodeData {
  public:
@@ -23,12 +28,18 @@ class NodeData {
 
   /// Type for inner use
   virtual NodeDataType type() const = 0;
+
+  /** \brief 若载荷可映成属性值则写入 out（Observer 同步用）。默认不可映。 */
+  virtual bool tryAsPropertyValue(PropertyValue& out) const {
+    (void)out;
+    return false;
+  }
 };
 
 /// @brief Completely defined nodedata template.
 /// @tparam T type of data
 /// @tparam id  id of nodedata
-/// @tparam name name of nodedata. Ports show this name.
+/// @tparam name name of nodedata. 类型显示名；端口功能名用 Port::caption。
 template <typename T, const char *id, const char *name>
 class NodeData_ : public NodeData {
  public:
@@ -57,6 +68,15 @@ class NodeData_ : public NodeData {
    *  \return 载荷的只读引用。载荷类型本身是句柄时可能为空，例如 PointCloud::ConstPtr。
    */
   const T& data() const { return _data; }
+
+  bool tryAsPropertyValue(PropertyValue& out) const override {
+    if constexpr (std::is_same_v<T, int>) {
+      out = _data;
+      return true;
+    }
+    (void)out;
+    return false;
+  }
 
  private:
   T _data{};

@@ -25,14 +25,17 @@ vcpkg install taskflow
 
 # 用法
 
-示例
+用法分两种：**core**，以及 **core + ui**。
+
+## core
+
+用 `tg::Controller` / `tg::Graph` 建图、连端口并运行。端口访问器名称与引脚功能名一致（如 `outport.out_data`、`inport.lhs`）。不需要窗口或 ImGui。core 也可以和别的界面方案组合，例如 Qt、Web 前端或自研界面，不必使用本仓库自带的 `ui` 模块。
 
 ```
 #include "taskgraph.hpp"
 #include "AddNode.hpp"
 #include "IntNode.hpp"
-#include "Ui.hpp"
-int main(){
+int main() {
     tg::Controller project;
     auto graph = std::make_shared<tg::Graph>();
     project.addGraph(graph);
@@ -44,24 +47,32 @@ int main(){
     graph->addNode(node1);
     graph->addNode(node2);
     graph->addNode(node3);
-    auto node4 = std::make_shared<tg::IntNode>();
-    node4->setProperty(3);
-    auto node5 = std::make_shared<tg::AddNode>();;
-    graph->addNode(node4);
-    graph->addNode(node5);
-    graph->removeNode(node4);
-    graph->removeNode(node5);
-    graph->connect(node1,0,node3,0);
-    graph->connect(node2,0,node3,1);
-    graph->connect(node3,0,node5,0);
-    graph->connect(node4,0,node5,1);
+    graph->connect(node1->outport.out_data, node3->inport.lhs);
+    graph->connect(node2->outport.out_data, node3->inport.rhs);
     project.run(*graph);
+    return 0;
+}
+```
 
+## core + ui
+
+仍使用同一个 `tg::Controller`，在 `Ui` 上登记节点种类后调用 `Run()`，得到 VS Code 风格工作台（Explorer、画布、Properties、输出日志）。也可以继续用代码建图或运行；界面改的是这份控制器。
+
+![simple 示例界面](docs/images/simple-ui.png)
+
+画布连线颜色按端口数据类型（不符为红并拒绝）。输入端口与属性是同一槽位的两种露面：引脚或 Properties 右键 **Convert to Property** / **Convert to Port**。图像、点云类输入在属性模式下为文件路径。初始没有输入口的节点只有普通属性。
+
+```
+#include "taskgraph.hpp"
+#include "AddNode.hpp"
+#include "IntNode.hpp"
+#include "Ui.hpp"
+int main() {
+    tg::Controller project;
     Ui ui(project);
+    ui.addNodeKind("Int", [] { return std::make_shared<tg::IntNode>(); });
+    ui.addNodeKind("Add", [] { return std::make_shared<tg::AddNode>(); });
     ui.Run();
     return 0;
 }
-
 ```
-
-
