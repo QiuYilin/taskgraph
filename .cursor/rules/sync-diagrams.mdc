@@ -1,0 +1,18 @@
+---
+description: 每次改动都核对并更新类图和时序图
+alwaysApply: true
+---
+
+# 类图和时序图一起改
+
+每次改代码，都核对 `uml/` 里的 PlantUML，让图和代码一致。
+
+- 类、成员或关系变了，改 `uml/class-diagram.puml`。
+- 调用顺序变了，改 `uml/sequence-diagram.puml`。
+- 端口连边或数据怎么传变了，改 `uml/data-transfer-diagram.puml`。
+- 端口上显示的类型名变了，改 `uml/port-display-diagram.puml`。
+- 从列表拖节点进图画布的顺序变了，改 `uml/add-node-diagram.puml`。
+
+图只用 PlantUML，放在 `uml/`。不导出 png 或 svg。这个目录不进 Git。
+
+某一张图没有需要改的内容时，在回复里写明核对过，不要默默跳过。

@@ -44,6 +44,8 @@ int main() {
   expect(first.sameType(second), "同一 id 的 NodeData 应匹配");
   expect(first.type().id == kIntDataId, "类型 id 应等于模板参数");
   expect(first.type().name == kIntDataName, "类型 name 应等于模板参数");
+  expect(std::string(IntData::displayName()) == kIntDataName,
+         "静态名称应等于模板参数");
   expect(!first.sameType(text), "不同 id 的 NodeData 不应匹配");
   expect(text.type().id == kTextDataId, "另一类型的 id 应等于自己的模板参数");
 

@@ -1,0 +1,3 @@
+# 私有规则在 .gitignore 里。用取反让 Cursor 继续读取这些规则。
+!.cursor/rules/private/
+!.cursor/rules/private/**

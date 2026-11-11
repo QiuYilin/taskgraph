@@ -6,26 +6,10 @@ int main(){
     tg::Controller project;
     auto graph = std::make_shared<tg::Graph>();
     project.addGraph(graph);
-    auto node1 = std::make_shared<tg::IntNode>();
-    node1->setProperty(1);
-    auto node2 = std::make_shared<tg::IntNode>();
-    node2->setProperty(2);
-    auto node3 = std::make_shared<tg::AddNode>();
-    graph->addNode(node1);
-    graph->addNode(node2);
-    graph->addNode(node3);
-    auto node4 = std::make_shared<tg::IntNode>();
-    node4->setProperty(3);
-    auto node5 = std::make_shared<tg::AddNode>();;
-    graph->addNode(node4);
-    graph->addNode(node5);
-    graph->removeNode(node4);
-    graph->removeNode(node5);
-    graph->connect(node1,0,node3,0);
-    graph->connect(node2,0,node3,1);
-    project.run(*graph);
 
     Ui ui(project);
+    ui.addNodeKind("Int", [] { return std::make_shared<tg::IntNode>(); });
+    ui.addNodeKind("Add", [] { return std::make_shared<tg::AddNode>(); });
     ui.Run();
     return 0;
 }
