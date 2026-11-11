@@ -1,8 +1,9 @@
 #include "AddNode.hpp"
 
-#include <iostream>
 #include <stdexcept>
 #include <string>
+
+#include "Log.hpp"
 
 namespace {
 constexpr unsigned int kInputPortCount = 2;
@@ -33,6 +34,7 @@ NodeDataType AddNode::fixedDataType(PortType port_type, unsigned int index) cons
 }
 
 void AddNode::compute() {
+  logInfo("[{}]computing ...", "AddNode");
   auto data1 = _in_data1.lock();
   // 第一个操作数端口没有数据，无法相加。
   if (data1 == nullptr) {
@@ -61,7 +63,7 @@ void AddNode::compute() {
   const int rhs = data2_in->data();
   const int sum = lhs + rhs;
   _out_data = std::make_shared<IntData_t>(sum);
-  std::cout << "AddNode: " << lhs << " + " << rhs << " = " << sum << std::endl;
+  logInfo("[{}]result: {} + {} = {}", "AddNode", lhs, rhs, sum);
   return;
 }
 

@@ -97,7 +97,17 @@ public:
   const std::list<ConnectionInfo>& outgoing() const { return _next; }
 
   const std::string& getName() const { return _name; }
-  virtual void setName(std::string&& name) { _name = std::move(name); }
+
+  /** \brief 设置节点显示名；若已挂到图上，同步任务名。
+   *  \param[in] name 新名称。
+   */
+  virtual void setName(std::string name) {
+    _name = std::move(name);
+    // 已 emplace 过任务时，dump 和调度里显示的名字跟着改。
+    if (!_task.empty()) {
+      _task.name(_name);
+    }
+  }
 
   std::shared_ptr<Property> addProperty(std::string name, PropertyValue property) {
     Property prop;

@@ -4,8 +4,6 @@
 #include "Ui.hpp"
 int main(){
     tg::Controller project;
-    auto graph = std::make_shared<tg::Graph>();
-    project.addGraph(graph);
 
     Ui ui(project);
     ui.addNodeKind("Int", [] { return std::make_shared<tg::IntNode>(); });

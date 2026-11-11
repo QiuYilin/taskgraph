@@ -1,5 +1,7 @@
 #include "IntNode.hpp"
 
+#include "Log.hpp"
+
 namespace tg {
 IntNode::IntNode() { 
   setName("IntNode");
@@ -27,8 +29,10 @@ NodeDataType IntNode::fixedDataType(PortType port_type, unsigned int index) cons
 void IntNode::setProperty(int property) { _int_value->value = property; }
 
 void IntNode::compute() {
-
-  _out_data=std::make_shared<IntData_t>(std::get<int>(_int_value->value));
+  logInfo("[{}]computing ...", "IntNode");
+  const int value = std::get<int>(_int_value->value);
+  _out_data = std::make_shared<IntData_t>(value);
+  logInfo("[{}]result: {}", "IntNode", value);
   return;
 }
 
