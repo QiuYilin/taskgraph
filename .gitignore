@@ -15,7 +15,12 @@ out
 build*
 *build
 
-# UML 源文件与导出图不入库
+# 私有规则：只在本机生效，不进 Git
+.cursor/rules/private/*
+!.cursor/rules/private/README.md
+
+# UML 暂时只留在本机，不进 Git
+uml/
 *.puml
 *.plantuml
 *.iuml

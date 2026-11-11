@@ -10,6 +10,25 @@ PointCloudReaderNode::PointCloudReaderNode() {
   _file_path = addProperty("file_path", std::string());
 }
 
+unsigned int PointCloudReaderNode::nFixedPorts(PortType port_type) const {
+  constexpr unsigned int kOutputPortCount = 1;
+  switch (port_type) {
+    case PortType::Out:
+      return kOutputPortCount;
+    case PortType::In:
+      return 0;
+  }
+  return 0;
+}
+
+NodeDataType PointCloudReaderNode::fixedDataType(PortType port_type,
+                                                 unsigned int index) const {
+  if (port_type == PortType::Out && index == 0) {
+    return PointCloudXyzData_t{}.type();
+  }
+  return {};
+}
+
 void PointCloudReaderNode::setFilePathProp(std::string file_path) {
   _file_path->value = file_path;
 }

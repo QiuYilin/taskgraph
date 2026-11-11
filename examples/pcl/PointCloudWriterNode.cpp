@@ -16,6 +16,25 @@ PointCloudWriterNode::PointCloudWriterNode() {
   _time_suffix = addProperty("time_suffix", false);
 }
 
+unsigned int PointCloudWriterNode::nFixedPorts(PortType port_type) const {
+  constexpr unsigned int kInputPortCount = 1;
+  switch (port_type) {
+    case PortType::In:
+      return kInputPortCount;
+    case PortType::Out:
+      return 0;
+  }
+  return 0;
+}
+
+NodeDataType PointCloudWriterNode::fixedDataType(PortType port_type,
+                                                 unsigned int index) const {
+  if (port_type == PortType::In && index == 0) {
+    return PointCloudXyzData_t{}.type();
+  }
+  return {};
+}
+
 void PointCloudWriterNode::setFilePathProp(std::string file_path) {
   _file_path->value = file_path;
 }

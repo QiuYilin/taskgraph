@@ -7,9 +7,35 @@
 #include <stdexcept>
 #include <string>
 
+namespace {
+constexpr unsigned int kInputPortCount = 3;
+constexpr unsigned int kOutputPortCount = 2;
+}  // namespace
+
 namespace tg {
 MatchTemplateNode::MatchTemplateNode() { setName("MatchTemplateNode"); 
   _pyramid_layers = addProperty("pyramid_layers", 1);
+}
+
+unsigned int MatchTemplateNode::nFixedPorts(PortType port_type) const {
+  switch (port_type) {
+    case PortType::In:
+      return kInputPortCount;
+    case PortType::Out:
+      return kOutputPortCount;
+  }
+  return 0;
+}
+
+NodeDataType MatchTemplateNode::fixedDataType(PortType port_type,
+                                              unsigned int index) const {
+  if (port_type == PortType::In && index < kInputPortCount) {
+    return ImageData_t{}.type();
+  }
+  if (port_type == PortType::Out && index == 0) {
+    return ImageData_t{}.type();
+  }
+  return {};
 }
 
 // void MatchTemplateNode::setProperty(int index) {
