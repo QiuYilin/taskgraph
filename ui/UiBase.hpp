@@ -31,9 +31,9 @@ static void ErrorCallback(int error, const char* description) {
 
 // 判断这个字体文件能不能打开。
 static bool FontFileExists(const char* path) {
-  std::FILE* file = nullptr;
+  std::FILE* file = std::fopen(path, "rb");
   // 打不开就没有这份字体。
-  if (fopen_s(&file, path, "rb") != 0 || file == nullptr) {
+  if (file == nullptr) {
     return false;
   }
   std::fclose(file);
