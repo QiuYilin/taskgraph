@@ -2,8 +2,14 @@
 
 #include "Log.hpp"
 
+namespace {
+constexpr unsigned int kOutDataIndex = 0;
+constexpr const char* kOutDataId = "out_data";
+}  // namespace
+
 namespace tg {
-IntNode::IntNode() { 
+IntNode::IntNode()
+    : outport{PortRef{this, PortType::Out, kOutDataIndex}} {
   setName("IntNode");
   _int_value = addProperty("value", 0);
 }
@@ -19,11 +25,25 @@ unsigned int IntNode::nFixedPorts(PortType port_type) const {
   return 0;
 }
 
-NodeDataType IntNode::fixedDataType(PortType port_type, unsigned int index) const {
-  if (port_type == PortType::Out && index == 0) {
+NodeDataType IntNode::fixedDataType(PortType port_type,
+                                    unsigned int index) const {
+  if (port_type == PortType::Out && index == kOutDataIndex) {
     return IntData_t{}.type();
   }
   return {};
+}
+
+const char* IntNode::fixedPortId(PortType port_type,
+                                 unsigned int index) const {
+  if (port_type == PortType::Out && index == kOutDataIndex) {
+    return kOutDataId;
+  }
+  return "";
+}
+
+const char* IntNode::fixedPortCaption(PortType port_type,
+                                      unsigned int index) const {
+  return fixedPortId(port_type, index);
 }
 
 void IntNode::setProperty(int property) { _int_value->value = property; }
@@ -36,12 +56,12 @@ void IntNode::compute() {
   return;
 }
 
-void IntNode::setInPortData(unsigned int index, std::shared_ptr<NodeData> data) {
+void IntNode::onSetInPortData(unsigned int index, std::shared_ptr<NodeData> data) {
   return;
 }
 
 std::shared_ptr<NodeData> IntNode::getOutPortData(unsigned int index) {
-  if (index == 0) {
+  if (index == kOutDataIndex) {
     return _out_data;
   }
   return nullptr;
