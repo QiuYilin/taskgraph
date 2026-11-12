@@ -4,8 +4,14 @@
 
 #include <opencv2/opencv.hpp>
 
+namespace {
+constexpr unsigned int kImageOutIndex = 0;
+constexpr const char* kImageOutId = "image_out";
+}  // namespace
+
 namespace tg {
-ImageReaderNode::ImageReaderNode() {
+ImageReaderNode::ImageReaderNode()
+    : outport{PortRef{this, PortType::Out, kImageOutIndex}} {
   setName("ImageReaderNode");
   _file_path = addProperty("file_path", std::string());
 }
@@ -23,19 +29,28 @@ unsigned int ImageReaderNode::nFixedPorts(PortType port_type) const {
 
 NodeDataType ImageReaderNode::fixedDataType(PortType port_type,
                                             unsigned int index) const {
-  if (port_type == PortType::Out && index == 0) {
+  if (port_type == PortType::Out && index == kImageOutIndex) {
     return ImageData_t{}.type();
   }
   return {};
 }
 
+const char* ImageReaderNode::fixedPortId(PortType port_type,
+                                         unsigned int index) const {
+  if (port_type == PortType::Out && index == kImageOutIndex) {
+    return kImageOutId;
+  }
+  return "";
+}
+
+const char* ImageReaderNode::fixedPortCaption(PortType port_type,
+                                              unsigned int index) const {
+  return fixedPortId(port_type, index);
+}
+
 void ImageReaderNode::setFilePathProp(std::string file_path) {
   _file_path->value = file_path;
 }
-
-// void ImageReaderNode::setProperty(int index) {
-//     _properties[index] = _file_path;
-// }
 
 void ImageReaderNode::compute() {
   logInfo("[{}]computing ...", "ImageReaderNode");
@@ -51,14 +66,14 @@ void ImageReaderNode::compute() {
   return;
 }
 
-void ImageReaderNode::setInPortData(unsigned int index,
-                                         std::shared_ptr<NodeData> data) {
+void ImageReaderNode::onSetInPortData(unsigned int index,
+                                    std::shared_ptr<NodeData> data) {
   return;
 }
 
 std::shared_ptr<NodeData> ImageReaderNode::getOutPortData(
     unsigned int index) {
-  if (index == 0) {
+  if (index == kImageOutIndex) {
     return _image_out;
   }
   return nullptr;

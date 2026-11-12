@@ -6,8 +6,14 @@
 #include <pcl/common/io.h>
 #include <pcl/io/auto_io.h>
 
+namespace {
+constexpr unsigned int kPointcloudOutIndex = 0;
+constexpr const char* kPointcloudOutId = "pointcloud_out";
+}  // namespace
+
 namespace tg {
-PointCloudReaderNode::PointCloudReaderNode() {
+PointCloudReaderNode::PointCloudReaderNode()
+    : outport{PortRef{this, PortType::Out, kPointcloudOutIndex}} {
   setName("PointCloudReaderNode");
   _file_path = addProperty("file_path", std::string());
 }
@@ -25,19 +31,28 @@ unsigned int PointCloudReaderNode::nFixedPorts(PortType port_type) const {
 
 NodeDataType PointCloudReaderNode::fixedDataType(PortType port_type,
                                                  unsigned int index) const {
-  if (port_type == PortType::Out && index == 0) {
+  if (port_type == PortType::Out && index == kPointcloudOutIndex) {
     return PointCloudXyzData_t{}.type();
   }
   return {};
 }
 
+const char* PointCloudReaderNode::fixedPortId(PortType port_type,
+                                              unsigned int index) const {
+  if (port_type == PortType::Out && index == kPointcloudOutIndex) {
+    return kPointcloudOutId;
+  }
+  return "";
+}
+
+const char* PointCloudReaderNode::fixedPortCaption(PortType port_type,
+                                                   unsigned int index) const {
+  return fixedPortId(port_type, index);
+}
+
 void PointCloudReaderNode::setFilePathProp(std::string file_path) {
   _file_path->value = file_path;
 }
-
-// void PointCloudReaderNode::setProperty(int index) {
-//     _properties[index] = _file_path;
-// }
 
 void PointCloudReaderNode::compute() {
   logInfo("[{}]computing ...", "PointCloudReaderNode");
@@ -52,16 +67,16 @@ void PointCloudReaderNode::compute() {
   return;
 }
 
-void PointCloudReaderNode::setInPortData(unsigned int index,
+void PointCloudReaderNode::onSetInPortData(unsigned int index,
                                          std::shared_ptr<NodeData> data) {
   return;
 }
 
 std::shared_ptr<NodeData> PointCloudReaderNode::getOutPortData(
     unsigned int index) {
-  //if (index == 0) {
+  if (index == kPointcloudOutIndex) {
     return _pointcloud_out;
-  //}
-  //return std::make_shared<NodeData>();
+  }
+  return nullptr;
 }
 }  // namespace tg

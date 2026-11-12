@@ -34,6 +34,32 @@ class Graph {
    */
   bool connect(std::shared_ptr<Node> from, unsigned int port_out,
                std::shared_ptr<Node> to, unsigned int port_in);
+
+  /** \brief 用两端端口对象连边。
+   *
+   *  from 须是输出端口，to 须是输入端口；内部转到按下标的 connect。
+   *
+   *  \param[in] from 上游输出端口。
+   *  \param[in] to 下游输入端口。
+   *  \return 连边写入成功时返回 true，拒绝时返回 false。
+   */
+  bool connect(const Node::Port* from, const Node::Port* to);
+
+  /** \brief 断开所有连到指定下游输入口的边。
+   *  \param[in] node 下游节点。
+   *  \param[in] port_in 下游输入端口号。
+   */
+  void disconnectInputsTo(std::shared_ptr<Node> node, unsigned int port_in);
+
+  /** \brief 切换输入槽露面方式；改为属性时先断入边并清空该口数据。
+   *  \param[in] node 节点。
+   *  \param[in] index 固定输入下标。
+   *  \param[in] presentation 端口或属性。
+   *  \return 切换成功返回 true。
+   */
+  bool setInputPresentation(std::shared_ptr<Node> node, unsigned int index,
+                            InputPresentation presentation);
+
   const std::vector<std::shared_ptr<Node>>& getNodes() const { return _nodes; }
   const std::string& getName() const { return _name; }
 

@@ -5,12 +5,19 @@
 
 #include "Log.hpp"
 
+#include <pcl/io/auto_io.h>
 #include <pcl/io/ifs_io.h>
 #include <pcl/io/pcd_io.h>
 #include <pcl/io/ply_io.h>
 
+namespace {
+constexpr unsigned int kPointcloudInIndex = 0;
+constexpr const char* kPointcloudInId = "pointcloud_in";
+}  // namespace
+
 namespace tg {
-PointCloudWriterNode::PointCloudWriterNode() {
+PointCloudWriterNode::PointCloudWriterNode()
+    : inport{PortRef{this, PortType::In, kPointcloudInIndex}} {
   setName("PointCloudWriterNode");
   _file_path = addProperty("file_path", std::string());
   _file_format = addProperty("file_format", 0);
@@ -30,10 +37,23 @@ unsigned int PointCloudWriterNode::nFixedPorts(PortType port_type) const {
 
 NodeDataType PointCloudWriterNode::fixedDataType(PortType port_type,
                                                  unsigned int index) const {
-  if (port_type == PortType::In && index == 0) {
+  if (port_type == PortType::In && index == kPointcloudInIndex) {
     return PointCloudXyzData_t{}.type();
   }
   return {};
+}
+
+const char* PointCloudWriterNode::fixedPortId(PortType port_type,
+                                              unsigned int index) const {
+  if (port_type == PortType::In && index == kPointcloudInIndex) {
+    return kPointcloudInId;
+  }
+  return "";
+}
+
+const char* PointCloudWriterNode::fixedPortCaption(PortType port_type,
+                                                   unsigned int index) const {
+  return fixedPortId(port_type, index);
 }
 
 void PointCloudWriterNode::setFilePathProp(std::string file_path) {
@@ -56,25 +76,47 @@ void PointCloudWriterNode::compute() {
   logInfo("[{}]computing ...", "PointCloudWriterNode");
   std::string file_name = std::get<std::string>(_file_path->value);
   bool time_suffix_flag = std::get<bool>(_time_suffix->value);
-  auto src = _pointcloud_in.lock();
-  // 端口未连、上游已销毁或上游本轮没产出数据时 lock 返回空。
-  if (src == nullptr) {
-    throw std::runtime_error("Input port of PointCloudWriterNode has no data!");
+  pcl::PointCloud<pcl::PointXYZ>::ConstPtr cloud;
+  std::shared_ptr<PointCloudXyzData_t> loaded_holder;
+  if (isInputShownAsProperty(kPointcloudInIndex)) {
+    // 属性模式：输入口即属性，路径导入点云。
+    auto property = inputProperty(kPointcloudInIndex);
+    if (property == nullptr) {
+      throw std::runtime_error(
+          "Property pointcloud_in of PointCloudWriterNode is missing!");
+    }
+    const std::string& import_path = std::get<std::string>(property->value);
+    auto imported = std::make_shared<pcl::PointCloud<pcl::PointXYZ>>();
+    if (pcl::io::load(import_path, *imported) == -1) {
+      throw std::runtime_error(
+          "Property pointcloud_in of PointCloudWriterNode failed to load: " +
+          import_path);
+    }
+    loaded_holder =
+        std::make_shared<PointCloudXyzData_t>(std::move(imported));
+    cloud = loaded_holder->data();
+  } else {
+    auto src = _pointcloud_in.lock();
+    // 端口未连、上游已销毁或上游本轮没产出数据时 lock 返回空。
+    if (src == nullptr) {
+      throw std::runtime_error(
+          "Input port of PointCloudWriterNode has no data!");
+    }
+    auto cloud_data = std::dynamic_pointer_cast<PointCloudXyzData_t>(src);
+    // 接入的节点产出的不是 XYZ 点云，转型失败，不能继续解引用。
+    if (cloud_data == nullptr) {
+      throw std::runtime_error(
+          std::string("Input port of PointCloudWriterNode expects \"") +
+          point_cloud_id + "\", but got \"" + src->type().id + "\"!");
+    }
+    // 载荷是只读句柄，可能为空：上游构造了 NodeData 却没填点云。
+    if (!cloud_data->data()) {
+      throw std::runtime_error(
+          "Input point cloud of PointCloudWriterNode is empty!");
+    }
+    // 只读引用，零拷贝：saveXXXFile 收的都是 const PointCloud<PointT>&。
+    cloud = cloud_data->data();
   }
-  auto cloud_data = std::dynamic_pointer_cast<PointCloudXyzData_t>(src);
-  // 接入的节点产出的不是 XYZ 点云，转型失败，不能继续解引用。
-  if (cloud_data == nullptr) {
-    throw std::runtime_error(
-        std::string("Input port of PointCloudWriterNode expects \"") +
-        point_cloud_id + "\", but got \"" + src->type().id + "\"!");
-  }
-  // 载荷是只读句柄，可能为空：上游构造了 NodeData 却没填点云。
-  if (!cloud_data->data()) {
-    throw std::runtime_error(
-        "Input point cloud of PointCloudWriterNode is empty!");
-  }
-  // 只读引用，零拷贝：saveXXXFile 收的都是 const PointCloud<PointT>&。
-  const auto& cloud = cloud_data->data();
   if (file_name.empty()) {
     throw std::runtime_error("File name cannot be empty!");
   }
@@ -152,7 +194,7 @@ void PointCloudWriterNode::compute() {
   }
 }
 
-void PointCloudWriterNode::setInPortData(unsigned int index,
+void PointCloudWriterNode::onSetInPortData(unsigned int index,
                                          std::shared_ptr<NodeData> data) {
   _pointcloud_in = data;
   return;

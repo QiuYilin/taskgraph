@@ -53,6 +53,10 @@ bool Graph::connect(std::shared_ptr<Node> from, unsigned int port_out,
   if (from == nullptr || to == nullptr || from == to) {
     return false;
   }
+  // 属性模式下的输入口不接受连线。
+  if (!to->isInputShownAsPort(port_in)) {
+    return false;
+  }
   // 同一对端口已经连过就不再加一条，避免重复 precede。
   const bool already_connected =
       std::any_of(from->_next.begin(), from->_next.end(),
@@ -67,6 +71,45 @@ bool Graph::connect(std::shared_ptr<Node> from, unsigned int port_out,
   to->_previous.push_back(ConnectionInfo{from, port_out, port_in});
   from->_task.precede(to->_task);
   return true;
+}
+
+bool Graph::connect(const Node::Port* from, const Node::Port* to) {
+  // 必须是输出连到输入，且两端都挂在节点上。
+  if (from == nullptr || to == nullptr || !from->is_output || to->is_output ||
+      from->node == nullptr || to->node == nullptr) {
+    return false;
+  }
+  return connect(from->node->shared_from_this(), from->index,
+                 to->node->shared_from_this(), to->index);
+}
+
+void Graph::disconnectInputsTo(std::shared_ptr<Node> node,
+                               unsigned int port_in) {
+  if (node == nullptr) {
+    return;
+  }
+  for (auto& other : _nodes) {
+    if (other == node) {
+      continue;
+    }
+    other->_next.remove_if([&](const ConnectionInfo& conn) {
+      return conn.adj == node && conn.port_in == port_in;
+    });
+  }
+  node->_previous.remove_if(
+      [&](const ConnectionInfo& conn) { return conn.port_in == port_in; });
+}
+
+bool Graph::setInputPresentation(std::shared_ptr<Node> node, unsigned int index,
+                                 InputPresentation presentation) {
+  if (node == nullptr) {
+    return false;
+  }
+  if (presentation == InputPresentation::Property) {
+    disconnectInputsTo(node, index);
+    node->setInPortData(index, nullptr);
+  }
+  return node->setInputPresentation(index, presentation);
 }
 
 std::string Graph::dump() { return _taskflow.dump(); }
