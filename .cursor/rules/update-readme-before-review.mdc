@@ -1,5 +1,5 @@
 ---
-description: 提交或评审前先更新 README，并提醒是否替换演示图
+description: 提交或评审前先更新 README；演示图仅在提交评审或 push 时提醒
 alwaysApply: true
 ---
 
@@ -16,4 +16,8 @@ alwaysApply: true
 
 `core + ui` 段使用 [`docs/images/simple-ui.png`](docs/images/simple-ui.png)。
 
-每次更新 README（以及提交/开 PR 前核对文档）时，**必须在回复里单独提醒用户**：本次界面或用法是否已变，要不要替换这张演示图。由用户决定换或不换；不要擅自重拍或覆盖该文件，除非用户明确要求更新截图。
+**只在**用户要求 **commit**、**提交前评审**、**开/更新 PR**，或 **push** 时处理演示图。平时改代码或改 README 不要提。
+
+流程：先问要不要换 [`docs/images/simple-ui.png`](docs/images/simple-ui.png)（说明界面/用法变了没有），**等用户答复后再** commit / push / 开或更新 PR。不要先提交再补问。
+
+由用户决定换或不换；不要擅自重拍或覆盖该文件，除非用户明确要求更新截图。

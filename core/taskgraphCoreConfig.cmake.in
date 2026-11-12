@@ -1,3 +1,4 @@
 include("${CMAKE_CURRENT_LIST_DIR}/taskgraphCoreTargets.cmake")
 
 find_dependency(Taskflow REQUIRED)
+find_dependency(nlohmann_json REQUIRED)

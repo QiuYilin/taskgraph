@@ -5,6 +5,9 @@ set(HPP_HEADER_FILES
     include/Controller.hpp
     include/Graph.hpp
     include/Node.hpp
+    include/NodeRegistry.hpp
+    include/ProjectFormat.hpp
+    include/ProjectIo.hpp
     include/Log.hpp
     include/taskgraph.hpp
     )
@@ -12,10 +15,13 @@ set(CPP_SOURCE_FILES
     src/Controller.cpp
     src/Graph.cpp
     src/Node.cpp
+    src/NodeRegistry.cpp
+    src/ProjectIo.cpp
     src/Log.cpp
     )
 find_package(Taskflow REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
+find_package(nlohmann_json CONFIG REQUIRED)
 add_library(${component} SHARED ${HPP_HEADER_FILES} ${CPP_SOURCE_FILES})
 
 add_library(${project_name}::${component} ALIAS ${component})
@@ -28,6 +34,7 @@ target_include_directories(${component} PUBLIC
 target_link_libraries(${component} PUBLIC
         Taskflow::Taskflow
         spdlog::spdlog
+        nlohmann_json::nlohmann_json
     )
 
 set_target_properties(${component}
