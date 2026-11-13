@@ -48,7 +48,12 @@ bool Controller::hasNodeType(const std::string& type_id) const {
 
 std::shared_ptr<Node> Controller::createNode(
     const std::string& type_id) const {
-  return _node_registry.create(type_id);
+  auto node = _node_registry.create(type_id);
+  // kind 以注册表的 type_id 为准；identifier 由入图时按图内唯一生成。
+  if (node != nullptr) {
+    node->setTypeId(type_id);
+  }
+  return node;
 }
 
 const std::vector<NodeTypeInfo>& Controller::nodeTypes() const {
@@ -79,12 +84,14 @@ bool Controller::openProject(const std::filesystem::path& root,
     return false;
   }
   std::string name;
-  if (!ProjectIo::load(*this, root, name, pose_setter)) {
+  bool migrated = false;
+  if (!ProjectIo::load(*this, root, name, pose_setter, &migrated)) {
     return false;
   }
   _project_root = root;
   _project_name = std::move(name);
-  _dirty = false;
+  // v1 载入或名称去重后需重新保存为 v2，保持 dirty。
+  _dirty = migrated;
   return true;
 }
 

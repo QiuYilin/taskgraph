@@ -2,6 +2,6 @@
 
 namespace tg {
   CvNode::CvNode() {
-    setName("CvNode");
+    setTypeId("CvNode");
   }
 }

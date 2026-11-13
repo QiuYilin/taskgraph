@@ -62,8 +62,11 @@ Same `tg::Controller`: register kinds and open a project on **core**, then wrap 
 ![simple example UI](docs/images/simple-ui.png)
 
 - Project on disk: directory with `project.json`, `graphs/`, `assets/`. File menu: New / Open / Save. Paths under the root are stored relative; session lives in user config as `taskgraph/session.json`.
-- Canvas wires follow port types. Input ports and properties are two presentations of the same slot (**Convert to Property** / **Convert to Port**).
-- Register with a stable `type_id` matching `Node::getName()` (optional UI `caption`). `simple` ships a `demo-project` template in source; the build copies it next to the executable and `openProject` opens that copy so edits do not dirty the repo.
+- Canvas wires follow port types. Pins default to a circle colored by hashing the type id; authors may set optional `PinShape` / `PortTypeColor` on `NodeData_`. Editor toolbar **Show Type Names** stacks the type name above each pin caption and adds the node kind above the node identifier; the type uses the VS Code `entity.name.type` token color and the pin stays aligned with the caption. Input ports and properties are two presentations of the same slot (**Convert to Property** / **Convert to Port**).
+- When all editor tabs are closed, the editor shows guidance to open a graph from Explorer or create one with **+ Graph**.
+- Register a fixed `type_id` (kind) per node class; the UI `caption` is optional. `node->typeId()` is the kind, `node->getName()` is the graph-unique identifier: nodes auto-name on add (`IntNode`, `IntNode2`, …) and can be renamed from Explorer (**Rename** / `F2`); duplicate names in one graph are rejected. `simple` ships a `demo-project` template in source; the build copies it next to the executable and `openProject` opens that copy so edits do not dirty the repo.
+- **File > Preferences > Theme** switches between **Dark Modern** and **Light Modern** immediately; the choice is written to `session.json` and restored on the next launch. Colors come from the official VS Code theme JSON files bundled under `ui/themes/` (MIT, see `NOTICE.md`), so updating a theme does not require editing `Ui` code.
+- Workbench extension points live in `WorkbenchParts.hpp`: command registry, activity bar items, Explorer title actions, panel views, and panel toolbars. Nothing visible is registered by default; the current UI stays the simplified skeleton. Enabling the activity bar or adding a panel view rebuilds the dock layout once, resetting manually dragged positions.
 
 ```
 #include "taskgraph.hpp"
@@ -82,4 +85,3 @@ int main() {
     return 0;
 }
 ```
-

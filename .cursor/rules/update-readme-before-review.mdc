@@ -1,5 +1,5 @@
 ---
-description: 提交或评审前先更新 README；演示图仅在提交评审或 push 时提醒
+description: 提交或评审前先更新 README；演示图仅在主分支 push 或非主分支评审时提醒
 alwaysApply: true
 ---
 
@@ -16,8 +16,8 @@ alwaysApply: true
 
 `core + ui` 段使用 [`docs/images/simple-ui.png`](docs/images/simple-ui.png)。
 
-**只在**用户要求 **commit**、**提交前评审**、**开/更新 PR**，或 **push** 时处理演示图。平时改代码或改 README 不要提。
+**只在**准备 **push 到主分支**，或在**非主分支进行提交前评审、开/更新 PR** 时处理演示图。普通 commit、非主分支 push 不询问；平时改代码或改 README 也不要提。
 
-流程：先问要不要换 [`docs/images/simple-ui.png`](docs/images/simple-ui.png)（说明界面/用法变了没有），**等用户答复后再** commit / push / 开或更新 PR。不要先提交再补问。
+流程：先问要不要换 [`docs/images/simple-ui.png`](docs/images/simple-ui.png)（说明界面/用法变了没有），**等用户答复后再** push 到主分支或进行非主分支提交前评审 / 开或更新 PR。不要先执行对应操作再补问。
 
 由用户决定换或不换；不要擅自重拍或覆盖该文件，除非用户明确要求更新截图。

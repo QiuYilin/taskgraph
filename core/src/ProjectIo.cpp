@@ -143,7 +143,9 @@ json SerializeNode(const Node& node, std::size_t node_id,
                    const NodePoseGetter& pose_getter) {
   json node_json;
   node_json[kJsonKeyId] = static_cast<int>(node_id);
-  node_json[kJsonKeyType] = node.getName();
+  // kind 与 identifier 分开存：type 是类型 id，name 是图内唯一显示名。
+  node_json[kJsonKeyType] =
+      node.typeId().empty() ? node.getName() : node.typeId();
   node_json[kJsonKeyName] = node.getName();
 
   json properties = json::array();
@@ -248,10 +250,7 @@ void ApplyPropertyValue(Node::Property& property, const PropertyValue& value,
 void LoadNodeFields(Node& node, const json& node_json,
                     const std::filesystem::path& root,
                     const NodePoseSetter& pose_setter) {
-  if (node_json.contains(kJsonKeyName) && node_json.at(kJsonKeyName).is_string()) {
-    // 种类名即节点名；界面不允许重命名节点，保持与 type 一致。
-    node.setName(node_json.at(kJsonKeyName).get<std::string>());
-  }
+  // identifier 由载入流程在 addNode 后应用，这里不再直接写 name。
 
   if (node_json.contains(kJsonKeyProperties) &&
       node_json.at(kJsonKeyProperties).is_array()) {
@@ -443,7 +442,7 @@ bool ProjectIo::save(const Controller& controller,
 
 bool ProjectIo::load(Controller& controller, const std::filesystem::path& root,
                      std::string& out_project_name,
-                     const NodePoseSetter& pose_setter) {
+                     const NodePoseSetter& pose_setter, bool* out_migrated) {
   const std::filesystem::path manifest_path = root / kProjectManifestFileName;
   std::ifstream input(manifest_path, std::ios::binary);
   if (!input) {
@@ -460,10 +459,13 @@ bool ProjectIo::load(Controller& controller, const std::filesystem::path& root,
 
   const std::uint32_t version =
       manifest.value(kJsonKeyFileVersion, static_cast<std::uint32_t>(0));
-  if (version != kProjectFileVersion) {
+  // 兼容 v1（name 等于 type、允许重名）与当前 v2。
+  if (version != 1 && version != kProjectFileVersion) {
     logError("open project: unsupported fileVersion {}", version);
     return false;
   }
+  // v1 的 name 全等于 kind，须在载入时重新生成唯一 identifier。
+  bool migrated = (version == 1);
   out_project_name = manifest.value(kJsonKeyName, root.filename().string());
 
   std::vector<std::shared_ptr<Graph>> loaded_graphs;
@@ -495,6 +497,20 @@ bool ProjectIo::load(Controller& controller, const std::filesystem::path& root,
             // 先入图再填属性，保证端口与绑定属性已生成。
             graph->addNode(node);
             LoadNodeFields(*node, node_json, root, pose_setter);
+            // v2 保留存档 identifier；v1 的名称等于 kind，交给 addNode 去重。
+            if (version != 1) {
+              const std::string saved_name =
+                  node_json.value(kJsonKeyName, std::string());
+              // 冲突/非法名保留自动名并记日志，不阻断打开。
+              if (saved_name.empty() ||
+                  !graph->renameNode(node, saved_name)) {
+                migrated = true;
+                logError(
+                    "open project: duplicate or empty node name '{}' in graph "
+                    "'{}'; kept '{}'",
+                    saved_name, graph->getName(), node->getName());
+              }
+            }
             loaded_nodes.push_back(node);
           }
         }
@@ -513,10 +529,24 @@ bool ProjectIo::load(Controller& controller, const std::filesystem::path& root,
                 static_cast<std::size_t>(to) >= loaded_nodes.size()) {
               throw std::runtime_error("connection node id out of range");
             }
-            // 属性露面入口在 connect 内拒绝。
-            graph->connect(loaded_nodes[static_cast<std::size_t>(from)],
-                           port_out,
-                           loaded_nodes[static_cast<std::size_t>(to)], port_in);
+            const std::shared_ptr<Node>& upstream =
+                loaded_nodes[static_cast<std::size_t>(from)];
+            const std::shared_ptr<Node>& downstream =
+                loaded_nodes[static_cast<std::size_t>(to)];
+            // 类型、露面方式或重复边被 connect 拒绝时丢弃该边并标脏。
+            if (!graph->connect(upstream, port_out, downstream, port_in)) {
+              migrated = true;
+              const Node::Port* output = upstream->outputPort(port_out);
+              const Node::Port* input = downstream->inputPort(port_in);
+              logError(
+                  "open project: dropped connection '{}':{}('{}') -> "
+                  "'{}':{}('{}') in graph '{}'",
+                  upstream->getName(), port_out,
+                  output == nullptr ? std::string() : output->data_type.id,
+                  downstream->getName(), port_in,
+                  input == nullptr ? std::string() : input->data_type.id,
+                  graph->getName());
+            }
           }
         }
         loaded_graphs.push_back(std::move(graph));
@@ -531,6 +561,9 @@ bool ProjectIo::load(Controller& controller, const std::filesystem::path& root,
   controller.clearGraphs();
   for (auto& graph : loaded_graphs) {
     controller.addGraph(std::move(graph));
+  }
+  if (out_migrated != nullptr) {
+    *out_migrated = migrated;
   }
   return true;
 }
