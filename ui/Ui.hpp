@@ -1,12 +1,20 @@
+#include "ExplorerHeaderActions.hpp"
+#include "NativePathDialog.hpp"
 #include "UiBase.hpp"
+#include "UiSession.hpp"
+#include "WorkbenchFocus.hpp"
 #include "imgui_internal.h"
 #include <imgui-node-editor/imgui_node_editor.h>
 
 #include <algorithm>
+#include <cctype>
 #include <cstddef>
-#include <functional>
+#include <filesystem>
+#include <optional>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -28,6 +36,37 @@ constexpr const char* kIntDataTypeId = "IntData";
 constexpr const char* kImageDataTypeId = "ImageData";
 constexpr const char* kPointCloudXyzDataTypeId = "PointCloudXyzData";
 constexpr float kDefaultLinkThickness = 2.0f;
+constexpr float kProjectPathInputWidthEpx = 420.0f;
+constexpr const char* kUntitledProjectLabel = "Untitled";
+constexpr const char* kWelcomeTabLabel = "Welcome";
+constexpr const char* kNoProjectOpenedLabel = "NO PROJECT OPENED";
+constexpr const char* kWelcomeStartHeading = "Start";
+constexpr const char* kWelcomeRecentHeading = "Recent";
+// 弹窗 ID 不能用 "Project"：与 Explorer 的 Nodes###Project 同 ID，会触发 EndPopup 断言。
+constexpr const char* kProjectPathDialogId = "Project Path###ProjectPathDialog";
+constexpr const char* kBrowseActionLabel = "Browse...";
+constexpr const char* kPickProjectDirectoryTitle = "Select Project";
+constexpr const char* kPickPropertyFileTitle = "Select File";
+constexpr const char* kPickNodeKindPopupId = "PickNodeKind";
+constexpr const char* kPickNodeKindFilterHint = "Type to filter";
+constexpr const char* kPickNodeKindEmptyLabel = "No matching kinds";
+constexpr std::size_t kPickNodeKindFilterMinCapacity = 64;
+
+// label 是否包含 filter（大小写不敏感）；空 filter 视为全匹配。
+static bool LabelMatchesFilter(const std::string& label,
+                               const std::string& filter) {
+  if (filter.empty()) {
+    return true;
+  }
+  auto to_lower = [](unsigned char ch) {
+    return static_cast<char>(std::tolower(ch));
+  };
+  std::string haystack = label;
+  std::string needle = filter;
+  std::transform(haystack.begin(), haystack.end(), haystack.begin(), to_lower);
+  std::transform(needle.begin(), needle.end(), needle.begin(), to_lower);
+  return haystack.find(needle) != std::string::npos;
+}
 
 // 属性字符串变长时，把输入缓冲扩到这份字符串上。
 static int ResizePropertyText(ImGuiInputTextCallbackData* data) {
@@ -187,12 +226,8 @@ class Ui : public UiBase<Ui> {
  public:
   explicit Ui(tg::Controller& controller) : _controller(controller) {}
 
-  void addNodeKind(std::string label,
-                   std::function<std::shared_ptr<tg::Node>()> create) {
-    _node_kinds.push_back(NodeKind{std::move(label), std::move(create)});
-  }
-
   ~Ui() {
+    PersistSession();
     if (_editor != nullptr) {
       ax::NodeEditor::DestroyEditor(_editor);
       _editor = nullptr;
@@ -204,22 +239,24 @@ class Ui : public UiBase<Ui> {
     ax::NodeEditor::Config config;
     config.SettingsFile = nullptr;
     _editor = ax::NodeEditor::CreateEditor(&config);
+    _session = UiSession::load();
+    TryRestoreOrShowWelcome();
   }
 
   void Update() {
     const auto& graphs = _controller.getGraphs();
     // 图可能被删空或变短，先把选中下标夹回有效范围，后面取图才不会越界。
     if (!graphs.empty()) {
-      _selected_item = std::clamp(_selected_item, 0,
+      _focus.selected_graph_index() = std::clamp(_focus.selected_graph_index(), 0,
                                   static_cast<int>(graphs.size()) - 1);
     }
     PruneOpenEditors();
     std::shared_ptr<tg::Node> selected_node;
     // 选中地址还在当前图里才用，节点删掉后不再写悬空指针。
-    if (!graphs.empty() && _selected_node != nullptr) {
-      for (const auto& node : graphs[_selected_item]->getNodes()) {
+    if (!graphs.empty() && _focus.selected_node() != nullptr) {
+      for (const auto& node : graphs[_focus.selected_graph_index()]->getNodes()) {
         // 地址相同就是画布上点中的那个节点。
-        if (node.get() == _selected_node) {
+        if (node.get() == _focus.selected_node()) {
           selected_node = node;
           break;
         }
@@ -228,6 +265,7 @@ class Ui : public UiBase<Ui> {
 
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
     ShowWindowTitleBar(graphs);
+    ShowProjectPathDialog();
     const float ui_scale = ImGui::GetStyle().FontScaleMain;
     const float title_bar_height = kTitleBarHeightEpx * ui_scale;
     const float dock_height = viewport->WorkSize.y > title_bar_height
@@ -331,8 +369,20 @@ class Ui : public UiBase<Ui> {
     if (ImGui::Begin("Nodes###Project")) {
       constexpr const char* kNewNodeActionLabel = "+ Node";
       constexpr const char* kNewGraphActionLabel = "+ Graph";
+      // 显隐用几何条带 + 按下保持，不用 IsWindowHovered（Tooltip 会抢走悬停）。
+      const ImVec2 header_row_min = ImGui::GetCursorScreenPos();
+      const ImVec2 window_pos = ImGui::GetWindowPos();
+      ExplorerHeaderActionBand header_band;
+      header_band.content_min_x =
+          window_pos.x + ImGui::GetWindowContentRegionMin().x;
+      header_band.content_max_x =
+          window_pos.x + ImGui::GetWindowContentRegionMax().x;
+      header_band.header_min_y = header_row_min.y;
+      header_band.header_max_y =
+          header_row_min.y + ImGui::GetFrameHeight();
       ImGui::AlignTextToFramePadding();
       ImGui::TextUnformatted("Explorer");
+      const bool has_project = _controller.hasProjectRoot();
       const float frame_pad_x = ImGui::GetStyle().FramePadding.x;
       const float node_button_width =
           ImGui::CalcTextSize(kNewNodeActionLabel).x +
@@ -345,40 +395,81 @@ class Ui : public UiBase<Ui> {
           node_button_width + action_gap + graph_button_width;
       const float actions_x =
           ImGui::GetWindowContentRegionMax().x - actions_width;
-      ImGui::SameLine();
-      ImGui::SetCursorPosX(actions_x);
-      // Begin / End：没有图时禁用新建节点，节点必须落在一张图上。
-      ImGui::BeginDisabled(graphs.empty());
-      // 点 Node 才弹出种类，节点加到当前图。文件对应节点。
-      if (ImGui::Button(kNewNodeActionLabel, ImVec2(node_button_width, 0.0f))) {
-        _create_on_graph = _selected_item;
-        ImGui::OpenPopup("PickNodeKind");
-      }
-      // 悬停才说明这个按钮会弹出节点种类。
-      if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
-        ImGui::SetTooltip("New Node");
-      }
-      ImGui::EndDisabled();
-      ImGui::SameLine();
-      // 点 Graph 才新建一张空图，建完立刻命名，不自动打开编辑区页签。
-      if (ImGui::Button(kNewGraphActionLabel,
-                        ImVec2(graph_button_width, 0.0f))) {
-        auto graph =
-            std::make_shared<tg::Graph>(NextGraphName(graphs));
-        _controller.addGraph(graph);
-        _selected_item = static_cast<int>(graphs.size()) - 1;
-        selected_node.reset();
-        _selected_node = nullptr;
-        _select_node_in_editor = nullptr;
-        BeginRenameGraph(graph);
-      }
-      // 悬停才说明这个按钮会新建一张空图。
-      if (ImGui::IsItemHovered()) {
-        ImGui::SetTooltip("New Graph");
+      const ImVec2 mouse = ImGui::GetIO().MousePos;
+      const bool show_explorer_actions = ShouldShowExplorerHeaderActions(
+          header_band.contains(mouse.x, mouse.y),
+          ImGui::IsMouseDown(ImGuiMouseButton_Left),
+          _explorer_actions_press_hold);
+      if (show_explorer_actions) {
+        ImGui::SameLine();
+        ImGui::SetCursorPosX(actions_x);
+        PushExplorerTitleActionStyle();
+        // Begin / End：没有工程或没有图时禁用新建节点。
+        ImGui::BeginDisabled(!has_project || graphs.empty());
+        // 点 Node 才弹出种类，节点加到当前图。文件对应节点。
+        if (ImGui::Button(kNewNodeActionLabel,
+                          ImVec2(node_button_width, 0.0f))) {
+          RequestOpenPickNodeKind(_focus.selected_graph_index(), false);
+          ImGui::OpenPopup(kPickNodeKindPopupId);
+        }
+        // 悬停才说明这个按钮会弹出节点种类。
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+          ImGui::SetTooltip("New Node");
+        }
+        ImGui::EndDisabled();
+        ImGui::SameLine();
+        // Begin / End：没有工程时禁用新建图。
+        ImGui::BeginDisabled(!has_project);
+        // 点 Graph 才新建一张空图，建完立刻命名，不自动打开编辑区页签。
+        if (ImGui::Button(kNewGraphActionLabel,
+                          ImVec2(graph_button_width, 0.0f))) {
+          auto graph =
+              std::make_shared<tg::Graph>(NextGraphName(graphs));
+          _controller.addGraph(graph);
+          _focus.SelectGraph(static_cast<int>(graphs.size()) - 1);
+          selected_node.reset();
+          BeginRenameGraph(graph);
+        }
+        // 悬停才说明这个按钮会新建一张空图。
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+          ImGui::SetTooltip("New Graph");
+        }
+        ImGui::EndDisabled();
+        PopExplorerTitleActionStyle();
       }
 
-      // 每张已创建的图都占一行，没有节点也留着。
-      for (int graph_index = 0; graph_index < static_cast<int>(graphs.size());
+      // 无工程：主侧栏空状态，文案用本仓库的 project。
+      if (!has_project) {
+        ImGui::Spacing();
+        ImGui::TextUnformatted(kNoProjectOpenedLabel);
+        ImGui::Spacing();
+        if (ImGui::Button("Open Project...")) {
+          BeginProjectPathDialog(ProjectPathAction::Open);
+        }
+        if (!_session.recent_roots.empty()) {
+          ImGui::Spacing();
+          ImGui::TextUnformatted(kWelcomeRecentHeading);
+          for (std::size_t recent_index = 0;
+               recent_index < _session.recent_roots.size(); ++recent_index) {
+            ImGui::PushID(static_cast<int>(recent_index));
+            const std::string& recent_root = _session.recent_roots[recent_index];
+            if (ImGui::Selectable(recent_root.c_str())) {
+              OpenProjectFromPath(std::filesystem::path(recent_root));
+            }
+            ImGui::PopID();
+          }
+        }
+      }
+
+      // 有工程时画工程名作为 Explorer 树根。
+      if (has_project) {
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted(_controller.projectName().c_str());
+      }
+
+      // 每张已创建的图都占一行，没有节点也留着；无工程时不画树。
+      for (int graph_index = 0;
+           has_project && graph_index < static_cast<int>(graphs.size());
            ++graph_index) {
         const auto& graph = graphs[graph_index];
         ImGui::PushID(graph.get());
@@ -386,7 +477,7 @@ class Ui : public UiBase<Ui> {
                                          ImGuiTreeNodeFlags_OpenOnArrow |
                                          ImGuiTreeNodeFlags_DefaultOpen;
         // 编辑区正在显示的图，或仅在侧栏选中的图，在树上高亮。
-        if (graph_index == _selected_item) {
+        if (graph_index == _focus.selected_graph_index()) {
           graph_flags |= ImGuiTreeNodeFlags_Selected;
         }
         const bool renaming_graph = _rename_graph.get() == graph.get();
@@ -406,19 +497,16 @@ class Ui : public UiBase<Ui> {
           if (ImGui::IsItemClicked(ImGuiMouseButton_Left)) {
             OpenGraphInEditor(graph);
             selected_node.reset();
-            _selected_node = nullptr;
-            _select_node_in_editor = nullptr;
+            _focus.ClearNodeSelection();
           }
           // Begin / End：图右键菜单。New Node、Rename、Delete。
           if (ImGui::BeginPopupContextItem("GraphContext")) {
             OpenGraphInEditor(graph);
             selected_node.reset();
-            _selected_node = nullptr;
-            _select_node_in_editor = nullptr;
+            _focus.ClearNodeSelection();
             // 选 New Node 才记下目标图，稍后打开种类列表。
             if (ImGui::MenuItem("New Node")) {
-              _create_on_graph = graph_index;
-              _open_pick_node_kind = true;
+              RequestOpenPickNodeKind(graph_index, false);
             }
             // 选 Rename 就地改图名。
             if (ImGui::MenuItem("Rename")) {
@@ -436,25 +524,22 @@ class Ui : public UiBase<Ui> {
           bool node_removed = false;
           for (const auto& node : graph->getNodes()) {
             ImGui::PushID(node.get());
-            const bool node_is_selected = node.get() == _selected_node;
+            const bool node_is_selected = node.get() == _focus.selected_node();
             ImGui::Selectable(node->getName().c_str(), node_is_selected);
             // 点中侧栏里的节点就打开该图编辑区，并让属性表跟着它。
             if (ImGui::IsItemClicked(ImGuiMouseButton_Left)) {
               OpenGraphInEditor(graph);
               selected_node = node;
-              _selected_node = node.get();
-              _select_node_in_editor = node.get();
+              _focus.SelectNode(node.get());
             }
             // Begin / End：节点右键菜单。New Node、Delete。节点名固定，不能重命名。
             if (ImGui::BeginPopupContextItem("NodeContext")) {
               OpenGraphInEditor(graph);
               selected_node = node;
-              _selected_node = node.get();
-              _select_node_in_editor = node.get();
+              _focus.SelectNode(node.get());
               // 选 New Node 才记下目标图，稍后打开种类列表。
               if (ImGui::MenuItem("New Node")) {
-                _create_on_graph = graph_index;
-                _open_pick_node_kind = true;
+                RequestOpenPickNodeKind(graph_index, false);
               }
               // 选 Delete 才从图里删掉这个节点，并结束本轮节点遍历。
               if (ImGui::MenuItem("Delete")) {
@@ -479,66 +564,48 @@ class Ui : public UiBase<Ui> {
         RemoveGraphFromUi(_graph_pending_remove, &selected_node);
         _graph_pending_remove.reset();
       }
-      // 右键菜单里选了 New Node，在 Explorer 窗口上打开种类列表。
-      if (_open_pick_node_kind) {
-        ImGui::OpenPopup("PickNodeKind");
-        _open_pick_node_kind = false;
+      // 右键菜单或画布里选了 New Node，在 Explorer 窗口上打开种类列表。
+      if (_focus.TakeOpenPickPopup()) {
+        ImGui::OpenPopup(kPickNodeKindPopupId);
       }
-      // Begin / End：节点种类选择。选出一种就创建到目标图上。
-      if (ImGui::BeginPopup("PickNodeKind")) {
-        for (int kind_index = 0;
-             kind_index < static_cast<int>(_node_kinds.size()); ++kind_index) {
-          // 点中一种才创建，没点中就留在列表里。
-          if (ImGui::Selectable(_node_kinds[kind_index].label.c_str())) {
-            // 目标图还在列表里才创建，图被删掉后不写越界下标。
-            if (_create_on_graph >= 0 &&
-                _create_on_graph < static_cast<int>(graphs.size())) {
-              auto node = _node_kinds[kind_index].create();
-              // 工厂没交出节点时，不往图里放空指针。
-              if (node != nullptr) {
-                graphs[_create_on_graph]->addNode(node);
-                OpenGraphInEditor(graphs[_create_on_graph]);
-                selected_node = node;
-                _selected_node = node.get();
-                _select_node_in_editor = node.get();
-              }
-            }
-          }
-        }
-        ImGui::EndPopup();
-      }
+      // Begin / End：节点种类选择浮层。
+      ShowPickNodeKindPopup(graphs, selected_node);
     }
     ImGui::End();
 
-    // Begin / End：编辑区。有打开的 graph 页签才画对应画布，否则留空。
+    // Begin / End：编辑区。Welcome 或 graph 页签；全关则留空。
     HideDockTab("Canvas");
     if (ImGui::Begin("Canvas")) {
       DrawEditorTabs();
-      // 至少打开了一张图才创建节点编辑器画布。
-      if (_active_editor >= 0 &&
-          _active_editor < static_cast<int>(_open_editors.size())) {
-        ShowFlowCanvas();
+      if (_focus.active_editor() >= 0 &&
+          _focus.active_editor() < static_cast<int>(_focus.open_editors().size())) {
+        if (_focus.open_editors()[_focus.active_editor()].kind == EditorTab::Kind::Welcome) {
+          ShowWelcomePage();
+        } else {
+          ShowFlowCanvas();
+        }
       }
     }
     ImGui::End();
 
     // 画布读完选中后，再按最终节点找属性，侧栏点的节点不会被画布清掉。
-    if (_selected_node != nullptr &&
-        (selected_node == nullptr || selected_node.get() != _selected_node) &&
+    if (_focus.selected_node() != nullptr &&
+        (selected_node == nullptr ||
+         selected_node.get() != _focus.selected_node()) &&
         !graphs.empty()) {
       selected_node.reset();
-      for (const auto& node : graphs[_selected_item]->getNodes()) {
+      for (const auto& node : graphs[_focus.selected_graph_index()]->getNodes()) {
         // 地址相同就是当前要显示属性的节点。
-        if (node.get() == _selected_node) {
+        if (node.get() == _focus.selected_node()) {
           selected_node = node;
           break;
         }
       }
     }
 
-    // Begin / End：辅助侧栏属性表。对照 VS Code 设置/属性：扁输入、发丝分隔、侧栏底。
+    // Begin / End：辅助侧栏属性表。
     HideDockTab("Properties");
-    ImGui::PushStyleColor(ImGuiCol_WindowBg, kVsCodeSidebarBackground);
+    PushPropertiesPanelStyle();
     if (ImGui::Begin("Properties")) {
       constexpr int kPropertyTableColumnCount = 3;
       constexpr float kFillColumnWidth = -FLT_MIN;
@@ -546,35 +613,11 @@ class Ui : public UiBase<Ui> {
       constexpr float kPropertyTypeColumnRatio = 0.22f;
       constexpr float kPropertyValueColumnRatio =
           1.0f - kPropertyNameColumnRatio - kPropertyTypeColumnRatio;
-      constexpr float kPropertyFrameRounding = 0.0f;
-      constexpr float kPropertyCellPadXEpx = 8.0f;
-      constexpr float kPropertyCellPadYEpx = 3.0f;
-      constexpr float kPropertyFramePadXEpx = 6.0f;
-      constexpr float kPropertyFramePadYEpx = 2.0f;
-      constexpr float kPropertyItemSpacingYEpx = 0.0f;
-      constexpr int kPropertyStyleVarCount = 4;
-      constexpr int kPropertyStyleColorCount = 3;
-      const float ui_scale = ImGui::GetStyle().FontScaleMain;
-      ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, kPropertyFrameRounding);
-      ImGui::PushStyleVar(
-          ImGuiStyleVar_CellPadding,
-          ImVec2(kPropertyCellPadXEpx * ui_scale,
-                 kPropertyCellPadYEpx * ui_scale));
-      ImGui::PushStyleVar(
-          ImGuiStyleVar_FramePadding,
-          ImVec2(kPropertyFramePadXEpx * ui_scale,
-                 kPropertyFramePadYEpx * ui_scale));
-      ImGui::PushStyleVar(
-          ImGuiStyleVar_ItemSpacing,
-          ImVec2(ImGui::GetStyle().ItemSpacing.x,
-                 kPropertyItemSpacingYEpx * ui_scale));
-      ImGui::PushStyleColor(ImGuiCol_TableBorderLight, kVsCodePanelBorder);
-      ImGui::PushStyleColor(ImGuiCol_TableBorderStrong, kVsCodePanelBorder);
-      ImGui::PushStyleColor(ImGuiCol_TableHeaderBg, kVsCodeSidebarBackground);
+      PushPropertiesContentStyle();
       // 有选中节点才画表，点在空白处时没有属性可改。
       if (selected_node != nullptr) {
         ImGui::PushID(selected_node.get());
-        // 表头 + 行间发丝线；列含 Type（对照 VS Code 属性检视）。
+        // 表头 + 行间发丝线；列含 Name / Type / Value。
         if (ImGui::BeginTable(
                 "node_properties", kPropertyTableColumnCount,
                 ImGuiTableFlags_SizingStretchProp |
@@ -642,21 +685,53 @@ class Ui : public UiBase<Ui> {
               }
               ImGui::PopStyleColor();
             } else if (auto* number = std::get_if<int>(&property->value)) {
-              // 整数：无 +/-，扁框（对照 VS Code 设置数字项）。
+              // 整数：无 +/- 步进按钮。
               constexpr int kIntInputNoStep = 0;
               ImGui::SetNextItemWidth(kFillColumnWidth);
               ImGui::InputInt("##value", number, kIntInputNoStep);
+              if (ImGui::IsItemDeactivatedAfterEdit()) {
+                _controller.markDirty();
+              }
             } else if (auto* text = std::get_if<std::string>(&property->value)) {
-              // 字符串（图像/点云为导入路径）。
+              // 字符串（图像/点云为导入路径）：可手输，也可 Browse 调原生选文件。
               constexpr std::size_t kTextTerminatorSize = 1;
+              const float browse_width =
+                  ImGui::CalcTextSize(kBrowseActionLabel).x +
+                  ImGui::GetStyle().FramePadding.x * kFramePaddingSideCount;
+              const float path_width =
+                  ImGui::GetContentRegionAvail().x - browse_width -
+                  ImGui::GetStyle().ItemSpacing.x;
               const std::size_t text_buffer_size =
                   text->capacity() + kTextTerminatorSize;
-              ImGui::SetNextItemWidth(kFillColumnWidth);
+              ImGui::SetNextItemWidth(path_width > 0.0f ? path_width
+                                                       : kFillColumnWidth);
               ImGui::InputText("##value", text->data(), text_buffer_size,
                                ImGuiInputTextFlags_CallbackResize,
                                ResizePropertyText, text);
+              if (ImGui::IsItemDeactivatedAfterEdit()) {
+                _controller.markDirty();
+              }
+              ImGui::SameLine();
+              if (ImGui::Button(kBrowseActionLabel)) {
+                std::string context = *text;
+                if (context.empty() && _controller.hasProjectRoot()) {
+                  context = _controller.projectRoot().string();
+                }
+                const std::string default_path =
+                    NativePathDialog::resolveDefaultPath(
+                        context, _session.last_browse_dir);
+                const std::optional<std::string> picked =
+                    NativePathDialog::pickOpenFile(kPickPropertyFileTitle,
+                                                   default_path);
+                if (NativePathDialog::applyPickedPath(*text, picked)) {
+                  RememberBrowseDir(*picked);
+                  _controller.markDirty();
+                }
+              }
             } else if (auto* flag = std::get_if<bool>(&property->value)) {
-              ImGui::Checkbox("##value", flag);
+              if (ImGui::Checkbox("##value", flag)) {
+                _controller.markDirty();
+              }
             }
             // 绑定输入槽：口模式右键改为属性，属性模式右键改为端口。
             if (bound_input &&
@@ -664,17 +739,19 @@ class Ui : public UiBase<Ui> {
               if (input_as_port) {
                 // 菜单用英文：当前字体无中文 glyph，中文会显示成问号。
                 if (ImGui::MenuItem("Convert to Property") && !graphs.empty()) {
-                  graphs[_selected_item]->setInputPresentation(
+                  graphs[_focus.selected_graph_index()]->setInputPresentation(
                       selected_node,
                       static_cast<unsigned int>(property->bound_input_index),
                       tg::InputPresentation::Property);
+                  _controller.markDirty();
                 }
               } else if (ImGui::MenuItem("Convert to Port") &&
                          !graphs.empty()) {
-                graphs[_selected_item]->setInputPresentation(
+                graphs[_focus.selected_graph_index()]->setInputPresentation(
                     selected_node,
                     static_cast<unsigned int>(property->bound_input_index),
                     tg::InputPresentation::Port);
+                _controller.markDirty();
               }
               ImGui::EndPopup();
             }
@@ -685,26 +762,25 @@ class Ui : public UiBase<Ui> {
         }
         ImGui::PopID();
       }
-      ImGui::PopStyleColor(kPropertyStyleColorCount);
-      ImGui::PopStyleVar(kPropertyStyleVarCount);
+      PopPropertiesContentStyle();
     }
     ImGui::End();
-    ImGui::PopStyleColor();
+    PopPropertiesPanelStyle();
 
     // 没在改文本时处理快捷键：F2 重命名图，Delete / Backspace 删除。
     if (!ImGui::GetIO().WantTextInput) {
       // F2：没有选中节点时才改当前图名；节点名固定，不能重命名。
       if (ImGui::IsKeyPressed(ImGuiKey_F2) && !graphs.empty() &&
-          _selected_node == nullptr) {
-        BeginRenameGraph(graphs[_selected_item]);
+          _focus.selected_node() == nullptr) {
+        BeginRenameGraph(graphs[_focus.selected_graph_index()]);
       }
       // Delete 或 Backspace：有选中节点就删节点，否则删当前图。
       if (ImGui::IsKeyPressed(ImGuiKey_Delete) ||
           ImGui::IsKeyPressed(ImGuiKey_Backspace)) {
-        if (_selected_node != nullptr) {
+        if (_focus.selected_node() != nullptr) {
           RemoveSelectedNode(&selected_node);
         } else if (!graphs.empty()) {
-          RemoveGraphFromUi(graphs[_selected_item], &selected_node);
+          RemoveGraphFromUi(graphs[_focus.selected_graph_index()], &selected_node);
         }
       }
     }
@@ -728,29 +804,28 @@ class Ui : public UiBase<Ui> {
     }
     ImGui::End();
 
-    // Begin / End：状态栏。左侧是 Run 和当前图，右侧是选中的节点。
+    // Begin / End：状态栏。左=工作区（工程名）+ Run + 当前图，右=选中节点。
     HideDockTab("Status Bar");
-    const float status_padding_y =
-        (kStatusBarHeightEpx - kBodyFontSizeEpx) / kFramePaddingSideCount *
-        ui_scale;
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,
-                        ImVec2(kBetweenControlsEpx * ui_scale, 0.0f));
-    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,
-                        ImVec2(kBetweenControlsEpx * ui_scale, status_padding_y));
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+    PushStatusBarStyle();
     if (ImGui::Begin("Status Bar", nullptr, ImGuiWindowFlags_NoTitleBar)) {
+      // 有工程时左侧先画工程名。
+      if (_controller.hasProjectRoot()) {
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted(_controller.projectName().c_str());
+        ImGui::SameLine(0.0f, kBetweenControlsEpx * ui_scale);
+      }
       // Begin / End：没有图时禁用 Run，列表为空没有任务可跑。
       ImGui::BeginDisabled(graphs.empty());
       // 点状态栏上的 Run 才跑当前图。
       if (DrawBarAction("Run") && !graphs.empty()) {
-        _controller.run(*graphs[_selected_item]);
+        _controller.run(*graphs[_focus.selected_graph_index()]);
       }
       ImGui::EndDisabled();
       // 有图才显示图名，点开后改当前图。
       if (!graphs.empty()) {
         ImGui::SameLine();
         // 点图名才弹出列表，用来改状态栏上的当前图。
-        if (DrawBarAction(graphs[_selected_item]->getName().c_str())) {
+        if (DrawBarAction(graphs[_focus.selected_graph_index()]->getName().c_str())) {
           ImGui::OpenPopup("PickStatusGraph");
         }
         // Begin / End：状态栏上的图列表。点中一张就切到它。
@@ -760,7 +835,7 @@ class Ui : public UiBase<Ui> {
             ImGui::PushID(graph_index);
             // 点中一张图才切换，节点不属于这张图时清掉选中。
             if (ImGui::Selectable(graphs[graph_index]->getName().c_str(),
-                                  graph_index == _selected_item)) {
+                                  graph_index == _focus.selected_graph_index())) {
               OpenGraphInEditor(graphs[graph_index]);
               bool node_on_this_graph = false;
               // 选中节点还在这张图里才保留，否则属性表会显示别的图。
@@ -776,8 +851,7 @@ class Ui : public UiBase<Ui> {
               // 这张图里没有刚才选中的节点。
               if (!node_on_this_graph) {
                 selected_node.reset();
-                _selected_node = nullptr;
-                _select_node_in_editor = nullptr;
+                _focus.ClearNodeSelection();
               }
             }
             ImGui::PopID();
@@ -797,7 +871,7 @@ class Ui : public UiBase<Ui> {
       }
     }
     ImGui::End();
-    ImGui::PopStyleVar(3);
+    PopStatusBarStyle();
     HandleUndecoratedWindowChrome();
   }
 
@@ -807,34 +881,57 @@ class Ui : public UiBase<Ui> {
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
     const float ui_scale = ImGui::GetStyle().FontScaleMain;
     const float title_bar_height = kTitleBarHeightEpx * ui_scale;
-    const float title_padding_y =
-        (kTitleBarHeightEpx - kBodyFontSizeEpx) / kFramePaddingSideCount *
-        ui_scale;
     const float caption_width =
         kWindowCaptionButtonWidthEpx * ui_scale *
         static_cast<float>(kWindowCaptionButtonCount);
     ImGui::SetNextWindowPos(viewport->WorkPos);
     ImGui::SetNextWindowSize(ImVec2(viewport->WorkSize.x, title_bar_height));
     ImGui::SetNextWindowViewport(viewport->ID);
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,
-                        ImVec2(kBetweenControlsEpx * ui_scale, 0.0f));
-    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,
-                        ImVec2(kBetweenControlsEpx * ui_scale, title_padding_y));
-    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 0.0f));
+    PushTitleBarStyle();
     const ImGuiWindowFlags title_flags =
         ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
         ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar |
         ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoCollapse |
         ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoDocking |
         ImGuiWindowFlags_NoNavFocus | ImGuiWindowFlags_NoBringToFrontOnFocus;
-    // Begin / End：窗口标题栏。左侧是标题和菜单栏 Run，右侧是窗口按钮，整条不进停靠。
+    // Begin / End：窗口标题栏。左 File→Run→Help，中命令中心，右窗口按钮。
     ImGui::Begin("Window Title Bar", nullptr, title_flags);
     ImGui::AlignTextToFramePadding();
-    ImGui::TextUnformatted(kWindowTitle);
+    // 标题栏菜单栏从左到右：File、Run、Help。不要活动栏，不要第二条工具栏。
+    if (DrawBarAction("File")) {
+      ImGui::OpenPopup("##TitleFileMenu");
+    }
+    if (ImGui::BeginPopup("##TitleFileMenu")) {
+      if (ImGui::MenuItem("New Project...")) {
+        BeginProjectPathDialog(ProjectPathAction::New);
+      }
+      if (ImGui::MenuItem("Open Project...")) {
+        BeginProjectPathDialog(ProjectPathAction::Open);
+      }
+      if (ImGui::BeginMenu("Open Recent", !_session.recent_roots.empty())) {
+        for (std::size_t recent_index = 0;
+             recent_index < _session.recent_roots.size(); ++recent_index) {
+          ImGui::PushID(static_cast<int>(recent_index));
+          const std::string& recent_root = _session.recent_roots[recent_index];
+          if (ImGui::MenuItem(recent_root.c_str())) {
+            OpenProjectFromPath(std::filesystem::path(recent_root));
+          }
+          ImGui::PopID();
+        }
+        ImGui::EndMenu();
+      }
+      ImGui::Separator();
+      if (ImGui::MenuItem("Save", nullptr, false,
+                          _controller.hasProjectRoot())) {
+        SaveCurrentProject();
+      }
+      if (ImGui::MenuItem("Save As...")) {
+        BeginProjectPathDialog(ProjectPathAction::SaveAs);
+      }
+      ImGui::EndPopup();
+    }
     ImGui::SameLine(0.0f, kBetweenControlsEpx * ui_scale);
-    // 点左侧菜单名 Run 打开菜单，对应 VS Code 标题栏菜单栏。
+    // 点菜单名 Run 打开菜单。
     if (DrawBarAction("Run")) {
       ImGui::OpenPopup("##TitleRunMenu");
     }
@@ -843,10 +940,23 @@ class Ui : public UiBase<Ui> {
       // 列表为空没有任务可跑。
       if (ImGui::MenuItem("Run Graph", nullptr, false, !graphs.empty()) &&
           !graphs.empty()) {
-        _controller.run(*graphs[_selected_item]);
+        _controller.run(*graphs[_focus.selected_graph_index()]);
       }
       ImGui::EndPopup();
     }
+    ImGui::SameLine(0.0f, kBetweenControlsEpx * ui_scale);
+    if (DrawBarAction("Help")) {
+      ImGui::OpenPopup("##TitleHelpMenu");
+    }
+    if (ImGui::BeginPopup("##TitleHelpMenu")) {
+      if (ImGui::MenuItem("Welcome")) {
+        OpenWelcomeInEditor();
+      }
+      ImGui::EndPopup();
+    }
+    const float menu_right_x =
+        ImGui::GetItemRectMax().x - ImGui::GetWindowPos().x +
+        kBetweenControlsEpx * ui_scale;
     const ImVec2 caption_size(kWindowCaptionButtonWidthEpx * ui_scale,
                               title_bar_height);
     ImGui::SameLine();
@@ -870,6 +980,49 @@ class Ui : public UiBase<Ui> {
                           caption_size)) {
       glfwSetWindowShouldClose(Window(), GLFW_TRUE);
     }
+    // 任务栏窗口标题仍用完整文案；命令中心只显示工程名。
+    const std::string window_title = BuildWindowTitleText();
+    if (window_title != _last_window_title) {
+      glfwSetWindowTitle(Window(), window_title.c_str());
+      _last_window_title = window_title;
+    }
+    const char* command_center_label =
+        _controller.hasProjectRoot() ? _controller.projectName().c_str()
+                                     : kUntitledProjectLabel;
+    const float content_min_x = ImGui::GetWindowContentRegionMin().x;
+    const float content_max_x = ImGui::GetWindowContentRegionMax().x;
+    const float title_right_limit =
+        content_max_x - caption_width - kBetweenControlsEpx * ui_scale;
+    const float frame_pad_x = ImGui::GetStyle().FramePadding.x;
+    const float label_width = ImGui::CalcTextSize(command_center_label).x +
+                              frame_pad_x * kFramePaddingSideCount;
+    float command_center_width =
+        (std::max)(kCommandCenterMinWidthEpx * ui_scale, label_width);
+    command_center_width =
+        (std::min)(command_center_width, kCommandCenterMaxWidthEpx * ui_scale);
+    const float available_width = title_right_limit - menu_right_x;
+    if (available_width > 0.0f && command_center_width > available_width) {
+      command_center_width = available_width;
+    }
+    constexpr float kHalf = 0.5f;
+    float command_center_x =
+        (content_min_x + content_max_x) * kHalf - command_center_width * kHalf;
+    if (command_center_x < menu_right_x) {
+      command_center_x = menu_right_x;
+    }
+    if (command_center_x + command_center_width > title_right_limit) {
+      command_center_x = title_right_limit - command_center_width;
+    }
+    const float command_center_height = kCommandCenterHeightEpx * ui_scale;
+    const float command_center_y =
+        (title_bar_height - command_center_height) * kHalf;
+    ImGui::SetCursorPos(ImVec2(command_center_x, command_center_y));
+    // 无底无描边，只露工程名文字，不画成可见的框。
+    PushCommandCenterStyle();
+    // 命令中心本轮只展示工程名，点击无行为（不接 Quick Pick）。
+    ImGui::Button(command_center_label,
+                  ImVec2(command_center_width, command_center_height));
+    PopCommandCenterStyle();
     const float border = kUndecoratedResizeBorderEpx * ui_scale;
     const ImVec2 mouse = ImGui::GetIO().MousePos;
     const bool on_title_edge =
@@ -894,7 +1047,7 @@ class Ui : public UiBase<Ui> {
       }
     }
     ImGui::End();
-    ImGui::PopStyleVar(5);
+    PopTitleBarStyle();
   }
 
   // 无边框窗口：拖动标题栏移动，边缘拖动改大小。
@@ -1012,21 +1165,25 @@ class Ui : public UiBase<Ui> {
 
     ax::NodeEditor::SetCurrentEditor(_editor);
     ax::NodeEditor::Style& editor_style = ax::NodeEditor::GetStyle();
-    editor_style.Colors[ax::NodeEditor::StyleColor_Bg] = kVsCodeEditorBackground;
-    editor_style.Colors[ax::NodeEditor::StyleColor_Grid] = kVsCodeEditorGrid;
+    ApplyFlowCanvasTheme(editor_style);
     // Begin / End：节点编辑器。图里已有的节点画在网格上。
     ax::NodeEditor::Begin("CanvasEditor");
     // 没有选中的图时不画节点。
     if (!graphs.empty()) {
       int column = 0;
-      for (const auto& node : graphs[_selected_item]->getNodes()) {
+      for (const auto& node : graphs[_focus.selected_graph_index()]->getNodes()) {
         const ax::NodeEditor::NodeId node_id(node.get());
         const bool place_now = _placed_nodes.insert(node.get()).second;
-        // 节点第一次出现才按列落位，之后改由编辑器记住拖动结果。
+        // 节点第一次出现才落位：有工程里的坐标用它，否则按列排。
         if (place_now) {
           constexpr float kInitialNodePositionY = 0.0f;
-          const ImVec2 position{static_cast<float>(column) * kInitialNodeStepX,
-                                kInitialNodePositionY};
+          ImVec2 position{static_cast<float>(column) * kInitialNodeStepX,
+                          kInitialNodePositionY};
+          const auto pose_it = _node_poses.find(node.get());
+          if (pose_it != _node_poses.end()) {
+            position.x = pose_it->second.x;
+            position.y = pose_it->second.y;
+          }
           ax::NodeEditor::SetNodePosition(node_id, position);
         }
         // Begin / End：一个图节点。端口和连线都来自节点基类。
@@ -1068,7 +1225,7 @@ class Ui : public UiBase<Ui> {
         ax::NodeEditor::EndNode();
         ++column;
       }
-      for (const auto& node : graphs[_selected_item]->getNodes()) {
+      for (const auto& node : graphs[_focus.selected_graph_index()]->getNodes()) {
         for (const auto& connection : node->outgoing()) {
           const tg::Node::Port* output = node->outputPort(connection.port_out);
           const tg::Node::Port* input =
@@ -1128,7 +1285,8 @@ class Ui : public UiBase<Ui> {
           } else if (ax::NodeEditor::AcceptNewItem(
                          ColorForTypeId(output->data_type.id),
                          kDefaultLinkThickness)) {
-            graphs[_selected_item]->connect(output, input);
+            graphs[_focus.selected_graph_index()]->connect(output, input);
+            _controller.markDirty();
           }
         }
       }
@@ -1139,7 +1297,7 @@ class Ui : public UiBase<Ui> {
         while (ax::NodeEditor::QueryDeletedNode(&deleted_node_id)) {
           tg::Node* const raw = deleted_node_id.AsPointer<tg::Node>();
           std::shared_ptr<tg::Node> owned;
-          for (const auto& candidate : graphs[_selected_item]->getNodes()) {
+          for (const auto& candidate : graphs[_focus.selected_graph_index()]->getNodes()) {
             // 地址相同就是编辑器要删的那个节点。
             if (candidate.get() == raw) {
               owned = candidate;
@@ -1148,7 +1306,7 @@ class Ui : public UiBase<Ui> {
           }
           // 节点还在图里才接受删除并调用 removeNode。
           if (owned != nullptr && ax::NodeEditor::AcceptDeletedItem()) {
-            RemoveNodeFromUi(graphs[_selected_item], owned, nullptr);
+            RemoveNodeFromUi(graphs[_focus.selected_graph_index()], owned, nullptr);
           } else {
             ax::NodeEditor::RejectDeletedItem();
           }
@@ -1159,7 +1317,7 @@ class Ui : public UiBase<Ui> {
         }
       }
       ax::NodeEditor::EndDelete();
-      // 引脚右键：输入口改为属性（对照 VS Code 上下文菜单，Suspend 后弹 ImGui）。
+      // 画布右键：引脚 / 节点 / 背景菜单（Suspend 后弹 ImGui）。
       // PinId 只在 ShowPinContextMenu 为真的那一帧有效，必须存进成员供后续帧画菜单。
       ax::NodeEditor::Suspend();
       ax::NodeEditor::PinId context_pin_id;
@@ -1170,6 +1328,18 @@ class Ui : public UiBase<Ui> {
           ImGui::OpenPopup("Pin Context Menu");
         }
       }
+      ax::NodeEditor::NodeId context_node_id;
+      if (ax::NodeEditor::ShowNodeContextMenu(&context_node_id) &&
+          context_node_id.AsPointer<tg::Node>() != nullptr) {
+        _canvas_context_spawn_pos =
+            ax::NodeEditor::ScreenToCanvas(ImGui::GetIO().MousePos);
+        ImGui::OpenPopup("Canvas Node Menu");
+      }
+      if (ax::NodeEditor::ShowBackgroundContextMenu()) {
+        _canvas_context_spawn_pos =
+            ax::NodeEditor::ScreenToCanvas(ImGui::GetIO().MousePos);
+        ImGui::OpenPopup("Canvas Background Menu");
+      }
       if (ImGui::BeginPopup("Pin Context Menu")) {
         if (_pin_context_port != nullptr &&
             _pin_context_port->node != nullptr &&
@@ -1177,9 +1347,10 @@ class Ui : public UiBase<Ui> {
           // 菜单用英文：当前字体无中文 glyph，中文会显示成问号。
           if (ImGui::MenuItem("Convert to Property")) {
             auto owned = _pin_context_port->node->shared_from_this();
-            graphs[_selected_item]->setInputPresentation(
+            graphs[_focus.selected_graph_index()]->setInputPresentation(
                 owned, _pin_context_port->index,
                 tg::InputPresentation::Property);
+            _controller.markDirty();
             _pin_context_port = nullptr;
           }
         }
@@ -1187,32 +1358,44 @@ class Ui : public UiBase<Ui> {
       } else {
         _pin_context_port = nullptr;
       }
+      if (ImGui::BeginPopup("Canvas Node Menu")) {
+        // 与 Explorer 节点菜单对齐：New Node；落点用打开菜单时的画布坐标。
+        if (ImGui::MenuItem("New Node")) {
+          RequestOpenPickNodeKind(_focus.selected_graph_index(), true);
+        }
+        ImGui::EndPopup();
+      }
+      if (ImGui::BeginPopup("Canvas Background Menu")) {
+        // 空白处右键也能弹出节点种类选择。
+        if (ImGui::MenuItem("New Node")) {
+          RequestOpenPickNodeKind(_focus.selected_graph_index(), true);
+        }
+        ImGui::EndPopup();
+      }
       ax::NodeEditor::Resume();
       // 侧栏点过的节点这一帧才画出来，先在编辑器里选中。
-      if (_select_node_in_editor != nullptr) {
+      if (_focus.pending_editor_select() != nullptr) {
         ax::NodeEditor::SelectNode(
-            ax::NodeEditor::NodeId(_select_node_in_editor));
+            ax::NodeEditor::NodeId(_focus.pending_editor_select()));
       }
     }
     ax::NodeEditor::End();
-    tg::Node* const picked_in_explorer = _select_node_in_editor;
+    tg::Node* const picked_in_explorer = _focus.ConsumePendingEditorSelect();
     // 编辑器结束时可能清掉侧栏这次点击，再选一次，属性表才跟得上。
     if (picked_in_explorer != nullptr) {
       ax::NodeEditor::SelectNode(ax::NodeEditor::NodeId(picked_in_explorer));
-      _select_node_in_editor = nullptr;
     }
     constexpr int kSelectedNodeReadCount = 1;
     ax::NodeEditor::NodeId selected_id;
     const int selected_count =
         ax::NodeEditor::GetSelectedNodes(&selected_id, kSelectedNodeReadCount);
-    _selected_node = nullptr;
     // 侧栏点的节点以侧栏为准，画布没选中时也不要把它清掉。
     if (picked_in_explorer != nullptr) {
-      _selected_node = picked_in_explorer;
+      _focus.SetSelectedNodeFromCanvas(picked_in_explorer);
     } else if (selected_count > 0 && !graphs.empty()) {
       tg::Node* const candidate = selected_id.AsPointer<tg::Node>();
       bool still_in_graph = false;
-      for (const auto& node : graphs[_selected_item]->getNodes()) {
+      for (const auto& node : graphs[_focus.selected_graph_index()]->getNodes()) {
         // 刚删掉的节点不能再当成选中。
         if (node.get() == candidate) {
           still_in_graph = true;
@@ -1221,8 +1404,12 @@ class Ui : public UiBase<Ui> {
       }
       // 还在当前图里才记下选中。
       if (still_in_graph) {
-        _selected_node = candidate;
+        _focus.SetSelectedNodeFromCanvas(candidate);
+      } else {
+        _focus.SetSelectedNodeFromCanvas(nullptr);
       }
+    } else {
+      _focus.SetSelectedNodeFromCanvas(nullptr);
     }
     ax::NodeEditor::SetCurrentEditor(nullptr);
   }
@@ -1237,6 +1424,15 @@ class Ui : public UiBase<Ui> {
   static void KeyCallback(GLFWwindow*, int, int, int, int) {}
 
  private:
+  // 记下目标图并打开种类 Quick Pick；画布入口可带落点坐标。
+  void RequestOpenPickNodeKind(int graph_index, bool spawn_at_canvas) {
+    if (spawn_at_canvas) {
+      _focus.RequestPickNodeKind(graph_index, true, _canvas_context_spawn_pos);
+    } else {
+      _focus.RequestPickNodeKind(graph_index, false);
+    }
+  }
+
   // 开始就地重命名一张图。
   void BeginRenameGraph(const std::shared_ptr<tg::Graph>& graph) {
     // 空图不改名。
@@ -1262,6 +1458,7 @@ class Ui : public UiBase<Ui> {
       // 空名保持原名，不写成空白。
       if (!_rename_buffer.empty()) {
         _rename_graph->setName(_rename_buffer);
+        _controller.markDirty();
       }
       CancelRename();
     }
@@ -1308,14 +1505,10 @@ class Ui : public UiBase<Ui> {
     tg::Node* const raw = node.get();
     graph->removeNode(node);
     _placed_nodes.erase(raw);
+    _node_poses.erase(raw);
+    _controller.markDirty();
     // 删的就是当前选中时，属性表和状态栏不再指向它。
-    if (_selected_node == raw) {
-      _selected_node = nullptr;
-    }
-    // 删的就是这一帧要在编辑器里选中的节点。
-    if (_select_node_in_editor == raw) {
-      _select_node_in_editor = nullptr;
-    }
+    _focus.ClearSelectionIfNode(raw);
     // 本帧局部选中也指向它时一起清掉。
     if (selected_node != nullptr && selected_node->get() == raw) {
       selected_node->reset();
@@ -1326,13 +1519,13 @@ class Ui : public UiBase<Ui> {
   void RemoveSelectedNode(std::shared_ptr<tg::Node>* selected_node) {
     const auto& graphs = _controller.getGraphs();
     // 没有图或没有选中就不删。
-    if (graphs.empty() || _selected_node == nullptr) {
+    if (graphs.empty() || _focus.selected_node() == nullptr) {
       return;
     }
     std::shared_ptr<tg::Node> owned;
-    for (const auto& candidate : graphs[_selected_item]->getNodes()) {
+    for (const auto& candidate : graphs[_focus.selected_graph_index()]->getNodes()) {
       // 地址相同就是要删的选中节点。
-      if (candidate.get() == _selected_node) {
+      if (candidate.get() == _focus.selected_node()) {
         owned = candidate;
         break;
       }
@@ -1341,106 +1534,49 @@ class Ui : public UiBase<Ui> {
     if (owned == nullptr) {
       return;
     }
-    RemoveNodeFromUi(graphs[_selected_item], owned, selected_node);
+    RemoveNodeFromUi(graphs[_focus.selected_graph_index()], owned, selected_node);
   }
 
   // 把工程里已有的图打开成编辑区页签；已打开则只激活。
   void OpenGraphInEditor(const std::shared_ptr<tg::Graph>& graph) {
-    // 空图不打开。
-    if (graph == nullptr) {
-      return;
-    }
-    for (int editor_index = 0;
-         editor_index < static_cast<int>(_open_editors.size()); ++editor_index) {
-      // 已经打开过就只切到这一页。
-      if (_open_editors[editor_index] == graph) {
-        _active_editor = editor_index;
-        SyncSelectedItemToGraph(graph);
-        return;
-      }
-    }
-    _open_editors.push_back(graph);
-    _active_editor = static_cast<int>(_open_editors.size()) - 1;
-    SyncSelectedItemToGraph(graph);
+    _focus.OpenGraphInEditor(graph, _controller.getGraphs());
   }
 
-  // 按图指针把 _selected_item 对到工程列表里的下标。
+  // 打开或激活 Welcome 页签。
+  void OpenWelcomeInEditor() {
+    _focus.OpenWelcomeInEditor();
+  }
+
+  void CloseWelcomeIfOpen() {
+    _focus.CloseWelcomeIfOpen(_controller.getGraphs());
+    PersistSession();
+  }
+
+  // 按图指针把当前图下标对到工程列表里。
   void SyncSelectedItemToGraph(const std::shared_ptr<tg::Graph>& graph) {
-    const auto& graphs = _controller.getGraphs();
-    for (int graph_index = 0; graph_index < static_cast<int>(graphs.size());
-         ++graph_index) {
-      // 找到同一张图就记下下标。
-      if (graphs[graph_index] == graph) {
-        _selected_item = graph_index;
-        return;
-      }
-    }
+    _focus.SyncSelectedItemToGraph(graph, _controller.getGraphs());
   }
 
   // 关掉编辑区里某一页；没有页签时编辑区留空。
   void CloseEditorAt(int editor_index) {
-    // 下标越界不关。
-    if (editor_index < 0 ||
-        editor_index >= static_cast<int>(_open_editors.size())) {
-      return;
+    if (_focus.CloseEditorAt(editor_index, _controller.getGraphs())) {
+      PersistSession();
     }
-    const std::shared_ptr<tg::Graph> closed = _open_editors[editor_index];
-    // 关掉的图上若还有选中节点，属性表不再挂着它。
-    if (closed != nullptr && _selected_node != nullptr) {
-      for (const auto& node : closed->getNodes()) {
-        // 选中就在这一页上。
-        if (node.get() == _selected_node) {
-          _selected_node = nullptr;
-          _select_node_in_editor = nullptr;
-          break;
-        }
-      }
-    }
-    _open_editors.erase(_open_editors.begin() + editor_index);
-    // 全部叉掉后没有活动页。
-    if (_open_editors.empty()) {
-      _active_editor = -1;
-      return;
-    }
-    // 关掉的页在活动页左边或就是活动页时，活动下标往前收。
-    if (_active_editor >= editor_index) {
-      --_active_editor;
-    }
-    // 活动下标不能小于 0。
-    if (_active_editor < 0) {
-      _active_editor = 0;
-    }
-    // 活动下标不能超出最后一页。
-    if (_active_editor >= static_cast<int>(_open_editors.size())) {
-      _active_editor = static_cast<int>(_open_editors.size()) - 1;
-    }
-    SyncSelectedItemToGraph(_open_editors[_active_editor]);
   }
 
-  // 工程里已经没有的图，从打开的页签里清掉。
+  // 工程里已经没有的图，从打开的页签里清掉；Welcome 保留。
   void PruneOpenEditors() {
-    const auto& graphs = _controller.getGraphs();
-    for (int editor_index = static_cast<int>(_open_editors.size()) - 1;
-         editor_index >= 0; --editor_index) {
-      bool still_present = false;
-      for (const auto& graph : graphs) {
-        // 还在工程列表里就保留页签。
-        if (graph == _open_editors[editor_index]) {
-          still_present = true;
-          break;
-        }
-      }
-      // 图已被删掉，页签也关掉。
-      if (!still_present) {
-        CloseEditorAt(editor_index);
-      }
+    const int before = static_cast<int>(_focus.open_editors().size());
+    _focus.PruneOpenEditors(_controller.getGraphs());
+    if (static_cast<int>(_focus.open_editors().size()) != before) {
+      PersistSession();
     }
   }
 
-  // 画编辑区页签条：整块自绘，对照 VS Code 编辑器页签（标题和关闭在同一底上）。
+  // 画编辑区页签条：整块自绘，标题和关闭在同一底上。
   void DrawEditorTabs() {
-    // 没有打开的图就不画页签条。
-    if (_open_editors.empty()) {
+    // 没有打开的页签就不画页签条。
+    if (_focus.open_editors().empty()) {
       return;
     }
     constexpr float kHalfSpan = 0.5f;
@@ -1453,37 +1589,26 @@ class Ui : public UiBase<Ui> {
     const ImVec2 bar_min = ImGui::GetCursorScreenPos();
     const float bar_width = ImGui::GetContentRegionAvail().x;
     ImDrawList* draw = ImGui::GetWindowDrawList();
-    // 页签色与 ApplyVsCodeDarkModernColors 同一套，避免栏/页/画布各用默认色。
-    const ImU32 tab_bar_bg =
-        ImGui::ColorConvertFloat4ToU32(kVsCodeSidebarBackground);
-    const ImU32 active_bg =
-        ImGui::ColorConvertFloat4ToU32(kVsCodeTabActiveBackground);
-    const ImU32 inactive_bg =
-        ImGui::ColorConvertFloat4ToU32(kVsCodeTabInactiveBackground);
-    const ImU32 hover_bg =
-        ImGui::ColorConvertFloat4ToU32(kVsCodeListHoverBackground);
-    const ImU32 close_hover_bg =
-        ImGui::ColorConvertFloat4ToU32(kVsCodeListHoverBackground);
-    const ImU32 text_color = ImGui::ColorConvertFloat4ToU32(kVsCodeForeground);
-    const ImU32 border_color =
-        ImGui::ColorConvertFloat4ToU32(kVsCodePanelBorder);
+    const EditorTabPalette tab_palette = MakeEditorTabPalette();
     draw->AddRectFilled(bar_min,
                         ImVec2(bar_min.x + bar_width, bar_min.y + tab_height),
-                        tab_bar_bg);
+                        tab_palette.tab_bar_bg);
     int close_index = -1;
     float tab_x = bar_min.x;
     for (int editor_index = 0;
-         editor_index < static_cast<int>(_open_editors.size()); ++editor_index) {
-      const auto& graph = _open_editors[editor_index];
-      // 空页签跳过。
-      if (graph == nullptr) {
+         editor_index < static_cast<int>(_focus.open_editors().size()); ++editor_index) {
+      const EditorTab& tab = _focus.open_editors()[editor_index];
+      const bool is_welcome = tab.kind == EditorTab::Kind::Welcome;
+      if (!is_welcome && tab.graph == nullptr) {
         continue;
       }
-      const char* const name = graph->getName().c_str();
+      const char* const name =
+          is_welcome ? kWelcomeTabLabel : tab.graph->getName().c_str();
       const ImVec2 label_size = ImGui::CalcTextSize(name);
       const float tab_width =
           pad_x + label_size.x + label_close_gap + close_size + pad_x;
-      ImGui::PushID(graph.get());
+      ImGui::PushID(is_welcome ? nullptr : tab.graph.get());
+      ImGui::PushID(editor_index);
       ImGui::SetCursorScreenPos(ImVec2(tab_x, bar_min.y));
       ImGui::InvisibleButton("##EditorTab", ImVec2(tab_width, tab_height));
       const bool tab_hovered = ImGui::IsItemHovered();
@@ -1499,28 +1624,29 @@ class Ui : public UiBase<Ui> {
       const bool close_hovered =
           tab_hovered && mouse.x >= close_min.x && mouse.x < close_max.x &&
           mouse.y >= close_min.y && mouse.y < close_max.y;
-      const bool is_active = editor_index == _active_editor;
-      ImU32 tab_bg = inactive_bg;
+      const bool is_active = editor_index == _focus.active_editor();
+      ImU32 tab_bg = tab_palette.inactive_bg;
       // 活动页用编辑区底色，悬停用高亮，其余用页签栏色。
       if (is_active) {
-        tab_bg = active_bg;
+        tab_bg = tab_palette.active_bg;
       } else if (tab_hovered) {
-        tab_bg = hover_bg;
+        tab_bg = tab_palette.hover_bg;
       }
       draw->AddRectFilled(tab_min, tab_max, tab_bg);
       // 非活动页右侧画一条细线，隔开相邻页签。
       if (!is_active) {
         const float separator = kEditorTabSeparatorThicknessEpx * ui_scale;
         draw->AddLine(ImVec2(tab_max.x - separator, tab_min.y),
-                      ImVec2(tab_max.x - separator, tab_max.y), border_color);
+                      ImVec2(tab_max.x - separator, tab_max.y),
+                      tab_palette.border);
       }
       const ImVec2 text_pos(
           tab_min.x + pad_x,
           tab_min.y + (tab_height - label_size.y) * kHalfSpan);
-      draw->AddText(text_pos, text_color, name);
-      // 关闭钮只在悬停时铺底，和 VS Code 一样嵌在页签里。
+      draw->AddText(text_pos, tab_palette.text, name);
+      // 关闭钮只在悬停时铺底，嵌在页签里。
       if (close_hovered) {
-        draw->AddRectFilled(close_min, close_max, close_hover_bg);
+        draw->AddRectFilled(close_min, close_max, tab_palette.close_hover_bg);
       }
       const ImVec2 close_center(
           (close_min.x + close_max.x) * kHalfSpan,
@@ -1530,22 +1656,25 @@ class Ui : public UiBase<Ui> {
                  close_center.y - close_glyph_half),
           ImVec2(close_center.x + close_glyph_half,
                  close_center.y + close_glyph_half),
-          text_color);
+          tab_palette.text);
       draw->AddLine(
           ImVec2(close_center.x + close_glyph_half,
                  close_center.y - close_glyph_half),
           ImVec2(close_center.x - close_glyph_half,
                  close_center.y + close_glyph_half),
-          text_color);
+          tab_palette.text);
       // 点在关闭区就叉掉，否则激活这一页。
       if (tab_clicked) {
         if (close_hovered) {
           close_index = editor_index;
         } else {
-          _active_editor = editor_index;
-          SyncSelectedItemToGraph(graph);
+          _focus.active_editor() = editor_index;
+          if (!is_welcome) {
+            SyncSelectedItemToGraph(tab.graph);
+          }
         }
       }
+      ImGui::PopID();
       ImGui::PopID();
       tab_x += tab_width;
     }
@@ -1580,9 +1709,11 @@ class Ui : public UiBase<Ui> {
       return;
     }
     for (int editor_index = 0;
-         editor_index < static_cast<int>(_open_editors.size()); ++editor_index) {
+         editor_index < static_cast<int>(_focus.open_editors().size());
+         ++editor_index) {
       // 编辑区里打开了这张图就先关掉页签。
-      if (_open_editors[editor_index] == graph) {
+      if (_focus.open_editors()[editor_index].kind == EditorTab::Kind::Graph &&
+          _focus.open_editors()[editor_index].graph == graph) {
         CloseEditorAt(editor_index);
         break;
       }
@@ -1590,62 +1721,429 @@ class Ui : public UiBase<Ui> {
     for (const auto& node : graph->getNodes()) {
       _placed_nodes.erase(node.get());
       // 选中落在这张图的节点上时一起清掉。
-      if (_selected_node == node.get()) {
-        _selected_node = nullptr;
-      }
-      if (_select_node_in_editor == node.get()) {
-        _select_node_in_editor = nullptr;
-      }
+      _focus.ClearSelectionIfNode(node.get());
       if (selected_node != nullptr && selected_node->get() == node.get()) {
         selected_node->reset();
       }
     }
     _controller.removeGraph(graph);
     const auto& graphs_after = _controller.getGraphs();
-    // 删空后下标归零。
-    if (graphs_after.empty()) {
-      _selected_item = 0;
-      _create_on_graph = 0;
+    _focus.AdjustAfterGraphRemoved(removed_index,
+                                   static_cast<int>(graphs_after.size()));
+  }
+
+  enum class ProjectPathAction { None, New, Open, SaveAs };
+
+  // 窗口标题文案：无工程为应用名；有工程为「工程名[*] - 应用名」。
+  std::string BuildWindowTitleText() const {
+    constexpr const char* kTitleSeparator = " - ";
+    constexpr const char* kDirtyMarker = "*";
+    if (!_controller.hasProjectRoot()) {
+      return kWindowTitle;
+    }
+    std::string title = _controller.projectName();
+    if (_controller.isDirty()) {
+      title += kDirtyMarker;
+    }
+    title += kTitleSeparator;
+    title += kWindowTitle;
+    return title;
+  }
+
+  void ResetUiProjectState() {
+    _focus.Reset();
+    _placed_nodes.clear();
+    _node_poses.clear();
+    _pin_context_port = nullptr;
+    _rename_graph.reset();
+    _graph_pending_remove.reset();
+    _rename_buffer.clear();
+    _rename_focus = false;
+  }
+
+  void PersistSession() {
+    _session.open_graph_names.clear();
+    for (const EditorTab& tab : _focus.open_editors()) {
+      if (tab.kind == EditorTab::Kind::Graph && tab.graph != nullptr) {
+        _session.open_graph_names.push_back(tab.graph->getName());
+      }
+    }
+    if (_controller.hasProjectRoot()) {
+      _session.last_root = _controller.projectRoot().generic_string();
+    }
+    _session.save();
+  }
+
+  void RememberOpenedProject(const std::filesystem::path& root) {
+    _session.touchRecent(root);
+    PersistSession();
+  }
+
+  void RememberBrowseDir(const std::string& picked_path) {
+    const std::string directory =
+        NativePathDialog::directoryOfPickedPath(picked_path);
+    if (directory.empty()) {
       return;
     }
-    // 当前下标落在被删位置之后时往前挪一格。
-    if (_selected_item > removed_index) {
-      --_selected_item;
-    }
-    // 当前下标超出新长度时夹到最后一张。
-    if (_selected_item >= static_cast<int>(graphs_after.size())) {
-      _selected_item = static_cast<int>(graphs_after.size()) - 1;
-    }
-    // 创建目标图被删或下标偏后时跟着修正。
-    if (_create_on_graph == removed_index) {
-      _create_on_graph = _selected_item;
-    } else if (_create_on_graph > removed_index) {
-      --_create_on_graph;
+    _session.last_browse_dir = directory;
+    PersistSession();
+  }
+
+  void RestoreOpenGraphTabs() {
+    const auto& graphs = _controller.getGraphs();
+    for (const std::string& name : _session.open_graph_names) {
+      for (const auto& graph : graphs) {
+        if (graph != nullptr && graph->getName() == name) {
+          OpenGraphInEditor(graph);
+          break;
+        }
+      }
     }
   }
 
-  struct NodeKind {
-    std::string label;
-    std::function<std::shared_ptr<tg::Node>()> create;
-  };
+  // 路径是否指向同一工程根（会话恢复与 main 已打开的根比对）。
+  static bool SameProjectRoot(const std::filesystem::path& left,
+                              const std::filesystem::path& right) {
+    if (left.empty() || right.empty()) {
+      return false;
+    }
+    std::error_code error;
+    if (std::filesystem::equivalent(left, right, error)) {
+      return true;
+    }
+    return left.lexically_normal() == right.lexically_normal();
+  }
+
+  void TryRestoreOrShowWelcome() {
+    // main 已用 core 打开工程：再开一次以灌入画布坐标，并按需恢复页签。
+    if (_controller.hasProjectRoot()) {
+      const std::filesystem::path root = _controller.projectRoot();
+      const bool restore_tabs =
+          !_session.last_root.empty() &&
+          SameProjectRoot(std::filesystem::path(_session.last_root), root);
+      OpenProjectFromPath(root, restore_tabs);
+      return;
+    }
+    if (!_session.last_root.empty()) {
+      const std::filesystem::path root(_session.last_root);
+      if (OpenProjectFromPath(root, true)) {
+        return;
+      }
+      _session.removeRecent(root);
+      _session.save();
+    }
+    OpenWelcomeInEditor();
+  }
+
+  // restore_session_tabs：启动恢复时按 session 打开图；菜单打开则不自动开图。
+  bool OpenProjectFromPath(const std::filesystem::path& root,
+                           bool restore_session_tabs = false) {
+    if (root.empty()) {
+      return false;
+    }
+    const std::vector<std::string> graphs_to_restore =
+        restore_session_tabs ? _session.open_graph_names
+                             : std::vector<std::string>{};
+    std::unordered_map<tg::Node*, tg::NodePose> pending_poses;
+    const tg::NodePoseSetter pose_setter =
+        [&pending_poses](tg::Node& node, const tg::NodePose& pose) {
+          pending_poses[&node] = pose;
+        };
+    if (!_controller.openProject(root, pose_setter)) {
+      tg::logError("Open project failed: {}", root.string());
+      return false;
+    }
+    ResetUiProjectState();
+    _node_poses = std::move(pending_poses);
+    _session.touchRecent(root);
+    _session.open_graph_names = graphs_to_restore;
+    if (restore_session_tabs) {
+      RestoreOpenGraphTabs();
+    }
+    // 打开成功即锚定 Browse，避免 last_browse_dir 空时落到盘符根。
+    RememberBrowseDir(root.string());
+    PersistSession();
+    return true;
+  }
+
+  // Welcome 页：Start（New/Open）与 Recent。
+  void ShowWelcomePage() {
+    ImGui::Spacing();
+    ImGui::TextUnformatted(kWelcomeStartHeading);
+    ImGui::Spacing();
+    if (ImGui::Selectable("New Project...")) {
+      BeginProjectPathDialog(ProjectPathAction::New);
+    }
+    if (ImGui::Selectable("Open Project...")) {
+      BeginProjectPathDialog(ProjectPathAction::Open);
+    }
+    ImGui::Spacing();
+    ImGui::Separator();
+    ImGui::Spacing();
+    ImGui::TextUnformatted(kWelcomeRecentHeading);
+    ImGui::Spacing();
+    if (_session.recent_roots.empty()) {
+      ImGui::TextDisabled("No recent projects");
+      return;
+    }
+    for (std::size_t recent_index = 0;
+         recent_index < _session.recent_roots.size(); ++recent_index) {
+      ImGui::PushID(static_cast<int>(recent_index));
+      const std::string& recent_root = _session.recent_roots[recent_index];
+      if (ImGui::Selectable(recent_root.c_str())) {
+        OpenProjectFromPath(std::filesystem::path(recent_root));
+      }
+      ImGui::PopID();
+    }
+  }
+
+  // 保存前把画布坐标刷进 _node_poses；必须先 SetCurrentEditor，标题栏菜单时当前 editor 为空。
+  void SyncNodePosesFromEditor() {
+    if (_editor == nullptr || _placed_nodes.empty()) {
+      return;
+    }
+    ax::NodeEditor::SetCurrentEditor(_editor);
+    for (tg::Node* node : _placed_nodes) {
+      if (node == nullptr) {
+        continue;
+      }
+      const ImVec2 position =
+          ax::NodeEditor::GetNodePosition(ax::NodeEditor::NodeId(node));
+      _node_poses[node] = tg::NodePose{position.x, position.y};
+    }
+    ax::NodeEditor::SetCurrentEditor(nullptr);
+  }
+
+  // 只读缓存；序列化回调里不再调 GetNodePosition，避免无当前 editor 闪退。
+  tg::NodePoseGetter MakePoseGetter() {
+    return [this](const tg::Node& node, tg::NodePose& out_pose) {
+      tg::Node* const raw = const_cast<tg::Node*>(&node);
+      const auto it = _node_poses.find(raw);
+      if (it == _node_poses.end()) {
+        return false;
+      }
+      out_pose = it->second;
+      return true;
+    };
+  }
+
+  tg::NodePoseSetter MakePoseSetter() {
+    return [this](tg::Node& node, const tg::NodePose& pose) {
+      _node_poses[&node] = pose;
+      _placed_nodes.erase(&node);
+    };
+  }
+
+  void BeginProjectPathDialog(ProjectPathAction action) {
+    constexpr std::size_t kPathBufferMinCapacity = 256;
+    _path_action = action;
+    _path_buffer.clear();
+    _path_buffer.reserve(kPathBufferMinCapacity);
+    // SaveAs / Open / New：有工程则预填工程根，否则用上次 Browse。对照打开文件夹靠近当前工作区。
+    if (_controller.hasProjectRoot()) {
+      _path_buffer = _controller.projectRoot().string();
+    } else if (!_session.last_browse_dir.empty()) {
+      _path_buffer = _session.last_browse_dir;
+    }
+    _path_dialog_open = true;
+    _path_focus = true;
+  }
+
+  void SaveCurrentProject() {
+    if (!_controller.hasProjectRoot()) {
+      BeginProjectPathDialog(ProjectPathAction::SaveAs);
+      return;
+    }
+    SyncNodePosesFromEditor();
+    if (!_controller.saveProject(MakePoseGetter())) {
+      tg::logError("Save project failed");
+    }
+  }
+
+  void ApplyProjectPathDialog() {
+    const std::filesystem::path root(_path_buffer);
+    if (root.empty()) {
+      return;
+    }
+    if (_path_action == ProjectPathAction::New) {
+      if (!_controller.newProject(root, root.filename().string())) {
+        tg::logError("New project failed: {}", root.string());
+        return;
+      }
+      ResetUiProjectState();
+      RememberBrowseDir(root.string());
+      RememberOpenedProject(root);
+    } else if (_path_action == ProjectPathAction::Open) {
+      // Browse 锚定在 OpenProjectFromPath 内完成。
+      if (!OpenProjectFromPath(root)) {
+        return;
+      }
+    } else if (_path_action == ProjectPathAction::SaveAs) {
+      SyncNodePosesFromEditor();
+      if (!_controller.saveProjectAs(root, MakePoseGetter())) {
+        tg::logError("Save project as failed: {}", root.string());
+        return;
+      }
+      RememberBrowseDir(root.string());
+      RememberOpenedProject(root);
+    }
+    _path_action = ProjectPathAction::None;
+  }
+
+  // 节点种类选择浮层：过滤框与紧凑整行 Selectable。
+  void ShowPickNodeKindPopup(
+      const std::vector<std::shared_ptr<tg::Graph>>& graphs,
+      std::shared_ptr<tg::Node>& selected_node) {
+    const float ui_scale = ImGui::GetStyle().FontScaleMain;
+    ImGui::SetNextWindowSizeConstraints(
+        ImVec2(kPickNodeKindMinWidthEpx * ui_scale, 0.0f),
+        ImVec2(FLT_MAX, FLT_MAX));
+    PushPickNodeKindStyle();
+    if (!ImGui::BeginPopup(kPickNodeKindPopupId)) {
+      PopPickNodeKindStyle();
+      return;
+    }
+    if (_focus.pick_filter_focus()) {
+      ImGui::SetKeyboardFocusHere();
+      _focus.pick_filter_focus() = false;
+    }
+    constexpr std::size_t kTextTerminatorSize = 1;
+    if (_focus.pick_filter().capacity() < kPickNodeKindFilterMinCapacity) {
+      _focus.pick_filter().reserve(kPickNodeKindFilterMinCapacity);
+    }
+    const std::size_t filter_buffer_size =
+        _focus.pick_filter().capacity() + kTextTerminatorSize;
+    ImGui::SetNextItemWidth(-FLT_MIN);
+    ImGui::InputTextWithHint(
+        "##PickNodeKindFilter", kPickNodeKindFilterHint,
+        _focus.pick_filter().data(), filter_buffer_size,
+        ImGuiInputTextFlags_CallbackResize, ResizePropertyText,
+        &_focus.pick_filter());
+    ImGui::Separator();
+    int visible_count = 0;
+    const auto& node_types = _controller.nodeTypes();
+    for (int kind_index = 0;
+         kind_index < static_cast<int>(node_types.size()); ++kind_index) {
+      const tg::NodeTypeInfo& kind = node_types[kind_index];
+      if (!LabelMatchesFilter(kind.caption, _focus.pick_filter())) {
+        continue;
+      }
+      ++visible_count;
+      if (!ImGui::Selectable(kind.caption.c_str(), false,
+                             ImGuiSelectableFlags_SpanAllColumns)) {
+        continue;
+      }
+      PickNodeKindRequest& pick = _focus.pick_request();
+      if (pick.graph_index >= 0 &&
+          pick.graph_index < static_cast<int>(graphs.size())) {
+        auto node = _controller.createNode(kind.type_id);
+        if (node != nullptr) {
+          // 画布右键打开种类时，下一帧按当时的画布坐标落位。
+          if (pick.spawn_at_canvas) {
+            _node_poses[node.get()] =
+                tg::NodePose{pick.canvas_pos.x, pick.canvas_pos.y};
+            pick.spawn_at_canvas = false;
+          }
+          graphs[pick.graph_index]->addNode(node);
+          _controller.markDirty();
+          OpenGraphInEditor(graphs[pick.graph_index]);
+          selected_node = node;
+          _focus.SelectNode(node.get());
+        }
+      }
+      ImGui::CloseCurrentPopup();
+    }
+    if (visible_count == 0) {
+      ImGui::TextDisabled("%s", kPickNodeKindEmptyLabel);
+    }
+    ImGui::EndPopup();
+    PopPickNodeKindStyle();
+  }
+
+  void ShowProjectPathDialog() {
+    if (_path_dialog_open) {
+      ImGui::OpenPopup(kProjectPathDialogId);
+      _path_dialog_open = false;
+    }
+    const ImVec2 center = ImGui::GetMainViewport()->GetCenter();
+    ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+    if (!ImGui::BeginPopupModal(kProjectPathDialogId, nullptr,
+                                ImGuiWindowFlags_AlwaysAutoResize)) {
+      return;
+    }
+    const char* prompt = "Project path";
+    if (_path_action == ProjectPathAction::New) {
+      prompt = "New project path";
+    } else if (_path_action == ProjectPathAction::Open) {
+      prompt = "Open project path";
+    } else if (_path_action == ProjectPathAction::SaveAs) {
+      prompt = "Save project path";
+    }
+    ImGui::TextUnformatted(prompt);
+    if (_path_focus) {
+      ImGui::SetKeyboardFocusHere();
+      _path_focus = false;
+    }
+    const float ui_scale = ImGui::GetStyle().FontScaleMain;
+    const float browse_width =
+        ImGui::CalcTextSize(kBrowseActionLabel).x +
+        ImGui::GetStyle().FramePadding.x * kFramePaddingSideCount;
+    const float path_input_width =
+        kProjectPathInputWidthEpx * ui_scale - browse_width -
+        ImGui::GetStyle().ItemSpacing.x;
+    ImGui::SetNextItemWidth(path_input_width > 0.0f
+                                ? path_input_width
+                                : kProjectPathInputWidthEpx * ui_scale);
+    constexpr std::size_t kTextTerminatorSize = 1;
+    const std::size_t text_buffer_size =
+        _path_buffer.capacity() + kTextTerminatorSize;
+    const bool enter = ImGui::InputText(
+        "##ProjectPath", _path_buffer.data(), text_buffer_size,
+        ImGuiInputTextFlags_CallbackResize | ImGuiInputTextFlags_EnterReturnsTrue,
+        ResizePropertyText, &_path_buffer);
+    ImGui::SameLine();
+    if (ImGui::Button(kBrowseActionLabel)) {
+      const std::string default_path = NativePathDialog::resolveDefaultPath(
+          _path_buffer, _session.last_browse_dir);
+      const std::optional<std::string> picked = NativePathDialog::pickDirectory(
+          kPickProjectDirectoryTitle, default_path);
+      if (NativePathDialog::applyPickedPath(_path_buffer, picked)) {
+        RememberBrowseDir(*picked);
+      }
+    }
+    if (ImGui::Button("OK") || enter) {
+      ApplyProjectPathDialog();
+      ImGui::CloseCurrentPopup();
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Cancel")) {
+      _path_action = ProjectPathAction::None;
+      ImGui::CloseCurrentPopup();
+    }
+    ImGui::EndPopup();
+  }
 
   tg::Controller& _controller;
-  std::vector<NodeKind> _node_kinds;
   std::unordered_set<tg::Node*> _placed_nodes;
+  std::unordered_map<tg::Node*, tg::NodePose> _node_poses;
+  ProjectPathAction _path_action = ProjectPathAction::None;
+  std::string _path_buffer;
+  std::string _last_window_title;
+  bool _path_dialog_open = false;
+  bool _path_focus = false;
+  bool _explorer_actions_press_hold = false;
   ax::NodeEditor::EditorContext* _editor = nullptr;
-  tg::Node* _selected_node = nullptr;
-  tg::Node* _select_node_in_editor = nullptr;
+  // 工作台焦点：当前图、节点选中、页签、新建节点请求（Explorer/画布 pull）。
+  WorkbenchFocus _focus;
   // 引脚右键菜单跨帧记住端口；ShowPinContextMenu 只在打开当帧给出 PinId。
   tg::Node::Port* _pin_context_port = nullptr;
-  int _selected_item = 0;
-  int _create_on_graph = 0;
-  bool _open_pick_node_kind = false;
+  // 画布右键当帧落点；选 New Node 时写入 Focus 的 PickNodeKindRequest。
+  ImVec2 _canvas_context_spawn_pos{};
   std::shared_ptr<tg::Graph> _graph_pending_remove;
   std::shared_ptr<tg::Graph> _rename_graph;
   std::string _rename_buffer;
   bool _rename_focus = false;
-  std::vector<std::shared_ptr<tg::Graph>> _open_editors;
-  int _active_editor = -1;
+  UiSession _session;
   std::vector<std::string> _log_lines;
   std::size_t _log_cursor = 0;
   bool _dragging_window = false;

@@ -3,14 +3,17 @@
 #include "ImageReaderNode.hpp"
 #include "MatchTemplateNode.hpp"
 #include "Ui.hpp"
+
 int main() {
   tg::Controller controller;
+  controller.registerNodeType(
+      "ImageReaderNode", [] { return std::make_shared<tg::ImageReaderNode>(); },
+      "ImageReader");
+  controller.registerNodeType(
+      "MatchTemplateNode",
+      [] { return std::make_shared<tg::MatchTemplateNode>(); }, "MatchTemplate");
 
   Ui ui(controller);
-  ui.addNodeKind("ImageReader",
-                 [] { return std::make_shared<tg::ImageReaderNode>(); });
-  ui.addNodeKind("MatchTemplate",
-                 [] { return std::make_shared<tg::MatchTemplateNode>(); });
   ui.Run();
   return 0;
 }

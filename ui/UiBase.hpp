@@ -3,42 +3,11 @@
 #include <cstdio>
 #include <cstdlib>
 
+#include "Theme.hpp"
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
 
-// VS Code 默认 editor.fontSize。
-inline constexpr float kBodyFontSizeEpx = 14.0f;
-inline constexpr float kControlCornerRadiusEpx = 4.0f;
-inline constexpr float kOverlayCornerRadiusEpx = 8.0f;
-inline constexpr float kSurfaceTextMarginEpx = 16.0f;
-inline constexpr float kBetweenControlsEpx = 8.0f;
-inline constexpr float kControlLabelSpacingEpx = 12.0f;
-inline constexpr float kStandardControlHeightEpx = 32.0f;
-inline constexpr float kFramePaddingSideCount = 2.0f;
-// https://github.com/microsoft/vscode/blob/main/src/vs/workbench/browser/parts/statusbar/statusbarPart.ts
-// StatusbarPart.HEIGHT
-inline constexpr float kStatusBarHeightEpx = 22.0f;
-// https://github.com/microsoft/vscode/blob/main/src/vs/workbench/browser/parts/titlebar/titlebarPart.ts
-// 命令中心和窗口控件叠加都没开时，标题栏高度是 30。
-inline constexpr float kTitleBarHeightEpx = 30.0f;
-// https://github.com/microsoft/vscode/blob/main/src/vs/workbench/browser/parts/editor/editor.ts
-// 默认编辑器页签高度（window.density.editorTabHeight = default）。
-inline constexpr float kEditorTabHeightEpx = 35.0f;
-inline constexpr float kEditorTabHorizontalPaddingEpx = 10.0f;
-inline constexpr float kEditorTabCloseSizeEpx = 16.0f;
-inline constexpr float kEditorTabLabelCloseGapEpx = 6.0f;
-inline constexpr float kEditorTabCloseGlyphHalfEpx = 3.5f;
-inline constexpr float kEditorTabSeparatorThicknessEpx = 1.0f;
-// Explorer 就地重命名：贴紧文字，细边框，对照 VS Code 侧栏改名框。
-inline constexpr float kExplorerRenameFramePadXEpx = 4.0f;
-inline constexpr float kExplorerRenameFramePadYEpx = 1.0f;
-inline constexpr float kExplorerRenameRoundingEpx = 0.0f;
-inline constexpr float kExplorerRenameBorderSizeEpx = 1.0f;
-// https://github.com/microsoft/vscode/blob/main/src/vs/workbench/browser/parts/titlebar/media/titlebarpart.css
-// Windows 标题栏里每个窗口按钮的宽度。
-inline constexpr float kWindowCaptionButtonWidthEpx = 46.0f;
-inline constexpr int kWindowCaptionButtonCount = 3;
 // 无边框窗口拖边缘时，边缘感应宽度。
 inline constexpr float kUndecoratedResizeBorderEpx = 6.0f;
 inline constexpr int kMinClientWidth = 640;
@@ -47,41 +16,9 @@ inline constexpr int kRestoredClientWidth = 1280;
 inline constexpr int kRestoredClientHeight = 720;
 inline constexpr const char* kWindowTitle = "Default Ui";
 
-inline constexpr const char* kSegoeUiVariablePath = "C:\\Windows\\Fonts\\SegUIVar.ttf";
+inline constexpr const char* kSegoeUiVariablePath =
+    "C:\\Windows\\Fonts\\SegUIVar.ttf";
 inline constexpr const char* kSegoeUiPath = "C:\\Windows\\Fonts\\segoeui.ttf";
-
-// https://code.visualstudio.com/api/references/theme-color
-// VS Code Dark Modern 色板（按 0–255 通道写成 ImVec4）。
-inline constexpr float kRgbChannelMax = 255.0f;
-
-// 把 0–255 的 RGB 转成 ImGui 用的 0–1 颜色。
-static ImVec4 Rgb255(unsigned int red, unsigned int green, unsigned int blue,
-                     float alpha = 1.0f) {
-  return ImVec4(static_cast<float>(red) / kRgbChannelMax,
-                static_cast<float>(green) / kRgbChannelMax,
-                static_cast<float>(blue) / kRgbChannelMax, alpha);
-}
-
-// editor.background
-inline const ImVec4 kVsCodeEditorBackground = Rgb255(31, 31, 31);
-// sideBar.background / editorGroupHeader.tabsBackground / panel.background
-inline const ImVec4 kVsCodeSidebarBackground = Rgb255(24, 24, 24);
-// tab.inactiveBackground（与页签栏同色）
-inline const ImVec4 kVsCodeTabInactiveBackground = kVsCodeSidebarBackground;
-// tab.activeBackground（与编辑区同色）
-inline const ImVec4 kVsCodeTabActiveBackground = kVsCodeEditorBackground;
-// list.hoverBackground
-inline const ImVec4 kVsCodeListHoverBackground = Rgb255(42, 45, 46);
-// panel.border 低对比描边
-inline const ImVec4 kVsCodePanelBorder = Rgb255(255, 255, 255, 0.09f);
-// focusBorder / 控件强调
-inline const ImVec4 kVsCodeFocusBorder = Rgb255(0, 120, 212);
-// input.background
-inline const ImVec4 kVsCodeInputBackground = Rgb255(60, 60, 60);
-// 画布网格线：略亮于编辑区底
-inline const ImVec4 kVsCodeEditorGrid = Rgb255(255, 255, 255, 0.06f);
-// foreground
-inline const ImVec4 kVsCodeForeground = Rgb255(204, 204, 204);
 
 // GLFW 出错时把错误码和说明打印到标准错误。
 static void ErrorCallback(int error, const char* description) {
@@ -119,95 +56,6 @@ static void LoadBodyFont(ImGuiIO& io) {
   if (font != nullptr) {
     io.FontDefault = font;
   }
-}
-
-// 按现有控件的圆角、间距和高度设置样式。数值是有效像素，调用方再按缩放放大。
-static void ApplyWindowsMetrics(ImGuiStyle& style) {
-  style.WindowPadding = ImVec2(kSurfaceTextMarginEpx, kSurfaceTextMarginEpx);
-  style.FramePadding = ImVec2(
-      kControlLabelSpacingEpx,
-      (kStandardControlHeightEpx - kBodyFontSizeEpx) / kFramePaddingSideCount);
-  style.ItemSpacing = ImVec2(kBetweenControlsEpx, kBetweenControlsEpx);
-  style.ItemInnerSpacing = ImVec2(kBetweenControlsEpx, kBetweenControlsEpx);
-  style.CellPadding = ImVec2(kBetweenControlsEpx, kBetweenControlsEpx);
-  style.FrameRounding = kControlCornerRadiusEpx;
-  style.GrabRounding = kControlCornerRadiusEpx;
-  style.ScrollbarRounding = kControlCornerRadiusEpx;
-  style.TabRounding = kControlCornerRadiusEpx;
-  style.PopupRounding = kOverlayCornerRadiusEpx;
-}
-
-// 在 StyleColorsDark 之上覆盖 VS Code Dark Modern 色板。
-static void ApplyVsCodeDarkModernColors(ImGuiStyle& style) {
-  ImVec4* colors = style.Colors;
-  colors[ImGuiCol_Text] = kVsCodeForeground;
-  colors[ImGuiCol_TextDisabled] = Rgb255(128, 128, 128);
-  colors[ImGuiCol_WindowBg] = kVsCodeEditorBackground;
-  colors[ImGuiCol_ChildBg] = kVsCodeEditorBackground;
-  colors[ImGuiCol_PopupBg] = kVsCodeSidebarBackground;
-  colors[ImGuiCol_Border] = kVsCodePanelBorder;
-  colors[ImGuiCol_BorderShadow] = ImVec4(0.0f, 0.0f, 0.0f, 0.0f);
-  colors[ImGuiCol_FrameBg] = kVsCodeInputBackground;
-  colors[ImGuiCol_FrameBgHovered] = kVsCodeListHoverBackground;
-  colors[ImGuiCol_FrameBgActive] = Rgb255(55, 55, 55);
-  colors[ImGuiCol_TitleBg] = kVsCodeSidebarBackground;
-  colors[ImGuiCol_TitleBgActive] = kVsCodeSidebarBackground;
-  colors[ImGuiCol_TitleBgCollapsed] = kVsCodeSidebarBackground;
-  colors[ImGuiCol_MenuBarBg] = kVsCodeSidebarBackground;
-  colors[ImGuiCol_ScrollbarBg] = kVsCodeEditorBackground;
-  colors[ImGuiCol_ScrollbarGrab] = Rgb255(70, 70, 70);
-  colors[ImGuiCol_ScrollbarGrabHovered] = Rgb255(90, 90, 90);
-  colors[ImGuiCol_ScrollbarGrabActive] = Rgb255(110, 110, 110);
-  colors[ImGuiCol_CheckMark] = kVsCodeFocusBorder;
-  colors[ImGuiCol_SliderGrab] = kVsCodeFocusBorder;
-  colors[ImGuiCol_SliderGrabActive] = Rgb255(0, 150, 255);
-  colors[ImGuiCol_Button] = Rgb255(60, 60, 60);
-  colors[ImGuiCol_ButtonHovered] = kVsCodeListHoverBackground;
-  colors[ImGuiCol_ButtonActive] = Rgb255(55, 55, 55);
-  colors[ImGuiCol_Header] = Rgb255(60, 60, 60, 0.5f);
-  colors[ImGuiCol_HeaderHovered] = kVsCodeListHoverBackground;
-  colors[ImGuiCol_HeaderActive] = Rgb255(55, 55, 55);
-  colors[ImGuiCol_Separator] = kVsCodePanelBorder;
-  colors[ImGuiCol_SeparatorHovered] = kVsCodeFocusBorder;
-  colors[ImGuiCol_SeparatorActive] = kVsCodeFocusBorder;
-  colors[ImGuiCol_ResizeGrip] = Rgb255(255, 255, 255, 0.2f);
-  colors[ImGuiCol_ResizeGripHovered] = kVsCodeFocusBorder;
-  colors[ImGuiCol_ResizeGripActive] = kVsCodeFocusBorder;
-  colors[ImGuiCol_Tab] = kVsCodeTabInactiveBackground;
-  colors[ImGuiCol_TabHovered] = kVsCodeListHoverBackground;
-  colors[ImGuiCol_TabSelected] = kVsCodeTabActiveBackground;
-  colors[ImGuiCol_TabSelectedOverline] = kVsCodeFocusBorder;
-  colors[ImGuiCol_TabDimmed] = kVsCodeTabInactiveBackground;
-  colors[ImGuiCol_TabDimmedSelected] = kVsCodeTabActiveBackground;
-  colors[ImGuiCol_DockingPreview] = Rgb255(0, 120, 212, 0.4f);
-  colors[ImGuiCol_DockingEmptyBg] = kVsCodeSidebarBackground;
-  colors[ImGuiCol_TextSelectedBg] = Rgb255(0, 120, 212, 0.35f);
-  colors[ImGuiCol_NavHighlight] = kVsCodeFocusBorder;
-}
-
-inline constexpr int kExplorerRenameStyleVarCount = 3;
-inline constexpr int kExplorerRenameStyleColorCount = 4;
-
-// 主侧栏就地重命名：压成贴行高的扁框，对照 VS Code Explorer 改名。
-static void PushExplorerRenameStyle() {
-  const float ui_scale = ImGui::GetStyle().FontScaleMain;
-  ImGui::PushStyleVar(
-      ImGuiStyleVar_FramePadding,
-      ImVec2(kExplorerRenameFramePadXEpx * ui_scale,
-             kExplorerRenameFramePadYEpx * ui_scale));
-  ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding,
-                      kExplorerRenameRoundingEpx);
-  ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize,
-                      kExplorerRenameBorderSizeEpx * ui_scale);
-  ImGui::PushStyleColor(ImGuiCol_FrameBg, kVsCodeInputBackground);
-  ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, kVsCodeInputBackground);
-  ImGui::PushStyleColor(ImGuiCol_FrameBgActive, kVsCodeInputBackground);
-  ImGui::PushStyleColor(ImGuiCol_Border, kVsCodeFocusBorder);
-}
-
-static void PopExplorerRenameStyle() {
-  ImGui::PopStyleColor(kExplorerRenameStyleColorCount);
-  ImGui::PopStyleVar(kExplorerRenameStyleVarCount);
 }
 
 template <typename Derived>
@@ -331,8 +179,7 @@ class UiBase {
     ImGui::StyleColorsDark();
 
     ImGuiStyle& style = ImGui::GetStyle();
-    ApplyWindowsMetrics(style);
-    ApplyVsCodeDarkModernColors(style);
+    ApplyTheme(style);
     _clear_color = style.Colors[ImGuiCol_WindowBg];
     // 开了多视口时，窗口圆角和外框背景要去掉，否则弹出窗口带黑边。
     // 窗口最大化或面板边缘相接时，圆角也是 0。
@@ -452,7 +299,7 @@ class UiBase {
 
  private:
   GLFWwindow* _window = nullptr;
-  ImVec4 _clear_color = kVsCodeEditorBackground;
+  ImVec4 _clear_color{};
   bool _covering_work_area = false;
   int _restored_x = 0;
   int _restored_y = 0;
