@@ -11,17 +11,18 @@ alwaysApply: true
 
 里面是多张 graph。每张 graph 是一项，下面只列出用 `Graph::addNode` 创建在这张 graph 上的节点。节点跟它所属的 graph 走，不挂到别的 graph 下面。
 
-节点种类不常驻。标题右侧有两个新建按钮，对应 Explorer 的新建文件和新建文件夹：`+ Node` 弹出种类列表，选中后节点创建在当前 graph 下面；`+ Graph` 新建一张空 graph。
+节点种类不常驻。工程名树根行右侧有两个新建按钮，对应 Explorer 的新建文件和新建文件夹；悬停工程名行时显示：`+ Node` 弹出种类列表，选中后节点创建在当前 graph 下面；`+ Graph` 新建一张空 graph。不要把它们放在窗口标题栏或 Explorer 标题行。
 
-`+ Graph` 新建后立刻就地命名。图右键菜单：`New Node`、`Rename`、`Delete`。节点右键菜单：`New Node`、`Delete`。节点名固定，不能重命名。`F2` 仅在没有选中节点时重命名当前图。点选图名时清掉节点选中，并在编辑区打开该图页签。已选中且不在改文本时，`Delete` 或 `Backspace`：有选中节点就删节点，否则删当前图。画布里对选中节点的删除走同一条 `removeNode`。画布空白处或节点右键同样有 `New Node`，打开与 Explorer 相同的种类列表；从画布打开时节点落在右键处。
+`+ Graph` 新建后立刻就地命名。图右键菜单：`New Node`、`Rename`、`Delete`。节点右键菜单：`New Node`、`Rename`、`Delete`。节点 identifier 可改名，但同一图内须唯一（撞名拒绝、不加后缀）。`F2`：有选中节点就改该节点名，否则改当前图名。点选图名时清掉节点选中，并在编辑区打开该图页签。已选中且不在改文本时，`Delete` 或 `Backspace`：有选中节点就删节点，否则删当前图。画布里对选中节点的删除走同一条 `removeNode`。画布空白处或节点右键同样有 `New Node`，打开与 Explorer 相同的种类列表；从画布打开时节点落在右键处。
 
-编辑区对照 VS Code 编辑器：启动时没有画布；只有打开的 graph 才显示对应画布页签；页签可叉掉关闭（不删图）；全部叉掉后编辑区再次为空。`+ Graph` 只在 Explorer 里建图，不自动打开页签。
+编辑区对照 VS Code 编辑器：启动时没有画布；只有打开的 graph 才显示对应画布页签；页签可叉掉关闭（不删图）；全部叉掉后不显示画布，并提示从 Explorer 打开 graph 或使用 `+ Graph` 新建。`+ Graph` 只在 Explorer 里建图，不自动打开页签。
 
 无工程或空工程时没有 graph，由 `+ Graph` 创建。`simple` 默认用 core 打开 exe 旁的 `demo-project` 副本（源码树模板只读），其中可已有图。
 
 ```text
 主侧栏 Explorer
-  [+ Node] [+ Graph]
+  Explorer
+  Project Name                 [+ Node] [+ Graph]
   Graph
     Int
     Add

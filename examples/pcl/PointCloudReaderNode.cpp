@@ -14,7 +14,7 @@ constexpr const char* kPointcloudOutId = "pointcloud_out";
 namespace tg {
 PointCloudReaderNode::PointCloudReaderNode()
     : outport{PortRef{this, PortType::Out, kPointcloudOutIndex}} {
-  setName("PointCloudReaderNode");
+  setTypeId("PointCloudReaderNode");
   _file_path = addProperty("file_path", std::string());
 }
 

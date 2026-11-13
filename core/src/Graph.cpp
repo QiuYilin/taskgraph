@@ -7,11 +7,64 @@
 
 namespace tg {
 void Graph::addNode(std::shared_ptr<Node> node) {
+  if (node == nullptr) {
+    return;
+  }
+  // 名称为空或与图内已有节点冲突时，按 kind 生成唯一默认名。
+  if (node->getName().empty() || isNodeNameTaken(node->getName(), node.get())) {
+    const std::string base = node->typeId().empty() ? "Node" : node->typeId();
+    node->setName(uniqueNodeName(base));
+  }
   _nodes.push_back(node);
   std::function<void()> task = [node] { node->computeAndUpdateData(); };
   node->_task =
       _taskflow.emplace(task);  // Node保存一个task_主要是删除的时候有用
   node->_task.name(node->getName());
+}
+
+bool Graph::isNodeNameTaken(const std::string& name, const Node* except) const {
+  // 空名永不占用；逐个比对其它节点的 identifier。
+  if (name.empty()) {
+    return false;
+  }
+  for (const auto& other : _nodes) {
+    if (other == nullptr || other.get() == except) {
+      continue;
+    }
+    if (other->getName() == name) {
+      return true;
+    }
+  }
+  return false;
+}
+
+std::string Graph::uniqueNodeName(const std::string& base) const {
+  // 先试基名，再 base2、base3…取最小未占用。
+  if (!isNodeNameTaken(base, nullptr)) {
+    return base;
+  }
+  for (unsigned int suffix = 2;; ++suffix) {
+    const std::string candidate = base + std::to_string(suffix);
+    if (!isNodeNameTaken(candidate, nullptr)) {
+      return candidate;
+    }
+  }
+}
+
+bool Graph::renameNode(std::shared_ptr<Node> node, const std::string& name) {
+  // 空名和撞名都拒绝，界面据此停在编辑态。
+  if (node == nullptr || name.empty()) {
+    return false;
+  }
+  // 改成原名视为 no-op，直接成功。
+  if (node->getName() == name) {
+    return true;
+  }
+  if (isNodeNameTaken(name, node.get())) {
+    return false;
+  }
+  node->setName(name);
+  return true;
 }
 
 void Graph::removeNode(std::shared_ptr<Node> node) {
@@ -47,24 +100,43 @@ void Graph::removeNode(std::shared_ptr<Node> node) {
   _nodes.erase(it);
 }
 
-bool Graph::connect(std::shared_ptr<Node> from, unsigned int port_out,
-                    std::shared_ptr<Node> to, unsigned int port_in) {
-  // 空指针和自环都不连：自环会让同一个 task precede 自己。
-  if (from == nullptr || to == nullptr || from == to) {
+bool Graph::canConnect(const Node::Port* from, const Node::Port* to) const {
+  // 必须先有输出、后有输入，且两端端口都挂在节点上。
+  if (from == nullptr || to == nullptr || !from->is_output || to->is_output ||
+      from->node == nullptr || to->node == nullptr) {
+    return false;
+  }
+  // 自环会让同一个 task precede 自己。
+  if (from->node == to->node) {
     return false;
   }
   // 属性模式下的输入口不接受连线。
-  if (!to->isInputShownAsPort(port_in)) {
+  if (!to->node->isInputShownAsPort(to->index)) {
+    return false;
+  }
+  // 类型身份必须一致；name 只是解释方式，不参与连接判断。
+  if (!NodeDataTypeCompatible(from->data_type, to->data_type)) {
     return false;
   }
   // 同一对端口已经连过就不再加一条，避免重复 precede。
-  const bool already_connected =
-      std::any_of(from->_next.begin(), from->_next.end(),
-                  [&](const ConnectionInfo& conn) {
-                    return conn.adj == to && conn.port_out == port_out &&
-                           conn.port_in == port_in;
-                  });
-  if (already_connected) {
+  const auto& outgoing = from->node->outgoing();
+  return std::none_of(outgoing.begin(), outgoing.end(),
+                      [&](const ConnectionInfo& conn) {
+                        return conn.adj.get() == to->node &&
+                               conn.port_out == from->index &&
+                               conn.port_in == to->index;
+                      });
+}
+
+bool Graph::connect(std::shared_ptr<Node> from, unsigned int port_out,
+                    std::shared_ptr<Node> to, unsigned int port_in) {
+  // 空指针不连；同一节点、类型、露面方式和重复边由 canConnect 统一判断。
+  if (from == nullptr || to == nullptr) {
+    return false;
+  }
+  const Node::Port* output = from->outputPort(port_out);
+  const Node::Port* input = to->inputPort(port_in);
+  if (!canConnect(output, input)) {
     return false;
   }
   from->_next.push_back(ConnectionInfo{to, port_out, port_in});

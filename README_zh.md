@@ -62,8 +62,11 @@ int main() {
 ![simple 示例界面](docs/images/simple-ui.png)
 
 - 工程是目录：`project.json`、`graphs/`、`assets/`。File 菜单：New / Open / Save。工程内路径存相对路径；会话在用户配置目录的 `taskgraph/session.json`。
-- 画布连线按端口类型。输入口与属性是同一槽的两种露面（**Convert to Property** / **Convert to Port**）。
-- 登记时用与 `Node::getName()` 一致的 `type_id`（可选界面 `caption`）。`simple` 源码带 `demo-project` 模板；构建复制到可执行文件旁再 `openProject`，改图不会弄脏仓库。
+- 画布连线按端口类型。针脚默认圆，颜色由类型 id 哈希；作者可在 `NodeData_` 上可选指定 `PinShape` / `PortTypeColor`。编辑区工具栏 **Show Type Names** 在功能名上方叠类型名，并在节点 identifier 上方补一行 kind；类型名用 VS Code `entity.name.type` token 色，针脚始终跟功能名对齐。输入口与属性是同一槽的两种露面（**Convert to Property** / **Convert to Port**）。
+- 所有编辑器页签关闭时，编辑区会提示从 Explorer 打开 graph，或使用 **+ Graph** 新建。
+- 每个节点类登记固定的 `type_id`（kind，可选界面 `caption`）。`node->typeId()` 是 kind，`node->getName()` 是图内唯一 identifier：入图时自动命名（`IntNode`、`IntNode2`…），可在 Explorer 用 **Rename** / `F2` 改名；同一张图内重名会被拒绝。`simple` 源码带 `demo-project` 模板；构建复制到可执行文件旁再 `openProject`，改图不会弄脏仓库。
+- **File > Preferences > Theme** 可在 **Dark Modern** / **Light Modern** 间即时切换；选择写入 `session.json`，下次启动恢复。色值来自 `ui/themes/` 下随 VS Code 附带的官方主题 JSON（MIT，见 `NOTICE.md`），改主题不需要改 `Ui` 代码。
+- 工作台扩展点在 `WorkbenchParts.hpp`：命令注册表、活动栏项、Explorer 标题动作、面板视图与工具栏。默认不注册可见项，注册后才显示；现有界面仍是精简骨架。开启活动栏或新增面板视图会重建一次停靠布局，手工拖过的位置会重置。
 
 ```
 #include "taskgraph.hpp"
@@ -82,4 +85,3 @@ int main() {
     return 0;
 }
 ```
-

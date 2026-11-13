@@ -18,7 +18,7 @@ constexpr const char* kPointcloudInId = "pointcloud_in";
 namespace tg {
 PointCloudWriterNode::PointCloudWriterNode()
     : inport{PortRef{this, PortType::In, kPointcloudInIndex}} {
-  setName("PointCloudWriterNode");
+  setTypeId("PointCloudWriterNode");
   _file_path = addProperty("file_path", std::string());
   _file_format = addProperty("file_format", 0);
   _time_suffix = addProperty("time_suffix", false);
