@@ -6,19 +6,21 @@
 
 # TaskGraph
 
-A wrapper for the parallel task framework [taskflow](https://github.com/taskflow/taskflow) to enable it to meet the needs of data flow programming and provide Ui components.
+A C++17 wrapper around [taskflow](https://github.com/taskflow/taskflow) for data-flow graphs, with an optional ImGui workbench.
 
 # Dependencies
 
-This library is built with C++17. Use [vcpkg](https://github.com/microsoft/vcpkg), and take Taskflow 3.11.0 from [QiuYilin/vcpkg-registry](https://github.com/QiuYilin/vcpkg-registry). That registry keeps the last Taskflow release that compiles as C++17.
+C++17. Prefer [vcpkg](https://github.com/microsoft/vcpkg). Taskflow must be **3.11.0** (last release that builds as C++17); take it from the personal registry [QiuYilin/vcpkg-registry](https://github.com/QiuYilin/vcpkg-registry).
 
 ## Classic mode
 
-Copy the `registries` entry from [`.github/manifest/vcpkg-configuration.json`](.github/manifest/vcpkg-configuration.json) into `vcpkg-configuration.json` at the vcpkg root. Add `default-registry`, and set its `baseline` to the commit of that vcpkg checkout. `taskflow` is resolved from the personal registry. Other ports stay on that checkout.
+Copy the `registries` entry from [`.github/manifest/vcpkg-configuration.json`](.github/manifest/vcpkg-configuration.json) into `vcpkg-configuration.json` at the vcpkg root. Add `default-registry` and set its `baseline` to the commit of that vcpkg checkout. `taskflow` resolves from the personal registry; other ports stay on that checkout.
 
 ```
-vcpkg install taskflow
+vcpkg install taskflow spdlog nlohmann-json
 ```
+
+For **core + ui**, also install `portable-file-dialogs`.
 
 ## Manifest mode
 
@@ -26,11 +28,9 @@ Use [`.github/manifest/vcpkg.json`](.github/manifest/vcpkg.json) and [`.github/m
 
 # Usage
 
-There are two ways to use TaskGraph: **core** only, or **core + ui**.
-
 ## core
 
-Use `tg::Controller` / `tg::Graph` to build a graph, connect ports, and run. Port accessors use the same names as pin captions (`outport.out_data`, `inport.lhs`, …). No window or ImGui is required. The same core can sit behind another UI stack—Qt, a web front end, or your own toolkit—without taking the bundled `ui` module.
+Build a graph with `tg::Controller` / `tg::Graph`, connect ports by caption names (`outport.out_data`, `inport.lhs`, …), and `run`. No window required; pair core with another UI if you prefer.
 
 ```
 #include "taskgraph.hpp"
@@ -57,11 +57,13 @@ int main() {
 
 ## core + ui
 
-Keep the same `tg::Controller`, register node kinds on `Ui`, and call `Run()` for a VS Code–style workbench (Explorer, canvas, Properties, output log). You can still create or run graphs from code; the UI edits that controller.
+Same `tg::Controller`: register kinds and open a project on **core**, then wrap with `Ui` and `Run()` for a VS Code–style workbench.
 
 ![simple example UI](docs/images/simple-ui.png)
 
-Canvas wires follow port data types (mismatch is red and rejected). Input ports and properties are two presentations of the same slot: **Convert to Property** / **Convert to Port** in the pin or Properties context menu. Image and point-cloud inputs use a file path when shown as properties. Nodes that start with no inputs only have normal properties.
+- Project on disk: directory with `project.json`, `graphs/`, `assets/`. File menu: New / Open / Save. Paths under the root are stored relative; session lives in user config as `taskgraph/session.json`.
+- Canvas wires follow port types. Input ports and properties are two presentations of the same slot (**Convert to Property** / **Convert to Port**).
+- Register with a stable `type_id` matching `Node::getName()` (optional UI `caption`). `simple` ships a `demo-project` template in source; the build copies it next to the executable and `openProject` opens that copy so edits do not dirty the repo.
 
 ```
 #include "taskgraph.hpp"
@@ -70,9 +72,12 @@ Canvas wires follow port data types (mismatch is red and rejected). Input ports 
 #include "Ui.hpp"
 int main() {
     tg::Controller project;
+    project.registerNodeType(
+        "IntNode", [] { return std::make_shared<tg::IntNode>(); }, "Int");
+    project.registerNodeType(
+        "AddNode", [] { return std::make_shared<tg::AddNode>(); }, "Add");
+    project.openProject(/* demo-project next to the executable */);
     Ui ui(project);
-    ui.addNodeKind("Int", [] { return std::make_shared<tg::IntNode>(); });
-    ui.addNodeKind("Add", [] { return std::make_shared<tg::AddNode>(); });
     ui.Run();
     return 0;
 }

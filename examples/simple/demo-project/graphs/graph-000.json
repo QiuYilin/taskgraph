@@ -1,0 +1,77 @@
+{
+  "name": "Graph",
+  "nodes": [
+    {
+      "id": 0,
+      "type": "IntNode",
+      "name": "IntNode",
+      "properties": [
+        {
+          "valueType": "int",
+          "value": 1,
+          "name": "value"
+        }
+      ],
+      "inputs": [],
+      "position": {
+        "x": 0.0,
+        "y": 0.0
+      }
+    },
+    {
+      "id": 1,
+      "type": "IntNode",
+      "name": "IntNode",
+      "properties": [
+        {
+          "valueType": "int",
+          "value": 2,
+          "name": "value"
+        }
+      ],
+      "inputs": [],
+      "position": {
+        "x": 0.0,
+        "y": 120.0
+      }
+    },
+    {
+      "id": 2,
+      "type": "AddNode",
+      "name": "AddNode",
+      "properties": [],
+      "inputs": [
+        {
+          "index": 0,
+          "presentation": "port",
+          "valueType": "int",
+          "value": 0
+        },
+        {
+          "index": 1,
+          "presentation": "port",
+          "valueType": "int",
+          "value": 0
+        }
+      ],
+      "position": {
+        "x": 280.0,
+        "y": 40.0
+      }
+    }
+  ],
+  "connections": [
+    {
+      "from": 0,
+      "out": 0,
+      "to": 2,
+      "in": 0
+    },
+    {
+      "from": 1,
+      "out": 0,
+      "to": 2,
+      "in": 1
+    }
+  ]
+}

@@ -6,7 +6,8 @@
             "name": "taskflow",
             "version>=": "3.11.0"
         },
-        "spdlog"
+        "spdlog",
+        "nlohmann-json"
     ],
     "features": {
         "ui": {
@@ -25,7 +26,8 @@
                 {
                     "name": "imgui-node-editor",
                     "version>=": "0.9.3"
-                }
+                },
+                "portable-file-dialogs"
             ]
           },
         "examples":{

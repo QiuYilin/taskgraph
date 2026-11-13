@@ -1,0 +1,9 @@
+{
+  "fileVersion": 1,
+  "name": "Simple Demo",
+  "graphs": [
+    {
+      "file": "graphs/graph-000.json"
+    }
+  ]
+}

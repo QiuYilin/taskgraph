@@ -7,7 +7,7 @@ alwaysApply: true
 
 改到用户能看见的界面时，按 VS Code 的工作台来做。入口是 <https://code.visualstudio.com/api/ux-guidelines/overview>。活动栏、主侧栏、辅助侧栏、编辑区、面板、状态栏和命令面板的摆法以这页为准，不要凭记忆另写一套。
 
-界面仍用现有的 ImGui。要求落到现有窗口上，不换成 Electron。ImGui 没有官方 VS Code 主题，颜色用本仓库的 Dark Modern 色板（`ApplyVsCodeDarkModernColors`），页签栏与画布共用，不要再各写一套默认色。
+界面仍用现有的 ImGui。要求落到现有窗口上，不换成 Electron。ImGui 没有官方 VS Code 主题，视觉 token 与对照出处在 `Theme.hpp` / `ApplyTheme`（今日实现为 Dark Modern）；页签栏与画布共用同一套编辑区底色，不要再各写一套默认色。`Ui.hpp` 布局注释不写「对照 VS Code」，只调主题 API 做分区风格设置。主侧栏与编辑区通过 `WorkbenchFocus` 共享选中与页签（立即模式 Observer / pull），不要写成两边互相推送。
 
 回复里写明对照了哪一块。这次改动不涉及界面时，写明核对过，不要默默跳过。
 
@@ -18,3 +18,14 @@ alwaysApply: true
 - 不要出现什么：例如不要第二条工具栏、不要活动栏。
 
 不要把这些当成同一块：标题栏菜单栏、标题栏右侧动作、编辑区工具栏、状态栏项。
+
+详细布局与工程名露出以 wolai「开发 → 桌面应用 → 工作台 → 工作台布局」为准（https://www.wolai.com/a6QGNG4jRxPfRF5ZKF9tDv ）。改标题栏、主侧栏、状态栏、浮层 / Quick Pick 前先对那一页，不要只凭记忆补工程名位置或列表浮层样式。
+
+工程名露出（四处，勿漏）：
+
+| 位置 | 显示什么 |
+| --- | --- |
+| 标题栏命令中心 | 工程名（无工程则 Untitled） |
+| 系统窗口标题 | `工程名[*] - 应用名` |
+| 主侧栏 Explorer 树根 | 工程名 |
+| 状态栏左侧 | 工程名 |
