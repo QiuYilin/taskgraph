@@ -1,5 +1,17 @@
+include(CMakeFindDependencyMacro)
 include("${CMAKE_CURRENT_LIST_DIR}/taskgraphUiTargets.cmake")
 
-find_dependency(imgui REQUIRED)
+find_dependency(imgui CONFIG REQUIRED)
+find_dependency(unofficial-imgui-node-editor CONFIG REQUIRED)
 find_dependency(OpenGL REQUIRED)
-find_dependency(nlohmann_json REQUIRED)
+find_dependency(nlohmann_json CONFIG REQUIRED)
+
+find_path(PORTABLE_FILE_DIALOGS_INCLUDE_DIRS "portable-file-dialogs.h")
+if(NOT PORTABLE_FILE_DIALOGS_INCLUDE_DIRS)
+  set(${CMAKE_FIND_PACKAGE_NAME}_FOUND FALSE)
+  set(${CMAKE_FIND_PACKAGE_NAME}_NOT_FOUND_MESSAGE
+      "portable-file-dialogs.h not found")
+  return()
+endif()
+set_property(TARGET taskgraph::Ui APPEND PROPERTY
+    INTERFACE_INCLUDE_DIRECTORIES "${PORTABLE_FILE_DIALOGS_INCLUDE_DIRS}")

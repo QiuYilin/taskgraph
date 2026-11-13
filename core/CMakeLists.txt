@@ -19,7 +19,7 @@ set(CPP_SOURCE_FILES
     src/ProjectIo.cpp
     src/Log.cpp
     )
-find_package(Taskflow REQUIRED)
+find_package(Taskflow CONFIG REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 add_library(${component} SHARED ${HPP_HEADER_FILES} ${CPP_SOURCE_FILES})
@@ -28,7 +28,7 @@ add_library(${project_name}::${component} ALIAS ${component})
 
 target_include_directories(${component} PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    $<INSTALL_INTERFACE:${CMAKE_INSTALL_PREFIX}/include/taskgraph>
+    $<INSTALL_INTERFACE:include/taskgraph>
     )
 
 target_link_libraries(${component} PUBLIC
