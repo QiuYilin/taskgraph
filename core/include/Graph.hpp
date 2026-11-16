@@ -13,6 +13,22 @@ class Graph {
   explicit Graph(std::string name) : _name(std::move(name)) {}
   void addNode(std::shared_ptr<Node> node);
 
+  /** \brief 重命名节点：identifier 须非空且在本图内唯一。
+   *
+   *  改名是显式操作；撞名时不写回，界面据此停在编辑态。
+   *
+   *  \param[in] node 目标节点。
+   *  \param[in] name 新 identifier。
+   *  \return 成功返回 true；同名于自己视为成功；空名或与其它节点重名返回 false，不改。
+   */
+  bool renameNode(std::shared_ptr<Node> node, const std::string& name);
+
+  /** \brief 该 identifier 是否已被图内其它节点占用（供界面实时校验）。
+   *  \param[in] name 待查 identifier。
+   *  \param[in] except 排除的节点（通常是正在改名的自己）；可为空。
+   */
+  bool isNodeNameTaken(const std::string& name, const Node* except) const;
+
   /** \brief 从图中删除一个节点，连同它的所有连边。
    *
    *  其它节点 `_next` / `_previous` 中指向该节点的 `ConnectionInfo`
@@ -22,9 +38,22 @@ class Graph {
    */
   void removeNode(std::shared_ptr<Node> node);
 
+  /** \brief 判断一对端口能否连接，不修改图。
+   *
+   *  两端须是输出→输入、不是同一节点；下游输入仍以端口露面；两端底层
+   *  数据 id 非空且相等；同一对端口没有重复边。画布拉线预览与 connect
+   *  共用这条规则。
+   *
+   *  \param[in] from 上游输出端口。
+   *  \param[in] to 下游输入端口。
+   *  \return 可以连接时返回 true。
+   */
+  bool canConnect(const Node::Port* from, const Node::Port* to) const;
+
   /** \brief 把上游节点的一个输出端口连到下游节点的一个输入端口。
    *
-   *  任一端为空、同一节点连自己、或同一对端口已经连过时，不新增连边。
+   *  规则见 canConnect：任一端为空、同一节点连自己、类型不相容、输入以
+   *  属性露面、或同一对端口已经连过时，不新增连边。
    *
    *  \param[in] from 上游节点。
    *  \param[in] port_out 上游输出端口号。
@@ -71,6 +100,9 @@ class Graph {
   std::string dump();
 
  private:
+  /** \brief 按基名取图内最小未占用的 identifier：base、base2、base3… */
+  std::string uniqueNodeName(const std::string& base) const;
+
   std::vector<std::shared_ptr<Node>> _nodes;
   tf::Taskflow _taskflow;
   std::string _name{"Graph"};

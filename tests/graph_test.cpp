@@ -5,6 +5,8 @@
 #include <cstdlib>
 #include <iostream>
 #include <memory>
+#include <string>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -21,6 +23,9 @@ void expect(bool condition, const char* message) {
 
 class PortNode : public tg::Node {
  public:
+  PortNode(std::string data_id = "test", std::string data_name = "Test")
+      : _data_id(std::move(data_id)), _data_name(std::move(data_name)) {}
+
   unsigned int nFixedPorts(tg::PortType port_type) const override {
     constexpr unsigned int kPortCount = 2;
     switch (port_type) {
@@ -32,7 +37,7 @@ class PortNode : public tg::Node {
   }
 
   tg::NodeDataType fixedDataType(tg::PortType, unsigned int) const override {
-    return tg::NodeDataType{"test", "Test"};
+    return tg::NodeDataType{_data_id, _data_name};
   }
 
   const char* fixedPortId(tg::PortType, unsigned int index) const override {
@@ -53,6 +58,10 @@ class PortNode : public tg::Node {
   }
 
   std::vector<unsigned int> received_ports;
+
+ private:
+  std::string _data_id;
+  std::string _data_name;
 };
 
 // 与 examples 的 IntData type id 一致，供 tryAsPropertyValue 同步属性。
@@ -201,6 +210,34 @@ int main() {
   expect(synced != nullptr && std::holds_alternative<int>(synced->value) &&
              std::get<int>(synced->value) == 0,
          "清空入端口应把绑定属性恢复为默认 int 0");
+
+  // 数据 id 表示底层身份；同一数据可以有不同的端口解释名。
+  tg::Graph typed_graph;
+  auto typed_source = std::make_shared<PortNode>("Vec3f", "Point");
+  auto same_data = std::make_shared<PortNode>("Vec3f", "Vector");
+  auto other_data = std::make_shared<PortNode>("Mat4", "Point");
+  auto empty_data = std::make_shared<PortNode>("", "");
+  for (const auto& node : {typed_source, same_data, other_data, empty_data}) {
+    typed_graph.addNode(node);
+  }
+  expect(typed_graph.canConnect(typed_source->outputPort(0),
+                                same_data->inputPort(0)),
+         "同数据 id、不同 name 应可连接");
+  expect(typed_graph.connect(typed_source->outputPort(0),
+                             same_data->inputPort(0)),
+         "同数据 id、不同 name 应能落边");
+  expect(!typed_graph.canConnect(typed_source->outputPort(0),
+                                 other_data->inputPort(0)),
+         "不同数据 id 不应相容");
+  expect(!typed_graph.connect(typed_source, 0, other_data, 0),
+         "不同数据 id 不应落边");
+  expect(!typed_graph.connect(typed_source, 0, empty_data, 0),
+         "空数据 id 不应落边");
+  expect(!typed_graph.canConnect(typed_source->outputPort(0),
+                                 same_data->inputPort(0)),
+         "已连接的同端口对不应再通过预览");
+  expect(!typed_graph.connect(typed_source, 99, same_data, 0),
+         "越界输出端口不应落边");
 
   return g_failures == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }

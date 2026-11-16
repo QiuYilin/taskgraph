@@ -9,6 +9,7 @@
 #include <fstream>
 #include <iostream>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <variant>
 
@@ -30,7 +31,7 @@ using TestIntData = tg::NodeData_<int, kIntId, kIntName>;
 class SourceNode : public tg::Node {
  public:
   SourceNode() {
-    setName("SourceNode");
+    setTypeId("SourceNode");
     _value = addProperty("value", 0);
   }
 
@@ -67,7 +68,7 @@ class SourceNode : public tg::Node {
 
 class SinkNode : public tg::Node {
  public:
-  SinkNode() { setName("SinkNode"); }
+  SinkNode() { setTypeId("SinkNode"); }
 
   unsigned int nFixedPorts(tg::PortType port_type) const override {
     return port_type == tg::PortType::In ? 1 : 0;
@@ -97,11 +98,26 @@ class SinkNode : public tg::Node {
   }
 };
 
+class TextSinkNode : public SinkNode {
+ public:
+  TextSinkNode() { setTypeId("TextSinkNode"); }
+
+  tg::NodeDataType fixedDataType(tg::PortType port_type,
+                                 unsigned int) const override {
+    if (port_type == tg::PortType::In) {
+      return tg::NodeDataType{"TextData", "Text"};
+    }
+    return {};
+  }
+};
+
 void RegisterTypes(tg::Controller& controller) {
   controller.registerNodeType("SourceNode",
                               [] { return std::make_shared<SourceNode>(); });
   controller.registerNodeType("SinkNode",
                               [] { return std::make_shared<SinkNode>(); });
+  controller.registerNodeType("TextSinkNode",
+                              [] { return std::make_shared<TextSinkNode>(); });
 }
 
 std::filesystem::path MakeTempRoot(const char* leaf) {
@@ -135,6 +151,7 @@ void TestRoundtripWithPoseAndRelativePath() {
   auto sink = std::make_shared<SinkNode>();
   graph->addNode(source);
   graph->addNode(sink);
+  expect(graph->renameNode(source, "SourceA"), "rename source");
   expect(graph->connect(source, 0, sink, 0), "connect source to sink");
   writer.addGraph(graph);
 
@@ -151,7 +168,7 @@ void TestRoundtripWithPoseAndRelativePath() {
   expect(writer.saveProjectAs(
              root,
              [&](const tg::Node& node, tg::NodePose& out_pose) {
-               if (node.getName() == "SourceNode") {
+               if (node.typeId() == "SourceNode") {
                  out_pose = saved_pose;
                  return true;
                }
@@ -175,7 +192,7 @@ void TestRoundtripWithPoseAndRelativePath() {
   expect(reader.openProject(
              root,
              [&](tg::Node& node, const tg::NodePose& pose) {
-               if (node.getName() == "SourceNode") {
+               if (node.typeId() == "SourceNode") {
                  loaded_pose = pose;
                  got_pose = true;
                }
@@ -191,6 +208,8 @@ void TestRoundtripWithPoseAndRelativePath() {
          "connection restored");
 
   auto loaded_source = reader.getGraphs()[0]->getNodes()[0];
+  expect(loaded_source->getName() == "SourceA", "node identifier roundtrip");
+  expect(loaded_source->typeId() == "SourceNode", "node kind roundtrip");
   expect(std::get<int>(loaded_source->getProperties().front()->value) == 42,
          "property value");
 
@@ -387,6 +406,112 @@ void TestSaveWithoutPoseGetter() {
   std::filesystem::remove_all(root, error);
 }
 
+void TestNodeAutoNamingAndRename() {
+  tg::Graph graph("Names");
+  auto first = std::make_shared<SourceNode>();
+  auto second = std::make_shared<SourceNode>();
+  graph.addNode(first);
+  graph.addNode(second);
+  expect(first->getName() == "SourceNode", "first node keeps base name");
+  expect(second->getName() == "SourceNode2", "second node auto-numbered");
+
+  expect(!graph.renameNode(second, "SourceNode"), "duplicate rename rejected");
+  expect(second->getName() == "SourceNode2", "rejected rename keeps name");
+  expect(graph.renameNode(second, "Custom"), "unique rename accepted");
+  expect(second->getName() == "Custom", "rename applied");
+  expect(graph.renameNode(second, "Custom"), "rename to same name succeeds");
+}
+
+void TestV1MigrationDedupes() {
+  const std::filesystem::path root =
+      MakeTempRoot("taskgraph-project-test-v1-migration");
+  std::error_code error;
+  std::filesystem::create_directories(root / tg::kProjectGraphsDirectoryName,
+                                      error);
+  {
+    std::ofstream manifest(root / tg::kProjectManifestFileName);
+    manifest << R"({
+  "fileVersion": 1,
+  "name": "Legacy",
+  "graphs": [{ "file": "graphs/graph-000.json" }]
+})";
+  }
+  {
+    std::ofstream graph_file(root / "graphs" / "graph-000.json");
+    graph_file << R"({
+  "name": "Legacy",
+  "nodes": [
+    { "id": 0, "type": "SourceNode", "name": "SourceNode", "properties": [], "inputs": [] },
+    { "id": 1, "type": "SourceNode", "name": "SourceNode", "properties": [], "inputs": [] },
+    { "id": 2, "type": "SinkNode", "name": "SinkNode", "properties": [], "inputs": [] }
+  ],
+  "connections": []
+})";
+  }
+
+  tg::Controller reader;
+  RegisterTypes(reader);
+  expect(reader.openProject(root), "open v1 project");
+  expect(reader.getGraphs().size() == 1, "v1 loads one graph");
+  const auto& nodes = reader.getGraphs().front()->getNodes();
+  expect(nodes.size() == 3, "v1 loads three nodes");
+  expect(nodes[0]->getName() == "SourceNode", "v1 first keeps base name");
+  expect(nodes[1]->getName() == "SourceNode2", "v1 duplicate deduped");
+  expect(reader.isDirty(), "v1 migration marks dirty");
+
+  std::filesystem::remove_all(root, error);
+}
+
+void TestLoadDropsIncompatibleConnection() {
+  const std::filesystem::path root =
+      MakeTempRoot("taskgraph-project-test-incompatible-edge");
+  std::error_code error;
+
+  tg::Controller writer;
+  RegisterTypes(writer);
+  auto graph = std::make_shared<tg::Graph>("BadEdge");
+  auto source = std::make_shared<SourceNode>();
+  auto sink = std::make_shared<SinkNode>();
+  graph->addNode(source);
+  graph->addNode(sink);
+  expect(graph->connect(source, 0, sink, 0), "connect compatible edge");
+  writer.addGraph(graph);
+  expect(writer.saveProjectAs(root), "save project before corrupting edge");
+
+  const std::filesystem::path graph_file = root / "graphs" / "graph-000.json";
+  std::string text;
+  {
+    std::ifstream input(graph_file, std::ios::binary);
+    std::stringstream buffer;
+    buffer << input.rdbuf();
+    text = buffer.str();
+  }
+  const std::string from = "\"type\": \"SinkNode\"";
+  const std::string to = "\"type\": \"TextSinkNode\"";
+  const std::size_t position = text.find(from);
+  expect(position != std::string::npos, "saved sink type found");
+  if (position != std::string::npos) {
+    text.replace(position, from.size(), to);
+    std::ofstream output(graph_file, std::ios::binary | std::ios::trunc);
+    output << text;
+  }
+
+  tg::Controller reader;
+  RegisterTypes(reader);
+  std::string project_name;
+  bool migrated = false;
+  expect(tg::ProjectIo::load(reader, root, project_name, {}, &migrated),
+         "load project with incompatible edge");
+  expect(migrated, "dropped edge marks project for save");
+  expect(reader.getGraphs().size() == 1, "one graph after dropping edge");
+  expect(reader.getGraphs().front()->getNodes().size() == 2,
+         "both nodes still load");
+  expect(reader.getGraphs().front()->getNodes().front()->outgoing().empty(),
+         "incompatible edge dropped");
+
+  std::filesystem::remove_all(root, error);
+}
+
 }  // namespace
 
 int main() {
@@ -397,6 +522,9 @@ int main() {
   TestBadOpenKeepsExistingGraphs();
   TestRelativePathHelpers();
   TestSaveWithoutPoseGetter();
+  TestNodeAutoNamingAndRename();
+  TestV1MigrationDedupes();
+  TestLoadDropsIncompatibleConnection();
 
   if (g_failures != 0) {
     std::cerr << g_failures << " failure(s)\n";

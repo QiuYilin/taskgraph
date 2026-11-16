@@ -45,6 +45,7 @@ void TestSessionSaveLoadRoundtrip() {
   written.touchRecent(std::filesystem::path("C:/projects/beta"));
   written.open_graph_names = {"Graph", "Graph 2"};
   written.last_browse_dir = "C:/browse/cache";
+  written.theme_id = "light-modern";
   expect(written.save(), "save session");
   expect(std::filesystem::exists(UiSession::sessionFilePath()),
          "session.json exists");
@@ -59,6 +60,7 @@ void TestSessionSaveLoadRoundtrip() {
   expect(loaded.open_graph_names[0] == "Graph", "first open graph name");
   expect(loaded.last_browse_dir == "C:/browse/cache",
          "last_browse_dir roundtrips");
+  expect(loaded.theme_id == "light-modern", "theme_id roundtrips");
 
   std::error_code error;
   std::filesystem::remove_all(config, error);

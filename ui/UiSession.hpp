@@ -18,6 +18,7 @@ struct UiSession {
   static constexpr const char* kJsonKeyLastRoot = "last_root";
   static constexpr const char* kJsonKeyOpenGraphNames = "open_graph_names";
   static constexpr const char* kJsonKeyLastBrowseDir = "last_browse_dir";
+  static constexpr const char* kJsonKeyThemeId = "theme_id";
   static constexpr const char* kEnvAppData = "APPDATA";
   static constexpr const char* kEnvXdgConfigHome = "XDG_CONFIG_HOME";
   static constexpr const char* kEnvHome = "HOME";
@@ -30,6 +31,8 @@ struct UiSession {
   std::vector<std::string> open_graph_names;
   /** \brief 上次 Browse 落点目录（工程选目录或属性选文件的父目录）。 */
   std::string last_browse_dir;
+  /** \brief 当前 VS Code 主题 id；空表示使用默认主题。 */
+  std::string theme_id;
 
   /** \brief 测试用：非空则 configDirectory / session 读写都走该目录。 */
   static std::filesystem::path& configDirectoryOverride() {
@@ -113,6 +116,10 @@ struct UiSession {
       session.last_browse_dir =
           document.at(kJsonKeyLastBrowseDir).get<std::string>();
     }
+    if (document.contains(kJsonKeyThemeId) &&
+        document.at(kJsonKeyThemeId).is_string()) {
+      session.theme_id = document.at(kJsonKeyThemeId).get<std::string>();
+    }
     return session;
   }
 
@@ -127,6 +134,7 @@ struct UiSession {
     document[kJsonKeyLastRoot] = last_root;
     document[kJsonKeyOpenGraphNames] = open_graph_names;
     document[kJsonKeyLastBrowseDir] = last_browse_dir;
+    document[kJsonKeyThemeId] = theme_id;
     std::ofstream output(sessionFilePath(), std::ios::trunc);
     if (!output) {
       return false;

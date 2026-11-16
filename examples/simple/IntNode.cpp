@@ -10,7 +10,7 @@ constexpr const char* kOutDataId = "out_data";
 namespace tg {
 IntNode::IntNode()
     : outport{PortRef{this, PortType::Out, kOutDataIndex}} {
-  setName("IntNode");
+  setTypeId("IntNode");
   _int_value = addProperty("value", 0);
 }
 

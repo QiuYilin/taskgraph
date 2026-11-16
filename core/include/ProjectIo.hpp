@@ -22,10 +22,16 @@ class ProjectIo {
                    const std::string& project_name,
                    const NodePoseGetter& pose_getter = {});
 
-  /** \brief 从工程目录加载图到 controller（先清空已有图）。 */
+  /** \brief 从工程目录加载图到 controller（先清空已有图）。
+   *
+   *  兼容 v1（节点 name 等于 type、允许重名）与当前 v2。
+   *
+   *  \param[out] out_migrated 本次载入做了 v1→v2 迁移、名称去重，或丢弃了非法/重复边时写 true；可为空。
+   */
   static bool load(Controller& controller, const std::filesystem::path& root,
                    std::string& out_project_name,
-                   const NodePoseSetter& pose_setter = {});
+                   const NodePoseSetter& pose_setter = {},
+                   bool* out_migrated = nullptr);
 
   /** \brief 绝对路径若在工程根下则改为相对正斜杠路径，否则原样返回。 */
   static std::string toProjectRelative(const std::filesystem::path& root,

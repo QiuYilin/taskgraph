@@ -21,7 +21,7 @@ AddNode::AddNode()
     : inport{PortRef{this, PortType::In, kInLhsIndex},
              PortRef{this, PortType::In, kInRhsIndex}},
       outport{PortRef{this, PortType::Out, kOutSumIndex}} {
-  setName("AddNode");
+  setTypeId("AddNode");
 }
 
 unsigned int AddNode::nFixedPorts(PortType port_type) const {

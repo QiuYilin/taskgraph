@@ -5,10 +5,38 @@
 #include <variant>
 
 namespace tg {
-struct NodeDataType {
-  std::string id;
-  std::string name;
+/** \brief 针脚几何形；无业务含义，由类型作者可选指定。 */
+enum class PinShape { Circle, Square, Diamond };
+
+/** \brief 可选显式针脚/连线色（0..1）。未设置时 UI 对 type id 哈希。 */
+struct PortTypeColor {
+  float r = 0.0f;
+  float g = 0.0f;
+  float b = 0.0f;
+  float a = 1.0f;
 };
+
+struct NodeDataType {
+  std::string id;   /**< 底层数据身份；相同 id 才表示同一份数据。 */
+  std::string name; /**< 该端口对数据的解释/显示名，可随端口语义不同。 */
+  PinShape shape = PinShape::Circle;
+  bool has_color = false;
+  PortTypeColor color{};
+};
+
+/** \brief 判断输出、输入两端的底层数据是否相容。
+ *
+ *  id 表示数据身份，name 只表示解释方式。同 id、不同 name 可以连接；
+ *  任一端 id 为空时没有可比较的数据身份，按不相容处理。
+ *
+ *  \param[in] output 输出端口的数据类型。
+ *  \param[in] input 输入端口的数据类型。
+ *  \return 两端 id 非空且相等时返回 true。
+ */
+inline bool NodeDataTypeCompatible(const NodeDataType& output,
+                                   const NodeDataType& input) {
+  return !output.id.empty() && output.id == input.id;
+}
 
 /** \brief 属性表可编辑值；与输入口绑定时由 NodeData 同步可映类型（如 int）。 */
 using PropertyValue = std::variant<int, std::string, bool>;
@@ -23,7 +51,7 @@ class NodeData {
   NodeData &operator=(NodeData &&) = delete;
 
   virtual bool sameType(NodeData const &nodeData) const {
-    return (this->type().id == nodeData.type().id);
+    return NodeDataTypeCompatible(this->type(), nodeData.type());
   }
 
   /// Type for inner use
@@ -38,9 +66,13 @@ class NodeData {
 
 /// @brief Completely defined nodedata template.
 /// @tparam T type of data
-/// @tparam id  id of nodedata
-/// @tparam name name of nodedata. 类型显示名；端口功能名用 Port::caption。
-template <typename T, const char *id, const char *name>
+/// @tparam id 底层数据身份；相同 id 的 NodeData 可以互相连接。
+/// @tparam name 该端口对数据的解释/显示名；同一 id 可配不同 name。
+/// @tparam shape 可选针脚几何形；默认圆。
+/// @tparam color 非空则带显式色；空指针则 UI 对 id 哈希。
+template <typename T, const char *id, const char *name,
+          PinShape shape = PinShape::Circle,
+          const PortTypeColor *color = nullptr>
 class NodeData_ : public NodeData {
  public:
   NodeData_() = default;
@@ -53,7 +85,13 @@ class NodeData_ : public NodeData {
   static const char* displayName() { return name; }
 
   NodeDataType type() const override {
-    return NodeDataType{std::string(id), std::string(name)};
+    NodeDataType data_type{std::string(id), std::string(name)};
+    data_type.shape = shape;
+    if (color != nullptr) {
+      data_type.has_color = true;
+      data_type.color = *color;
+    }
+    return data_type;
   }
 
   /** \brief 取得载荷的只读引用。

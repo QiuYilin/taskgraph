@@ -252,6 +252,15 @@ class UiBase {
 
   bool CoveringWorkArea() const { return _covering_work_area; }
 
+  // 运行中切主题：只换颜色和清除色，不重新缩放 metrics / 布局。
+  void ApplyWorkbenchTheme(const Theme& theme) {
+    ImGuiStyle& style = ImGui::GetStyle();
+    theme_detail::SetActiveTheme(theme);
+
+    theme_detail::ApplyThemeColors(style, theme.tokens);
+    _clear_color = theme.tokens.editor_background;
+  }
+
   void CoverWorkArea() {
     // 已经铺满工作区就不用再记一次还原位置。
     if (_covering_work_area) {
