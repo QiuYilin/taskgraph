@@ -31,7 +31,7 @@ MatchTemplateNode::MatchTemplateNode()
              PortRef{this, PortType::In, kImageMaskIndex}},
       outport{PortRef{this, PortType::Out, kImageOutIndex},
               PortRef{this, PortType::Out, kLocOutIndex}} {
-  setName("MatchTemplateNode");
+  setTypeId("MatchTemplateNode");
   _pyramid_layers = addProperty("pyramid_layers", 1);
 }
 

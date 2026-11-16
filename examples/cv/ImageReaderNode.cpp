@@ -12,7 +12,7 @@ constexpr const char* kImageOutId = "image_out";
 namespace tg {
 ImageReaderNode::ImageReaderNode()
     : outport{PortRef{this, PortType::Out, kImageOutIndex}} {
-  setName("ImageReaderNode");
+  setTypeId("ImageReaderNode");
   _file_path = addProperty("file_path", std::string());
 }
 

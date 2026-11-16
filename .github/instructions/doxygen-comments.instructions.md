@@ -1,0 +1,31 @@
+---
+description: "适用于 C++ 源文件的 Doxygen 文档注释规范；ui/ 使用专属 UI 注释规则。"
+applyTo: "**/*.h, **/*.hpp, **/*.cpp, **/*.cc, **/*.cxx"
+---
+
+# Doxygen 注释
+
+`ui/` 目录不适用本规则，只按 UI 注释规则写四类简要注释。
+
+给类、函数和需要说明的成员写文档时，使用 Doxygen 特殊注释。普通 `//` 和 `/* */` 只用于代码内部备注，不作为文档。
+
+声明写在注释后面。简短说明用 `\brief`，空行之后写详细说明。参数用 `\param`，返回值用 `\return`。方向写在参数名前面：`[in]`、`[out]`、`[in,out]`。`@` 与 `\` 等价，本项目统一用 `\`。
+
+```cpp
+/** \brief 设置输入端口上的数据。
+ *
+ *  后继不取得所有权，数据仍由前驱的输出成员持有。
+ *
+ *  \param[in] index 输入端口序号。
+ *  \param[in] data 端口数据。
+ */
+void setInPortData(unsigned int index, std::shared_ptr<NodeData> data);
+```
+
+成员的一句话说明可以写在声明后面，标记中加 `<`：
+
+```cpp
+std::weak_ptr<NodeData> _in_data1; /**< 端口 0 的输入，不持有所有权。 */
+```
+
+类、文件和命名空间不要用带 `<` 的后置注释。

@@ -5,9 +5,11 @@ alwaysApply: true
 
 # 界面跟着 VS Code
 
+最终目标：可持续地和 VS Code 的界面风格一致，并能在运行中切换 VS Code 主题。主题色值只从 VS Code 官方主题 JSON（Dark Modern / Light Modern 及其 `include` 链）派生，集中到 `Theme.hpp` 的语义 token；`Ui.hpp` 不手写色值，不按暗/亮主题写分支。切换主题要立即生效并写入会话；页签、画布和所有自绘区域都读同一份当前主题。
+
 改到用户能看见的界面时，按 VS Code 的工作台来做。入口是 <https://code.visualstudio.com/api/ux-guidelines/overview>。活动栏、主侧栏、辅助侧栏、编辑区、面板、状态栏和命令面板的摆法以这页为准，不要凭记忆另写一套。
 
-界面仍用现有的 ImGui。要求落到现有窗口上，不换成 Electron。ImGui 没有官方 VS Code 主题，视觉 token 与对照出处在 `Theme.hpp` / `ApplyTheme`（今日实现为 Dark Modern）；页签栏与画布共用同一套编辑区底色，不要再各写一套默认色。`Ui.hpp` 布局注释不写「对照 VS Code」，只调主题 API 做分区风格设置。主侧栏与编辑区通过 `WorkbenchFocus` 共享选中与页签（立即模式 Observer / pull），不要写成两边互相推送。
+界面仍用现有的 ImGui。要求落到现有窗口上，不换成 Electron，也不引入第三方 VS Code 工作台库。ImGui 没有官方 VS Code 工作台主题，视觉 token 与对照出处集中在 `Theme.hpp` / `ApplyTheme`；页签栏与画布共用同一套编辑区底色，不要再各写一套默认色。`Ui.hpp` 布局注释不写「对照 VS Code」，只调主题 API 做分区风格设置。主侧栏与编辑区通过 `WorkbenchFocus` 共享选中与页签（立即模式 Observer / pull），不要写成两边互相推送。
 
 回复里写明对照了哪一块。这次改动不涉及界面时，写明核对过，不要默默跳过。
 

@@ -9,7 +9,7 @@
 namespace tg {
 
 /** \brief 工程目录布局与 JSON schema 常量（对照 Houdini $HIP / VS Code 工作区：目录为根）。 */
-inline constexpr std::uint32_t kProjectFileVersion = 1;
+inline constexpr std::uint32_t kProjectFileVersion = 2;
 inline constexpr const char* kProjectManifestFileName = "project.json";
 inline constexpr const char* kProjectGraphsDirectoryName = "graphs";
 inline constexpr const char* kProjectAssetsDirectoryName = "assets";

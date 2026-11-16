@@ -18,6 +18,11 @@ enum class PortType { In, Out };
 enum class InputPresentation { Port, Property };
 
 class Graph;
+
+/** \brief 图节点：类型化实例（kind + 所属 graph 内唯一的 identifier）。
+ *
+ *  kind 由注册表或子类声明，固定不变；identifier 是显示名，入图时保证唯一、可改名。
+ */
 class Node : public std::enable_shared_from_this<Node> {
   friend class Graph;
 
@@ -25,7 +30,7 @@ class Node : public std::enable_shared_from_this<Node> {
   /** \brief 一个输入或输出端口。
    *
    *  画布用对象地址作为引脚身份。端口只在基类里创建，地址在节点存活期间保持不变。
-   *  id / caption 表示功能含义；data_type 表示类型（兼容与连线颜色）。
+   *  id / caption 表示功能含义；data_type 表示类型（兼容、可选色形；无色则 UI 哈希 id）。
    */
   struct Port {
     Node* node = nullptr;
@@ -181,6 +186,14 @@ public:
 
   const std::string& getName() const { return _name; }
 
+  /** \brief 节点类型 id（kind）；由注册表或构造函数声明，固定不变。 */
+  const std::string& typeId() const { return _type_id; }
+
+  /** \brief 设置节点类型 id（kind）；创建时由工厂或注册表写入。
+   *  \param[in] type_id 类型 id。
+   */
+  void setTypeId(std::string type_id) { _type_id = std::move(type_id); }
+
   /** \brief 设置节点显示名；若已挂到图上，同步任务名。
    *  \param[in] name 新名称。
    */
@@ -234,6 +247,7 @@ public:
   mutable std::vector<InputPresentation> _input_presentations;
   mutable std::vector<std::shared_ptr<Property>> _input_properties;
   std::string _name;
+  std::string _type_id;
   std::vector<std::shared_ptr<Property>> _properties;
 };
 }  // namespace tg

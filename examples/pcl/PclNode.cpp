@@ -2,6 +2,6 @@
 
 namespace tg {
   PclNode::PclNode() {
-    setName("PclNode");
+    setTypeId("PclNode");
   }
 }

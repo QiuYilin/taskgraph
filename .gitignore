@@ -18,6 +18,8 @@ build*
 # 私有规则：只在本机生效，不进 Git
 .cursor/rules/private/*
 !.cursor/rules/private/README.md
+.github/instructions/private-terms.instructions.md
+.github/instructions/private-naming.instructions.md
 
 # 运行时日志，不进 Git
 logs/
