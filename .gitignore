@@ -20,6 +20,7 @@ build*
 !.cursor/rules/private/README.md
 .github/instructions/private-terms.instructions.md
 .github/instructions/private-naming.instructions.md
+.github/instructions/private-notes.instructions.md
 
 # 运行时日志，不进 Git
 logs/
