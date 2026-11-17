@@ -22,6 +22,9 @@ build*
 .github/instructions/private-naming.instructions.md
 .github/instructions/private-notes.instructions.md
 
+# Kilo 计划存档：本地会话产物，不进 Git
+.kilo/plans/
+
 # 运行时日志，不进 Git
 logs/
 
