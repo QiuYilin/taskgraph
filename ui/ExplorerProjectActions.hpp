@@ -27,3 +27,9 @@ inline bool ShouldShowExplorerProjectActions(bool mouse_in_band,
   hold_while_pressed = false;
   return false;
 }
+
+// 光标低于已提交内容的底边时，End 前必须再提交一项，否则 SetCursorScreenPos 会断言。
+inline bool ExplorerCursorNeedsTrailingItem(float cursor_y,
+                                            float content_max_y) {
+  return cursor_y > content_max_y;
+}

@@ -78,18 +78,23 @@ inline constexpr float kPropertyCellPadYEpx = 3.0f;
 inline constexpr float kPropertyFramePadXEpx = 6.0f;
 inline constexpr float kPropertyFramePadYEpx = 2.0f;
 inline constexpr float kPropertyItemSpacingYEpx = 0.0f;
-// 流图画布节点 chrome：对齐控件圆角与发丝边，选中用 focus 描边（非 Blueprint 粗橙边）。
+// 流图画布节点 chrome：发丝边；选中环在填充外侧，有焦点时用 focusBorder。
 inline constexpr float kFlowNodeBorderWidthEpx = 1.0f;
 inline constexpr float kFlowHoveredNodeBorderWidthEpx = 1.0f;
-inline constexpr float kFlowSelectedNodeBorderWidthEpx = 2.0f;
+inline constexpr float kFlowSelectedNodeBorderWidthEpx = 1.0f;
+// 描边以边线为中心，两侧各占线宽的这一份。选中环偏移取节点边与选中边各一份。
+inline constexpr float kStrokeExtentEachSide = 0.5f;
 inline constexpr float kFlowNodeSelRectFillAlpha = 0.25f;
 inline constexpr float kFlowNodeSelRectBorderAlpha = 0.50f;
 inline constexpr float kFlowPinRectFillAlpha = 0.35f;
 inline constexpr float kFlowPinRectBorderAlpha = 0.50f;
 // 工作台扩展点：标题动作和面板工具栏的方形按钮。
 inline constexpr float kViewActionSizeEpx = 22.0f;
-// VS Code 活动栏固定宽度，不按 12 栏切。
+// https://github.com/microsoft/vscode/blob/main/src/vs/workbench/browser/parts/activitybar/activitybarPart.ts
+// ActivitybarPart.ACTIVITYBAR_WIDTH。默认宽度，不按窗口比例切。
 inline constexpr float kActivityBarWidthEpx = 48.0f;
+// ActivitybarPart.ICON_SIZE。线标外框，小于格子，四周留白。
+inline constexpr float kActivityIconEpx = 24.0f;
 
 namespace theme_detail {
 
@@ -1018,8 +1023,9 @@ static void PopPickNodeKindStyle() {
   ImGui::PopStyleVar(kPickNodeKindStyleVarCount);
 }
 
-// 流图画布与节点 chrome：编辑区底 + 当前主题 token。
-static void ApplyFlowCanvasTheme(ax::NodeEditor::Style& editor_style) {
+// 把当前主题写进节点编辑器样式；选中环在节点外侧，随编辑区焦点换色。
+static void ApplyFlowCanvasTheme(ax::NodeEditor::Style& editor_style,
+                                 bool editor_focused) {
   const theme_detail::ThemeTokens& t = theme_detail::CurrentTokens();
   const float ui_scale = ImGui::GetStyle().FontScaleMain;
   editor_style.NodeRounding = kControlCornerRadiusEpx;
@@ -1028,6 +1034,9 @@ static void ApplyFlowCanvasTheme(ax::NodeEditor::Style& editor_style) {
       kFlowHoveredNodeBorderWidthEpx * ui_scale;
   editor_style.SelectedNodeBorderWidth =
       kFlowSelectedNodeBorderWidthEpx * ui_scale;
+  editor_style.SelectedNodeBorderOffset =
+      (editor_style.NodeBorderWidth + editor_style.SelectedNodeBorderWidth) *
+      kStrokeExtentEachSide;
   editor_style.NodePadding =
       ImVec4(kBetweenControlsEpx * ui_scale, kBetweenControlsEpx * ui_scale,
              kBetweenControlsEpx * ui_scale, kBetweenControlsEpx * ui_scale);
@@ -1040,7 +1049,14 @@ static void ApplyFlowCanvasTheme(ax::NodeEditor::Style& editor_style) {
       t.editor_group_border;
   editor_style.Colors[ax::NodeEditor::StyleColor_HovNodeBorder] =
       t.list_hover_background;
-  editor_style.Colors[ax::NodeEditor::StyleColor_SelNodeBorder] = t.focus_border;
+  // 编辑区持有焦点时选中环用 focusBorder，失焦则与节点平时的边同色。
+  if (editor_focused) {
+    editor_style.Colors[ax::NodeEditor::StyleColor_SelNodeBorder] =
+        t.focus_border;
+  } else {
+    editor_style.Colors[ax::NodeEditor::StyleColor_SelNodeBorder] =
+        t.editor_group_border;
+  }
   editor_style.Colors[ax::NodeEditor::StyleColor_NodeSelRect] =
       theme_detail::WithAlpha(t.focus_border, kFlowNodeSelRectFillAlpha);
   editor_style.Colors[ax::NodeEditor::StyleColor_NodeSelRectBorder] =

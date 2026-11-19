@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.11)
+cmake_minimum_required(VERSION 3.18)
 cmake_policy(SET CMP0074 NEW)
 if(${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.27")
   cmake_policy(SET CMP0144 NEW)
@@ -8,22 +8,17 @@ set(project_name "taskgraph")
 
 set(INSTALL_CMAKEDIR share/${project_name})
 option(BUILD_EXAMPLES "Build examples" ON)
-if(BUILD_EXAMPLES)
-  list(APPEND VCPKG_MANIFEST_FEATURES "examples")
-endif()
 option(BUILD_UI "Build ui" ON)
 if(BUILD_UI)
   list(APPEND VCPKG_MANIFEST_FEATURES "ui")
 endif()
 
-project(${project_name})
+project(${project_name} VERSION 0.1.0)
 
 # Without this, MSVC reads UTF-8 sources as the system code page.
 if(MSVC)
   add_compile_options(/utf-8)
 endif()
-
-set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)#temp
 
 # Ninja and Makefile generators write compile_commands.json for the C++ language service.
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -46,12 +41,17 @@ configure_file(${PROJECT_SOURCE_DIR}/cmake/${project_name}Config.cmake
   @ONLY
 )
 
-# TODO(qiuyilin): 以后加上 install 部分。
-# install(FILES
-#   ${CMAKE_BINARY_DIR}/${project_name}Config.cmake
-#   ${CMAKE_BINARY_DIR}/${project_name}ConfigVersion.cmake
-#   DESTINATION ${INSTALL_CMAKEDIR}
-# )
+include(CMakePackageConfigHelpers)
+write_basic_package_version_file(
+  ${CMAKE_BINARY_DIR}/${project_name}ConfigVersion.cmake
+  VERSION ${PROJECT_VERSION}
+  COMPATIBILITY SameMinorVersion)
+
+install(FILES
+  ${CMAKE_BINARY_DIR}/${project_name}Config.cmake
+  ${CMAKE_BINARY_DIR}/${project_name}ConfigVersion.cmake
+  DESTINATION ${INSTALL_CMAKEDIR}
+)
 
 include(CTest)
 
@@ -67,5 +67,19 @@ endif()
 
 if(BUILD_UI)
 add_subdirectory(ui)
+endif()
+
+# Doxygen 可选：装了 Doxygen 才生成 doc 目标，不装不影响构建。
+find_package(Doxygen QUIET)
+if(Doxygen_FOUND)
+  set(DOXYGEN_OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/docs")
+  set(DOXYGEN_INPUT "\"${PROJECT_SOURCE_DIR}/core/include\" \"${PROJECT_SOURCE_DIR}/examples\"")
+  configure_file(${PROJECT_SOURCE_DIR}/docs/Doxyfile.in
+    ${CMAKE_CURRENT_BINARY_DIR}/Doxyfile @ONLY)
+  add_custom_target(doc
+    COMMAND ${DOXYGEN_EXECUTABLE} ${CMAKE_CURRENT_BINARY_DIR}/Doxyfile
+    WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
+    COMMENT "Generating API documentation with Doxygen"
+    VERBATIM)
 endif()
 

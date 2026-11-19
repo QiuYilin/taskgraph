@@ -1,4 +1,4 @@
-#include "ProjectIo.hpp"
+#include "taskgraph/ProjectIo.hpp"
 
 #include <filesystem>
 #include <fstream>
@@ -14,8 +14,9 @@
 
 #include <nlohmann/json.hpp>
 
-#include "ConnectionInfo.hpp"
-#include "Log.hpp"
+#include "taskgraph/ConnectionInfo.hpp"
+#include "taskgraph/Error.hpp"
+#include "taskgraph/Log.hpp"
 
 namespace tg {
 namespace {
@@ -477,7 +478,7 @@ bool ProjectIo::load(Controller& controller, const std::filesystem::path& root,
         const std::filesystem::path graph_path = root / relative;
         std::ifstream graph_input(graph_path, std::ios::binary);
         if (!graph_input) {
-          throw std::runtime_error("missing graph file: " + graph_path.string());
+          throw tg::ProjectError("missing graph file: " + graph_path.string());
         }
         json graph_json;
         graph_input >> graph_json;
@@ -492,7 +493,7 @@ bool ProjectIo::load(Controller& controller, const std::filesystem::path& root,
                 node_json.at(kJsonKeyType).get<std::string>();
             auto node = controller.createNode(type_id);
             if (node == nullptr) {
-              throw std::runtime_error("unknown node type: " + type_id);
+              throw tg::ProjectError("unknown node type: " + type_id);
             }
             // 先入图再填属性，保证端口与绑定属性已生成。
             graph->addNode(node);
@@ -527,7 +528,7 @@ bool ProjectIo::load(Controller& controller, const std::filesystem::path& root,
             if (from < 0 || to < 0 ||
                 static_cast<std::size_t>(from) >= loaded_nodes.size() ||
                 static_cast<std::size_t>(to) >= loaded_nodes.size()) {
-              throw std::runtime_error("connection node id out of range");
+              throw tg::ProjectError("connection node id out of range");
             }
             const std::shared_ptr<Node>& upstream =
                 loaded_nodes[static_cast<std::size_t>(from)];

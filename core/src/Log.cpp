@@ -1,5 +1,6 @@
-#include "Log.hpp"
+#include "taskgraph/Log.hpp"
 
+#include <deque>
 #include <filesystem>
 #include <mutex>
 #include <string>
@@ -16,6 +17,7 @@ constexpr std::size_t kLogFileMaxMebibytes = 5;
 constexpr std::size_t kLogFileMaxBytes =
     kLogFileMaxMebibytes * kKibibytesPerMebibyte * kBytesPerKibibyte;
 constexpr std::size_t kLogMaxFileCount = 3;
+constexpr std::size_t kMaxRetainedLogLines = 1000;
 constexpr const char* kLogDirectory = "logs";
 constexpr const char* kLogFilePath = "logs/mylogfile";
 constexpr const char* kSystemLoggerName = "system";
@@ -24,14 +26,18 @@ class LineSink : public spdlog::sinks::base_sink<std::mutex> {
  public:
   std::size_t copySince(std::size_t cursor, std::vector<std::string>& lines) {
     std::lock_guard<std::mutex> lock(mutex_);
-    // 调用方的下标超过现有行时，从末尾接着读，避免越界。
-    if (cursor > _lines.size()) {
-      cursor = _lines.size();
+    // cursor 已经追上总数时没有新行。
+    if (cursor >= _total_lines) {
+      return _total_lines;
     }
-    for (std::size_t index = cursor; index < _lines.size(); ++index) {
+    // 只保留最近 kMaxRetainedLogLines 行；cursor 落后于保留窗口起点时从窗口开头补。
+    const std::size_t first_retained = _total_lines - _lines.size();
+    const std::size_t start =
+        cursor > first_retained ? cursor - first_retained : 0;
+    for (std::size_t index = start; index < _lines.size(); ++index) {
       lines.push_back(_lines[index]);
     }
-    return _lines.size();
+    return _total_lines;
   }
 
  protected:
@@ -43,13 +49,18 @@ class LineSink : public spdlog::sinks::base_sink<std::mutex> {
     while (!line.empty() && (line.back() == '\n' || line.back() == '\r')) {
       line.pop_back();
     }
+    if (_lines.size() >= kMaxRetainedLogLines) {
+      _lines.pop_front();
+    }
     _lines.push_back(std::move(line));
+    ++_total_lines;
   }
 
   void flush_() override {}
 
  private:
-  std::vector<std::string> _lines;
+  std::deque<std::string> _lines;
+  std::size_t _total_lines = 0;
 };
 
 std::shared_ptr<LineSink>& lineSink() {

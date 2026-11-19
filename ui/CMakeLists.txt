@@ -5,7 +5,11 @@ set(HPP_HEADER_FILES
     Ui.hpp
     UiSession.hpp
     WorkbenchFocus.hpp
+    WorkbenchEdits.hpp
+    EditorClipboard.hpp
+    LinkVariable.hpp
     WorkbenchParts.hpp
+    CanvasViewLock.hpp
     NativePathDialog.hpp
     )
 
@@ -120,6 +124,10 @@ install(FILES
   DESTINATION ${INSTALL_CMAKEDIR}
   COMPONENT ${component}
 )
+
+if(BUILD_TESTING)
+  add_subdirectory(${CMAKE_SOURCE_DIR}/tests/ui ${CMAKE_BINARY_DIR}/tests/ui)
+endif()
 
 # install(FILES
 #   ${CMAKE_CURRENT_BINARY_DIR}/${component}Export.h

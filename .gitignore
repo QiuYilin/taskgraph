@@ -18,9 +18,7 @@ build*
 # 私有规则：只在本机生效，不进 Git
 .cursor/rules/private/*
 !.cursor/rules/private/README.md
-.github/instructions/private-terms.instructions.md
-.github/instructions/private-naming.instructions.md
-.github/instructions/private-notes.instructions.md
+.github/instructions/private/
 
 # Kilo 计划存档：本地会话产物，不进 Git
 .kilo/plans/
