@@ -4,7 +4,7 @@
 #include <imgui.h>
 #include <imgui-node-editor/imgui_node_editor.h>
 
-#include <taskgraph.hpp>
+#include "taskgraph/taskgraph.hpp"
 
 /** \brief 端口类型色形 Facade：针脚与连线按数据 id 着色，失败状态用错误色。 */
 

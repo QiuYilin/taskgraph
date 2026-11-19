@@ -1,13 +1,60 @@
-#include "Graph.hpp"
+#include "taskgraph/Graph.hpp"
 
 #include <algorithm>
 #include <functional>
+#include <vector>
 
-#include "ConnectionInfo.hpp"
+#include "taskgraph/ConnectionInfo.hpp"
+
+namespace {
+
+// 从 start 沿已有出边能否走到 target。用来拒绝会成环的新边。
+bool reaches(const tg::Node* start, const tg::Node* target) {
+  if (start == nullptr || target == nullptr) {
+    return false;
+  }
+  std::vector<const tg::Node*> pending;
+  std::vector<const tg::Node*> seen;
+  pending.push_back(start);
+  while (!pending.empty()) {
+    const tg::Node* const current = pending.back();
+    pending.pop_back();
+    if (std::find(seen.begin(), seen.end(), current) != seen.end()) {
+      continue;
+    }
+    seen.push_back(current);
+    for (const tg::ConnectionInfo& edge : current->outgoing()) {
+      const tg::Node* const next = edge.adj.get();
+      if (next == nullptr) {
+        continue;
+      }
+      if (next == target) {
+        return true;
+      }
+      pending.push_back(next);
+    }
+  }
+  return false;
+}
+
+}  // namespace
 
 namespace tg {
+Graph::~Graph() {
+  for (const auto& node : _nodes) {
+    if (node != nullptr && node->_graph == this) {
+      node->_graph = nullptr;
+    }
+  }
+}
+
 void Graph::addNode(std::shared_ptr<Node> node) {
   if (node == nullptr) {
+    return;
+  }
+  // 已在本图，或任务句柄说明它已经挂在别的图上。
+  if (std::find(_nodes.begin(), _nodes.end(), node) != _nodes.end() ||
+      !node->_task.empty()) {
     return;
   }
   // 名称为空或与图内已有节点冲突时，按 kind 生成唯一默认名。
@@ -20,6 +67,7 @@ void Graph::addNode(std::shared_ptr<Node> node) {
   node->_task =
       _taskflow.emplace(task);  // Node保存一个task_主要是删除的时候有用
   node->_task.name(node->getName());
+  node->_graph = this;
 }
 
 bool Graph::isNodeNameTaken(const std::string& name, const Node* except) const {
@@ -97,6 +145,9 @@ void Graph::removeNode(std::shared_ptr<Node> node) {
   _taskflow.erase(node->_task);
   // 清掉 task 句柄，它的内部节点已被回收，留着就是悬空指针。
   node->_task = nullptr;
+  if (node->_graph == this) {
+    node->_graph = nullptr;
+  }
   _nodes.erase(it);
 }
 
@@ -118,14 +169,27 @@ bool Graph::canConnect(const Node::Port* from, const Node::Port* to) const {
   if (!NodeDataTypeCompatible(from->data_type, to->data_type)) {
     return false;
   }
-  // 同一对端口已经连过就不再加一条，避免重复 precede。
+  // 同一对端口已经连过就不再加一条。
   const auto& outgoing = from->node->outgoing();
-  return std::none_of(outgoing.begin(), outgoing.end(),
-                      [&](const ConnectionInfo& conn) {
-                        return conn.adj.get() == to->node &&
-                               conn.port_out == from->index &&
-                               conn.port_in == to->index;
-                      });
+  const bool duplicate = std::any_of(
+      outgoing.begin(), outgoing.end(), [&](const ConnectionInfo& conn) {
+        return conn.adj.get() == to->node && conn.port_out == from->index &&
+               conn.port_in == to->index;
+      });
+  if (duplicate) {
+    return false;
+  }
+  // 一个输入只有一个上游。
+  const auto& incoming = to->node->incoming();
+  const bool input_taken = std::any_of(
+      incoming.begin(), incoming.end(), [&](const ConnectionInfo& conn) {
+        return conn.port_in == to->index;
+      });
+  if (input_taken) {
+    return false;
+  }
+  // 下游已经能走回上游时，这条边会成环。
+  return !reaches(to->node, from->node);
 }
 
 bool Graph::connect(std::shared_ptr<Node> from, unsigned int port_out,
@@ -139,9 +203,15 @@ bool Graph::connect(std::shared_ptr<Node> from, unsigned int port_out,
   if (!canConnect(output, input)) {
     return false;
   }
+  // 同一对节点已有数据边时，这条只补数据边，不再 precede。
+  const bool already_paired = std::any_of(
+      from->_next.begin(), from->_next.end(),
+      [&](const ConnectionInfo& conn) { return conn.adj == to; });
   from->_next.push_back(ConnectionInfo{to, port_out, port_in});
   to->_previous.push_back(ConnectionInfo{from, port_out, port_in});
-  from->_task.precede(to->_task);
+  if (!already_paired && !from->_task.empty() && !to->_task.empty()) {
+    from->_task.precede(to->_task);
+  }
   return true;
 }
 
@@ -155,21 +225,70 @@ bool Graph::connect(const Node::Port* from, const Node::Port* to) {
                  to->node->shared_from_this(), to->index);
 }
 
+bool Graph::disconnect(std::shared_ptr<Node> from, unsigned int port_out,
+                        std::shared_ptr<Node> to, unsigned int port_in) {
+  if (from == nullptr || to == nullptr) {
+    return false;
+  }
+  const auto is_this_edge = [&](const ConnectionInfo& conn) {
+    return conn.adj == to && conn.port_out == port_out &&
+           conn.port_in == port_in;
+  };
+  if (std::none_of(from->_next.begin(), from->_next.end(), is_this_edge)) {
+    return false;
+  }
+  from->_next.remove_if(is_this_edge);
+  to->_previous.remove_if([&](const ConnectionInfo& conn) {
+    return conn.adj == from && conn.port_out == port_out &&
+           conn.port_in == port_in;
+  });
+  dropScheduleIfUnbound(from, to);
+  return true;
+}
+
+void Graph::dropScheduleIfUnbound(const std::shared_ptr<Node>& from,
+                                  const std::shared_ptr<Node>& to) {
+  if (from == nullptr || to == nullptr || from->_task.empty() ||
+      to->_task.empty()) {
+    return;
+  }
+  const bool still_bound = std::any_of(
+      from->_next.begin(), from->_next.end(),
+      [&](const ConnectionInfo& conn) { return conn.adj == to; });
+  if (still_bound) {
+    return;
+  }
+  from->_task.remove_successors(to->_task);
+}
+
 void Graph::disconnectInputsTo(std::shared_ptr<Node> node,
                                unsigned int port_in) {
   if (node == nullptr) {
     return;
   }
+  std::vector<std::shared_ptr<Node>> upstreams;
   for (auto& other : _nodes) {
     if (other == node) {
       continue;
     }
+    const bool had_edge = std::any_of(
+        other->_next.begin(), other->_next.end(),
+        [&](const ConnectionInfo& conn) {
+          return conn.adj == node && conn.port_in == port_in;
+        });
+    if (!had_edge) {
+      continue;
+    }
+    upstreams.push_back(other);
     other->_next.remove_if([&](const ConnectionInfo& conn) {
       return conn.adj == node && conn.port_in == port_in;
     });
   }
   node->_previous.remove_if(
       [&](const ConnectionInfo& conn) { return conn.port_in == port_in; });
+  for (const auto& upstream : upstreams) {
+    dropScheduleIfUnbound(upstream, node);
+  }
 }
 
 bool Graph::setInputPresentation(std::shared_ptr<Node> node, unsigned int index,

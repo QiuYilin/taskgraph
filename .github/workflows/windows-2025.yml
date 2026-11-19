@@ -30,7 +30,7 @@ jobs:
         revision: 817892b0ecbc6af994dd6df999c73faf795adbf2
         token: ${{ github.token }}
         manifest-dir: ${{ github.workspace }}/.github/manifest
-        extra-args: --x-feature=ui --x-feature=examples
+        extra-args: --x-feature=ui
         collect-logs: on-failure
         fetch-depth: 0
     - name: configure cmake
