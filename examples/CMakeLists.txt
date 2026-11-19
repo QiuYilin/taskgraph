@@ -1,3 +1,2 @@
-add_subdirectory(pcl)
-add_subdirectory(cv)
-add_subdirectory(simple)
+add_subdirectory(simple-core)
+add_subdirectory(simple-ui)

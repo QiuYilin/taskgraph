@@ -1,4 +1,4 @@
-#include "Node.hpp"
+#include "taskgraph/Node.hpp"
 
 namespace {
 
@@ -16,21 +16,15 @@ tg::PropertyValue DefaultValueForInputType(const tg::NodeDataType& data_type) {
 }  // namespace
 
 namespace tg {
-  bool Node::initCompute() {
-    return true;
-  }
-
   void Node::compute() {
     return;
   }
 
   void Node::computeAndUpdateData(){
-    //auto control_logic = compute();
     compute();
     for(auto& connection : this->_next){
       connection.adj->setInPortData(connection.port_in, this->getOutPortData(connection.port_out));
     }
-    //return control_logic;
     return;
   }
 

@@ -7,7 +7,8 @@
             "version>=": "3.11.0"
         },
         "spdlog",
-        "nlohmann-json"
+        "nlohmann-json",
+        "gtest"
     ],
     "features": {
         "ui": {
@@ -29,14 +30,7 @@
                 },
                 "portable-file-dialogs"
             ]
-          },
-        "examples":{
-            "description": "Build examples",
-            "dependencies": [
-                "opencv4",
-                "pcl"
-            ]
-        }
+          }
     },
     "builtin-baseline": "817892b0ecbc6af994dd6df999c73faf795adbf2"
 }

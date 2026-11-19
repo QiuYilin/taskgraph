@@ -1,4 +1,4 @@
-#include "NodeRegistry.hpp"
+#include "taskgraph/NodeRegistry.hpp"
 
 namespace tg {
 

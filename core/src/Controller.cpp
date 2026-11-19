@@ -1,18 +1,29 @@
-#include "Controller.hpp"
+#include "taskgraph/Controller.hpp"
 
 #include <exception>
+#include <optional>
 
-#include "Log.hpp"
-#include "ProjectIo.hpp"
+#include "taskgraph/Log.hpp"
+#include "taskgraph/ProjectIo.hpp"
 
 namespace tg {
 void Controller::run(tg::Graph& graph) {
   logInfo("{}", graph._taskflow.dump());
+  _executor.run(graph._taskflow).get();
+}
+
+std::optional<std::string> Controller::tryRun(tg::Graph& graph) {
   try {
-    _executor.run(graph._taskflow).get();
+    run(graph);
+    return std::nullopt;
   } catch (const std::exception& error) {
-    // 节点抛出的异常记到输出视图，界面这一帧继续跑。
     logError("{}", error.what());
+    return error.what();
+  } catch (...) {
+    constexpr const char* kNonStandardError =
+        "graph run failed with a non-standard exception";
+    logError("{}", kNonStandardError);
+    return kNonStandardError;
   }
 }
 

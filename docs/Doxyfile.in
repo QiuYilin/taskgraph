@@ -1,0 +1,34 @@
+# Doxygen configuration for the taskgraph public API.
+# 由 CMake 的 configure_file 填充 @VAR@ 占位，输出目录、版本、输入路径都来自构建。
+
+PROJECT_NAME           = taskgraph
+PROJECT_NUMBER         = @PROJECT_VERSION@
+PROJECT_BRIEF          = "Node-based task graph library"
+
+OUTPUT_DIRECTORY       = @DOXYGEN_OUTPUT_DIR@
+
+# 公共 API 在 core/include（taskgraph/），示例节点在 examples/。ui/ 不进文档（只写四类简要注释）。
+INPUT                  = @DOXYGEN_INPUT@
+
+RECURSIVE              = YES
+FILE_PATTERNS          = *.hpp *.h
+
+EXTRACT_ALL            = YES
+EXTRACT_PRIVATE        = NO
+EXTRACT_STATIC         = NO
+HIDE_UNDOC_MEMBERS     = NO
+HIDE_UNDOC_CLASSES     = NO
+
+GENERATE_HTML          = YES
+GENERATE_LATEX         = NO
+GENERATE_TREEVIEW      = YES
+HTML_OUTPUT            = html
+
+# 展开导出宏为空，否则 class TASKGRAPH_EXPORT X 会被解析错。
+ENABLE_PREPROCESSING   = YES
+MACRO_EXPANSION        = YES
+EXPAND_ONLY_PREDEF     = YES
+PREDEFINED             = TASKGRAPH_EXPORT=
+
+QUIET                  = YES
+WARN_IF_UNDOCUMENTED   = NO
