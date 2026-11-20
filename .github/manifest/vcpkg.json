@@ -11,26 +11,35 @@
         "gtest"
     ],
     "features": {
-        "ui": {
-            "description": "Build Ui part",
-            "dependencies": [                 
+        "ui-imgui": {
+            "description": "Build ImGui frontend",
+            "dependencies": [
                 {
-                "name": "imgui",
-                "version>=": "1.90.7",
-                "features": [
-                  "glfw-binding",
-                  "opengl3-binding",
-                  "docking-experimental"
-                ]
-            },
-            "opengl",
+                    "name": "imgui",
+                    "version>=": "1.90.7",
+                    "features": [
+                        "glfw-binding",
+                        "opengl3-binding",
+                        "docking-experimental"
+                    ]
+                },
+                "opengl",
                 {
                     "name": "imgui-node-editor",
                     "version>=": "0.9.3"
                 },
                 "portable-file-dialogs"
             ]
-          }
+        },
+        "ui-qt": {
+            "description": "Build Qt frontend",
+            "dependencies": [
+                "qtbase",
+                "qtnodeeditor",
+                "qt-advanced-docking-system",
+                "portable-file-dialogs"
+            ]
+        }
     },
     "builtin-baseline": "817892b0ecbc6af994dd6df999c73faf795adbf2"
 }
