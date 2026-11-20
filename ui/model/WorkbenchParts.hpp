@@ -1,6 +1,6 @@
 #pragma once
 
-#include <imgui.h>
+#include "Types.hpp"
 
 #include <cstring>
 #include <functional>
@@ -12,12 +12,8 @@
 // 工作台可扩展部件的数据模型（Facade）：命令、活动栏项、视图动作、面板视图。
 // 默认不注册任何可见项；只有注册后对应槽位才画内容。
 
-// 图标绘制回调；不引入图标字体，未来可用线框或字体图标实现。
-struct IconPainter {
-  std::function<void(ImDrawList* draw, ImVec2 center, float size,
-                     ImU32 color)>
-      draw;
-};
+// 活动栏 / 标题动作的图标种类；具体怎么画由各前端决定。
+enum class ActivityIcon { None, Explorer, Search };
 
 // 一条可执行命令；命令面板、菜单、动作按钮都引用同一个 id。
 struct Command {
@@ -94,7 +90,7 @@ class CommandRegistry {
 struct ViewAction {
   std::string command;
   std::string tooltip;
-  IconPainter icon;
+  ActivityIcon icon = ActivityIcon::None;
 };
 
 // 活动栏的一项；点击执行命令，is_active 每帧 pull。
@@ -103,10 +99,10 @@ struct ActivityBarItem {
   std::string tooltip;
   std::string command;
   std::function<bool()> is_active;
-  IconPainter icon;
+  ActivityIcon icon = ActivityIcon::None;
 };
 
-// 面板视图；draw 只画内容，窗口由 Ui 开。
+// 面板视图；draw 只画内容，窗口由前端开。
 struct PanelView {
   std::string id;
   std::string title;
@@ -120,7 +116,7 @@ struct PanelView {
 
 // 命令中心内容；draw 为空时仍画工程名文字。
 struct CommandCenter {
-  std::function<void(const ImVec2& size)> draw;
+  std::function<void(const Vec2& size)> draw;
   float preferred_width_epx = 0.0f;
 };
 
@@ -170,7 +166,7 @@ inline constexpr const char* kExplorerActivityTooltip = "Explorer";
 inline constexpr const char* kSearchActivityTooltip = "Search";
 inline constexpr const char* kShowExplorerCommand = "workbench.showExplorer";
 inline constexpr const char* kShowSearchCommand = "workbench.showSearch";
-// ImGui 用 ### 后面的一段做窗口 ID。活动栏不进停靠，这段只保证窗口身份稳定。
+// 前端用 ### 后面的一段做窗口 ID。活动栏不进停靠，这段只保证窗口身份稳定。
 inline constexpr const char* kWindowIdSeparator = "###";
 inline constexpr const char* kActivityBarDockId = "ActivityBar";
 inline constexpr const char* kActivityBarWindowName = "Activity Bar###ActivityBar";
@@ -190,45 +186,7 @@ inline bool DockIdMatchesWindowName(const char* window_name,
   return std::strcmp(id, dock_id) == 0;
 }
 
-// Explorer 图标：后面一张矩形，前面再叠一张。
-inline void DrawExplorerActivityIcon(ImDrawList* draw, ImVec2 center, float size,
-                                     ImU32 color) {
-  if (draw == nullptr || size <= 0.0f) {
-    return;
-  }
-  const float limit = ActivityIconLimit(size);
-  const float shift = limit * kActivityIconOffset;
-  const float half = limit * kActivityIconRectSpan;
-  const float stroke = size * kActivityIconStrokeRatio;
-  draw->AddRect(ImVec2(center.x - half + shift, center.y - half - shift),
-                ImVec2(center.x + half + shift, center.y + half - shift), color,
-                0.0f, 0, stroke);
-  draw->AddRect(ImVec2(center.x - half - shift, center.y - half + shift),
-                ImVec2(center.x + half - shift, center.y + half + shift), color,
-                0.0f, 0, stroke);
-}
-
-// Search 图标：圆镜加右下短柄。
-inline void DrawSearchActivityIcon(ImDrawList* draw, ImVec2 center, float size,
-                                   ImU32 color) {
-  if (draw == nullptr || size <= 0.0f) {
-    return;
-  }
-  const float limit = ActivityIconLimit(size);
-  const float radius = limit * kActivityIconLensRadius;
-  const float offset = limit * kActivityIconOffset;
-  const float stroke = size * kActivityIconStrokeRatio;
-  const ImVec2 lens(center.x - offset, center.y - offset);
-  draw->AddCircle(lens, radius, color, 0, stroke);
-  const float edge = radius * kActivityIconDiagonal;
-  const ImVec2 handle_start(lens.x + edge, lens.y + edge);
-  const float handle = limit * kActivityIconHandle;
-  draw->AddLine(handle_start,
-                ImVec2(handle_start.x + handle, handle_start.y + handle), color,
-                stroke);
-}
-
-// 工作台部件集合；Ui 只读这些槽位。
+// 工作台部件集合；前端只读这些槽位。
 struct WorkbenchParts {
   CommandRegistry commands;
   std::vector<ActivityBarItem> activity_bar_items;
@@ -251,28 +209,28 @@ inline void InstallDefaultActivityBar(WorkbenchParts& parts) {
   explorer.id = kExplorerActivityId;
   explorer.tooltip = kExplorerActivityTooltip;
   explorer.command = kShowExplorerCommand;
-  explorer.icon.draw = DrawExplorerActivityIcon;
+  explorer.icon = ActivityIcon::Explorer;
   ActivityBarItem search;
   search.id = kSearchActivityId;
   search.tooltip = kSearchActivityTooltip;
   search.command = kShowSearchCommand;
-  search.icon.draw = DrawSearchActivityIcon;
+  search.icon = ActivityIcon::Search;
   parts.activity_bar_items.push_back(std::move(explorer));
   parts.activity_bar_items.push_back(std::move(search));
 }
 
 // 标题栏之下的三块工作台区域。活动栏在左，状态栏通栏贴底，停靠区在中间。
 struct WorkbenchChrome {
-  ImVec2 activity_pos;
-  ImVec2 activity_size;
-  ImVec2 status_pos;
-  ImVec2 status_size;
-  ImVec2 dock_pos;
-  ImVec2 dock_size;
+  Vec2 activity_pos;
+  Vec2 activity_size;
+  Vec2 status_pos;
+  Vec2 status_size;
+  Vec2 dock_pos;
+  Vec2 dock_size;
 };
 
 // 活动栏不进停靠。work_pos / work_size 是主视口工作区；高度和宽度都已含界面缩放。
-inline WorkbenchChrome LayoutWorkbenchChrome(ImVec2 work_pos, ImVec2 work_size,
+inline WorkbenchChrome LayoutWorkbenchChrome(Vec2 work_pos, Vec2 work_size,
                                              float title_height,
                                              float status_height,
                                              float activity_width,
@@ -294,13 +252,13 @@ inline WorkbenchChrome LayoutWorkbenchChrome(ImVec2 work_pos, ImVec2 work_size,
   }
   const float body_top = work_pos.y + used_title;
   WorkbenchChrome chrome;
-  chrome.activity_pos = ImVec2(work_pos.x, body_top);
+  chrome.activity_pos = Vec2{work_pos.x, body_top};
   chrome.activity_size =
-      ImVec2(used_activity, used_activity > 0.0f ? body_height : 0.0f);
-  chrome.status_pos = ImVec2(work_pos.x, body_top + body_height);
-  chrome.status_size = ImVec2(width, used_status);
-  chrome.dock_pos = ImVec2(work_pos.x + used_activity, body_top);
-  chrome.dock_size = ImVec2(width - used_activity, body_height);
+      Vec2{used_activity, used_activity > 0.0f ? body_height : 0.0f};
+  chrome.status_pos = Vec2{work_pos.x, body_top + body_height};
+  chrome.status_size = Vec2{width, used_status};
+  chrome.dock_pos = Vec2{work_pos.x + used_activity, body_top};
+  chrome.dock_size = Vec2{width - used_activity, body_height};
   return chrome;
 }
 
@@ -360,10 +318,10 @@ inline float InitialPrimarySidebarRatio(float work_width, float dock_width,
 
 // 屏幕上的轴对齐矩形。contains 左闭右开，贴在右缘或下缘上的点算在外面。
 struct ScreenRect {
-  ImVec2 pos{0.0f, 0.0f};
-  ImVec2 size{0.0f, 0.0f};
+  Vec2 pos{0.0f, 0.0f};
+  Vec2 size{0.0f, 0.0f};
 
-  bool contains(ImVec2 point) const {
+  bool contains(Vec2 point) const {
     return point.x >= pos.x && point.y >= pos.y && point.x < pos.x + size.x &&
            point.y < pos.y + size.y;
   }
@@ -379,7 +337,7 @@ struct WorkbenchRegions {
 
 // 和停靠重建用同一套比例，算出打开时各块的屏幕矩形。用户拖过分割条之后以停靠结果为准。
 inline WorkbenchRegions LayoutInitialWorkbenchRegions(
-    ImVec2 work_pos, ImVec2 work_size, float title_height, float status_height,
+    Vec2 work_pos, Vec2 work_size, float title_height, float status_height,
     float activity_width, float editor_tab_height, bool activity_visible) {
   const WorkbenchChrome chrome = LayoutWorkbenchChrome(
       work_pos, work_size, title_height, status_height, activity_width,
@@ -402,29 +360,27 @@ inline WorkbenchRegions LayoutInitialWorkbenchRegions(
   regions.activity.pos = chrome.activity_pos;
   regions.activity.size = chrome.activity_size;
   regions.primary_sidebar.pos = chrome.dock_pos;
-  regions.primary_sidebar.size = ImVec2(sidebar_width, chrome.dock_size.y);
+  regions.primary_sidebar.size = Vec2{sidebar_width, chrome.dock_size.y};
   regions.editor.pos =
-      ImVec2(chrome.dock_pos.x + sidebar_width, chrome.dock_pos.y);
-  regions.editor.size = ImVec2(editor_width, editor_height);
+      Vec2{chrome.dock_pos.x + sidebar_width, chrome.dock_pos.y};
+  regions.editor.size = Vec2{editor_width, editor_height};
   regions.editor_content.pos =
-      ImVec2(regions.editor.pos.x, regions.editor.pos.y + used_tab);
-  regions.editor_content.size = ImVec2(editor_width, editor_height - used_tab);
+      Vec2{regions.editor.pos.x, regions.editor.pos.y + used_tab};
+  regions.editor_content.size = Vec2{editor_width, editor_height - used_tab};
   return regions;
 }
 
 // 屏幕点 = 画布点 × 缩放 + 视图原点 + 编辑区内容原点。
-inline ImVec2 CanvasPointToScreen(ImVec2 editor_content_origin,
-                                  ImVec2 canvas_point, ImVec2 view_origin,
-                                  float view_scale) {
-  return ImVec2(canvas_point.x * view_scale + view_origin.x +
-                    editor_content_origin.x,
-                canvas_point.y * view_scale + view_origin.y +
-                    editor_content_origin.y);
+inline Vec2 CanvasPointToScreen(Vec2 editor_content_origin, Vec2 canvas_point,
+                                Vec2 view_origin, float view_scale) {
+  return Vec2{canvas_point.x * view_scale + view_origin.x +
+                  editor_content_origin.x,
+              canvas_point.y * view_scale + view_origin.y +
+                  editor_content_origin.y};
 }
 
 // 连续相同的非零尺寸记为稳定。返回值表示已经够格创建节点编辑器。
-inline bool NoteCanvasContentSize(ImVec2 size, ImVec2& noted,
-                                 int& stable_frames) {
+inline bool NoteCanvasContentSize(Vec2 size, Vec2& noted, int& stable_frames) {
   const bool positive = size.x > kCanvasContentStableEpsilonPx &&
                         size.y > kCanvasContentStableEpsilonPx;
   const float dx = size.x - noted.x;
@@ -435,7 +391,7 @@ inline bool NoteCanvasContentSize(ImVec2 size, ImVec2& noted,
                          dy >= -kCanvasContentStableEpsilonPx;
   if (!positive) {
     stable_frames = 0;
-    noted = ImVec2(0.0f, 0.0f);
+    noted = Vec2{0.0f, 0.0f};
   } else if (!unchanged || stable_frames == 0) {
     stable_frames = 1;
     noted = size;

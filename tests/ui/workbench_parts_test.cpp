@@ -122,7 +122,7 @@ TEST(WorkbenchChrome, ActivityColumnSitsLeftOfDockAboveStatus) {
   constexpr float kStatusHeight = 22.0f;
   constexpr float kActivityWidth = 48.0f;
   const WorkbenchChrome chrome = LayoutWorkbenchChrome(
-      ImVec2(kWorkX, kWorkY), ImVec2(kWorkWidth, kWorkHeight), kTitleHeight,
+      Vec2(kWorkX, kWorkY), Vec2(kWorkWidth, kWorkHeight), kTitleHeight,
       kStatusHeight, kActivityWidth, true);
   const float body_top = kWorkY + kTitleHeight;
   const float body_height = kWorkHeight - kTitleHeight - kStatusHeight;
@@ -151,7 +151,7 @@ TEST(WorkbenchChrome, HiddenActivityBarLeavesDockAtLeftEdge) {
   constexpr float kStatusHeight = 22.0f;
   constexpr float kActivityWidth = 48.0f;
   const WorkbenchChrome chrome = LayoutWorkbenchChrome(
-      ImVec2(0.0f, 0.0f), ImVec2(kWorkWidth, kWorkHeight), kTitleHeight,
+      Vec2(0.0f, 0.0f), Vec2(kWorkWidth, kWorkHeight), kTitleHeight,
       kStatusHeight, kActivityWidth, false);
   EXPECT_FLOAT_EQ(chrome.activity_size.x, 0.0f);
   EXPECT_FLOAT_EQ(chrome.activity_size.y, 0.0f);
@@ -167,7 +167,7 @@ TEST(WorkbenchChrome, HiddenStatusBarGivesHeightToDock) {
   constexpr float kStatusHeight = 0.0f;
   constexpr float kActivityWidth = 48.0f;
   const WorkbenchChrome chrome = LayoutWorkbenchChrome(
-      ImVec2(0.0f, 0.0f), ImVec2(kWorkWidth, kWorkHeight), kTitleHeight,
+      Vec2(0.0f, 0.0f), Vec2(kWorkWidth, kWorkHeight), kTitleHeight,
       kStatusHeight, kActivityWidth, true);
   EXPECT_FLOAT_EQ(chrome.status_size.y, 0.0f)
       << "hidden status bar takes no height";
@@ -185,7 +185,7 @@ TEST(WorkbenchChrome, ShortWindowGivesRemainderToStatusBar) {
   constexpr float kActivityWidth = 48.0f;
   constexpr float kRemainder = 10.0f;
   const WorkbenchChrome chrome = LayoutWorkbenchChrome(
-      ImVec2(0.0f, 0.0f), ImVec2(kWorkWidth, kWorkHeight), kTitleHeight,
+      Vec2(0.0f, 0.0f), Vec2(kWorkWidth, kWorkHeight), kTitleHeight,
       kStatusHeight, kActivityWidth, true);
   EXPECT_FLOAT_EQ(chrome.status_size.y, kRemainder);
   EXPECT_FLOAT_EQ(chrome.status_size.x, kWorkWidth);
@@ -240,14 +240,14 @@ struct LayoutCase {
 };
 
 void ExpectTemplateNodesInEditor(const WorkbenchRegions& regions) {
-  const ImVec2 view_origin(0.0f, 0.0f);
-  const ImVec2 canvas_points[] = {
-      ImVec2(kTemplateIntNodeX, kTemplateFirstIntNodeY),
-      ImVec2(kTemplateIntNodeX, kTemplateSecondIntNodeY),
-      ImVec2(kTemplateAddNodeX, kTemplateAddNodeY),
+  const Vec2 view_origin(0.0f, 0.0f);
+  const Vec2 canvas_points[] = {
+      Vec2(kTemplateIntNodeX, kTemplateFirstIntNodeY),
+      Vec2(kTemplateIntNodeX, kTemplateSecondIntNodeY),
+      Vec2(kTemplateAddNodeX, kTemplateAddNodeY),
   };
-  for (const ImVec2 canvas_point : canvas_points) {
-    const ImVec2 screen = CanvasPointToScreen(regions.editor_content.pos,
+  for (const Vec2 canvas_point : canvas_points) {
+    const Vec2 screen = CanvasPointToScreen(regions.editor_content.pos,
                                               canvas_point, view_origin,
                                               kIdentityCanvasScale);
     EXPECT_TRUE(regions.editor_content.contains(screen))
@@ -267,7 +267,7 @@ void ExpectTemplateNodesInEditor(const WorkbenchRegions& regions) {
 
 WorkbenchRegions RegionsFor(const LayoutCase& layout) {
   return LayoutInitialWorkbenchRegions(
-      ImVec2(0.0f, 0.0f), ImVec2(layout.width, layout.height),
+      Vec2(0.0f, 0.0f), Vec2(layout.width, layout.height),
       kTitleBarHeightEpx * layout.scale, kStatusBarHeightEpx * layout.scale,
       kActivityBarWidthEpx * layout.scale,
       kEditorTabHeightEpx * layout.scale, layout.activity_visible);
@@ -299,12 +299,12 @@ TEST(WorkbenchRegions, CanvasPointUsedAsScreenPointHitsPrimarySidebar) {
       {"restored client without activity bar", kReferenceClientWidth,
        kReferenceClientHeight, kReferenceUiScale, false},
   };
-  const ImVec2 canvas_point(kTemplateIntNodeX, kTemplateFirstIntNodeY);
+  const Vec2 canvas_point(kTemplateIntNodeX, kTemplateFirstIntNodeY);
   for (const LayoutCase& layout : layouts) {
     SCOPED_TRACE(layout.name);
     const WorkbenchRegions regions = RegionsFor(layout);
-    const ImVec2 as_screen = CanvasPointToScreen(
-        ImVec2(0.0f, 0.0f), canvas_point, ImVec2(0.0f, 0.0f),
+    const Vec2 as_screen = CanvasPointToScreen(
+        Vec2(0.0f, 0.0f), canvas_point, Vec2(0.0f, 0.0f),
         kIdentityCanvasScale);
     EXPECT_TRUE(regions.primary_sidebar.contains(as_screen))
         << "treating the canvas point as a screen point lands in the sidebar";
@@ -321,33 +321,33 @@ TEST(WorkbenchRegions, ScalesCanvasPointBeforeAddingOrigin) {
   constexpr float kOriginY = 5.0f;
   constexpr float kContentX = 100.0f;
   constexpr float kContentY = 50.0f;
-  const ImVec2 screen = CanvasPointToScreen(
-      ImVec2(kContentX, kContentY), ImVec2(kCanvasX, kCanvasY),
-      ImVec2(kOriginX, kOriginY), kScale);
+  const Vec2 screen = CanvasPointToScreen(
+      Vec2(kContentX, kContentY), Vec2(kCanvasX, kCanvasY),
+      Vec2(kOriginX, kOriginY), kScale);
   EXPECT_FLOAT_EQ(screen.x, kCanvasX * kScale + kOriginX + kContentX);
   EXPECT_FLOAT_EQ(screen.y, kCanvasY * kScale + kOriginY + kContentY);
 }
 
 TEST(CanvasContent, SettlesOnTheSecondMatchingFrame) {
-  ImVec2 noted(0.0f, 0.0f);
+  Vec2 noted(0.0f, 0.0f);
   int frames = 0;
-  EXPECT_FALSE(NoteCanvasContentSize(ImVec2(0.0f, 0.0f), noted, frames));
+  EXPECT_FALSE(NoteCanvasContentSize(Vec2(0.0f, 0.0f), noted, frames));
 
   constexpr float kCanvasWidth = 640.0f;
   constexpr float kCanvasHeight = 480.0f;
-  const ImVec2 size(kCanvasWidth, kCanvasHeight);
+  const Vec2 size(kCanvasWidth, kCanvasHeight);
   for (int frame = 0; frame + 1 < kCanvasContentStableFrameCount; ++frame) {
     EXPECT_FALSE(NoteCanvasContentSize(size, noted, frames));
   }
   EXPECT_TRUE(NoteCanvasContentSize(size, noted, frames));
 
-  const ImVec2 jitter(kCanvasWidth + kCanvasContentStableEpsilonPx,
+  const Vec2 jitter(kCanvasWidth + kCanvasContentStableEpsilonPx,
                       kCanvasHeight);
   EXPECT_TRUE(NoteCanvasContentSize(jitter, noted, frames))
       << "a one-pixel dock jitter does not reset the stable run";
 
   constexpr float kDockSplitJump = 200.0f;
-  const ImVec2 split(kCanvasWidth - kDockSplitJump, kCanvasHeight);
+  const Vec2 split(kCanvasWidth - kDockSplitJump, kCanvasHeight);
   EXPECT_FALSE(NoteCanvasContentSize(split, noted, frames));
   for (int extra = 1; extra + 1 < kCanvasContentStableFrameCount; ++extra) {
     EXPECT_FALSE(NoteCanvasContentSize(split, noted, frames));

@@ -1,4 +1,4 @@
-# ui 模块测试。由 ui/CMakeLists.txt 在 taskgraph::Ui 定义之后加入，只在 BUILD_UI 时编译。
+# ui 模块测试。由 ui/CMakeLists.txt 在 taskgraph::Ui 定义之后加入，只在 TASKGRAPH_UI=imgui 时编译。
 # session_test：会话。
 # theme_test：工作台主题。
 # workbench_parts_test：工作台扩展点。

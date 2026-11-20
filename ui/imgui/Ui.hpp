@@ -4,11 +4,13 @@
 #include "LinkVariable.hpp"
 #include "NativePathDialog.hpp"
 #include "PortTypeVisual.hpp"
+#include "ThemeStyle.hpp"
 #include "UiBase.hpp"
 #include "UiSession.hpp"
 #include "WorkbenchEdits.hpp"
 #include "WorkbenchFocus.hpp"
 #include "WorkbenchParts.hpp"
+#include "WorkbenchIcons.hpp"
 #include "imgui_internal.h"
 #include <imgui-node-editor/imgui_node_editor.h>
 
@@ -99,12 +101,12 @@ static void DrawPortPinLabels(const tg::Node::Port& port, bool show_type_names) 
   const theme_detail::ThemeTokens& tokens = theme_detail::CurrentTokens();
   ImGui::BeginGroup();
   if (has_type_name) {
-    ImGui::PushStyleColor(ImGuiCol_Text, tokens.editor_type_foreground);
+    ImGui::PushStyleColor(ImGuiCol_Text, ToImVec4(tokens.editor_type_foreground));
     ImGui::TextUnformatted(port.data_type.name.c_str());
     ImGui::PopStyleColor();
   }
   if (has_caption) {
-    ImGui::PushStyleColor(ImGuiCol_Text, tokens.editor_foreground);
+    ImGui::PushStyleColor(ImGuiCol_Text, ToImVec4(tokens.editor_foreground));
     ImGui::TextUnformatted(port.caption.c_str());
     ImGui::PopStyleColor();
   }
@@ -585,9 +587,10 @@ class Ui : public UiBase<Ui> {
     const ImU32 color = ImGui::GetColorU32(
         enabled ? ImGuiCol_Text : ImGuiCol_TextDisabled);
     const ImVec2 center((min.x + max.x) * 0.5f, (min.y + max.y) * 0.5f);
-    // 有图标回调就用图标，没有就先画首字符占位。
-    if (action.icon.draw) {
-      action.icon.draw(draw, center, size * 0.7f, color);
+    // 有图标就画图标，没有就先画首字符占位。
+    const IconPainter action_painter = ImGuiIconPainter(action.icon);
+    if (action_painter.draw) {
+      action_painter.draw(draw, center, size * 0.7f, color);
     } else if (fallback_label[0] != '\0') {
       const char glyph[2] = {fallback_label[0], '\0'};
       const ImVec2 glyph_size = ImGui::CalcTextSize(glyph);
@@ -638,8 +641,8 @@ class Ui : public UiBase<Ui> {
     ImGui::SetNextWindowSize(size);
     ImGui::SetNextWindowViewport(viewport->ID);
     const theme_detail::ThemeTokens& tokens = theme_detail::CurrentTokens();
-    ImGui::PushStyleColor(ImGuiCol_WindowBg, tokens.activity_bar_background);
-    ImGui::PushStyleColor(ImGuiCol_ChildBg, tokens.activity_bar_background);
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, ToImVec4(tokens.activity_bar_background));
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, ToImVec4(tokens.activity_bar_background));
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
     // 不自带标题、滚动条和停靠，避免浮回主侧栏上面。
     const ImGuiWindowFlags activity_flags =
@@ -669,26 +672,27 @@ class Ui : public UiBase<Ui> {
         // 悬停/活动底色用主题 token，活动时左侧画焦点条。
         if (active) {
           draw->AddRectFilled(min, max, ImGui::ColorConvertFloat4ToU32(
-                                             tokens.activity_bar_active_background));
+                                             ToImVec4(tokens.activity_bar_active_background)));
         } else if (hovered) {
           draw->AddRectFilled(min, max, ImGui::ColorConvertFloat4ToU32(
-                                             tokens.activity_bar_hover_background));
+                                             ToImVec4(tokens.activity_bar_hover_background)));
         }
         if (active) {
           const float bar_width = kActivityActiveBorderEpx * ui_scale;
           draw->AddRectFilled(
               min, ImVec2(min.x + bar_width, max.y),
               ImGui::ColorConvertFloat4ToU32(
-                  tokens.activity_bar_active_border));
+                  ToImVec4(tokens.activity_bar_active_border)));
         }
         const ImU32 icon_color = ImGui::ColorConvertFloat4ToU32(
-            active ? tokens.activity_bar_foreground
-                   : tokens.activity_bar_inactive_foreground);
+            active ? ToImVec4(tokens.activity_bar_foreground)
+                   : ToImVec4(tokens.activity_bar_inactive_foreground));
         const ImVec2 center((min.x + max.x) * 0.5f,
                             (min.y + max.y) * 0.5f);
-        // 有图标回调就画图标；没有就先画说明首字符。
-        if (item.icon.draw) {
-          item.icon.draw(draw, center, icon, icon_color);
+        // 有图标就画图标；没有就先画说明首字符。
+        const IconPainter item_painter = ImGuiIconPainter(item.icon);
+        if (item_painter.draw) {
+          item_painter.draw(draw, center, icon, icon_color);
         } else if (!item.tooltip.empty()) {
           const char glyph[2] = {item.tooltip[0], '\0'};
           const ImVec2 glyph_size = ImGui::CalcTextSize(glyph);
@@ -833,13 +837,13 @@ class Ui : public UiBase<Ui> {
         _parts.status_bar_visible ? kStatusBarHeightEpx * ui_scale : 0.0f;
     const float activity_width = kActivityBarWidthEpx * ui_scale;
     const WorkbenchChrome chrome = LayoutWorkbenchChrome(
-        viewport->WorkPos, viewport->WorkSize, title_bar_height,
+        ToVec2(viewport->WorkPos), ToVec2(viewport->WorkSize), title_bar_height,
         status_bar_height, activity_width, _parts.activity_bar_visible);
     const bool dock_open =
         chrome.dock_size.x > 0.0f && chrome.dock_size.y > 0.0f;
     if (dock_open) {
-      ImGui::SetNextWindowPos(chrome.dock_pos);
-      ImGui::SetNextWindowSize(chrome.dock_size);
+      ImGui::SetNextWindowPos(ToImVec2(chrome.dock_pos));
+      ImGui::SetNextWindowSize(ToImVec2(chrome.dock_size));
       ImGui::SetNextWindowViewport(viewport->ID);
       ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
       ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
@@ -871,7 +875,7 @@ class Ui : public UiBase<Ui> {
           output_missing || _workbench_layout_dirty) {
         ImGui::DockBuilderRemoveNode(dockspace_id);
         ImGui::DockBuilderAddNode(dockspace_id, ImGuiDockNodeFlags_DockSpace);
-        ImGui::DockBuilderSetNodeSize(dockspace_id, chrome.dock_size);
+        ImGui::DockBuilderSetNodeSize(dockspace_id, ToImVec2(chrome.dock_size));
         // 剩余节点从整个停靠宿主开始，每步劈完再往中间收。
         ImGuiID dock_canvas = dockspace_id;
         // 主侧栏可见时才劈出左列。
@@ -927,7 +931,8 @@ class Ui : public UiBase<Ui> {
       ImGui::End();
     }
 
-    ShowActivityBar(chrome.activity_pos, chrome.activity_size);
+    ShowActivityBar(ToImVec2(chrome.activity_pos),
+                    ToImVec2(chrome.activity_size));
 
     // Begin / End：主侧栏里的 Explorer。折叠时不画图和节点，编辑区继续画。
     // 顶边与编辑区页签条对齐：WindowPadding 顶为 0，标题行高度同 kEditorTabHeightEpx。
@@ -1325,7 +1330,7 @@ class Ui : public UiBase<Ui> {
         } else {
           ++_canvas_content_wait_frames;
           const bool canvas_settled = NoteCanvasContentSize(
-              ImGui::GetContentRegionAvail(), _canvas_content_size,
+              ToVec2(ImGui::GetContentRegionAvail()), _canvas_content_size,
               _canvas_content_stable_frames);
           if (CanvasEditorMayBegin(canvas_settled, _canvas_content_wait_frames,
                                    _editor != nullptr)) {
@@ -1401,7 +1406,7 @@ class Ui : public UiBase<Ui> {
             ImGui::TableSetColumnIndex(0);
             ImGui::AlignTextToFramePadding();
             ImGui::PushStyleColor(ImGuiCol_Text,
-                                  property_tokens.editor_type_foreground);
+                                  ToImVec4(property_tokens.editor_type_foreground));
             ImGui::TextUnformatted(fields.type_name.c_str());
             ImGui::PopStyleColor();
             ImGui::TableSetColumnIndex(1);
@@ -1443,7 +1448,7 @@ class Ui : public UiBase<Ui> {
               ImGui::TableSetColumnIndex(0);
               ImGui::AlignTextToFramePadding();
               ImGui::PushStyleColor(ImGuiCol_Text,
-                                    property_tokens.editor_foreground);
+                                    ToImVec4(property_tokens.editor_foreground));
               ImGui::TextUnformatted(property->name.c_str());
               ImGui::PopStyleColor();
               const bool bound_input =
@@ -1456,7 +1461,7 @@ class Ui : public UiBase<Ui> {
               ImGui::TableSetColumnIndex(1);
               ImGui::AlignTextToFramePadding();
               ImGui::PushStyleColor(ImGuiCol_Text,
-                                    property_tokens.editor_type_foreground);
+                                    ToImVec4(property_tokens.editor_type_foreground));
               // 输入槽用 Port::data_type.name；原生属性按 PropertyValue 变体名。
               if (bound_input) {
                 const tg::Node::Port* port = selected_node->inputPort(
@@ -1609,8 +1614,8 @@ class Ui : public UiBase<Ui> {
 
     // Begin / End：状态栏。通栏贴底，不进停靠。左=工程名 + Run + 当前图，右=选中节点。
     if (chrome.status_size.y > 0.0f) {
-      ImGui::SetNextWindowPos(chrome.status_pos);
-      ImGui::SetNextWindowSize(chrome.status_size);
+      ImGui::SetNextWindowPos(ToImVec2(chrome.status_pos));
+      ImGui::SetNextWindowSize(ToImVec2(chrome.status_size));
       ImGui::SetNextWindowViewport(viewport->ID);
       PushStatusBarStyle();
       const ImGuiWindowFlags status_flags =
@@ -1688,7 +1693,7 @@ class Ui : public UiBase<Ui> {
           ImVec2(status_bar_min.x + ImGui::GetWindowWidth(),
                  status_bar_min.y + kEditorTabSeparatorThicknessEpx * ui_scale),
           ImGui::ColorConvertFloat4ToU32(
-              theme_detail::CurrentTokens().status_bar_border));
+              ToImVec4(theme_detail::CurrentTokens().status_bar_border)));
     }
       ImGui::End();
       PopStatusBarStyle();
@@ -1909,7 +1914,7 @@ class Ui : public UiBase<Ui> {
     // 有接管者就让它画内容；默认仍是无底无描边的工程名文字。
     if (_parts.command_center.draw) {
       _parts.command_center.draw(
-          ImVec2(command_center_width, command_center_height));
+          Vec2{command_center_width, command_center_height});
     } else {
       // 无底无描边，只露工程名文字，不画成可见的框。
       PushCommandCenterStyle();
@@ -1951,7 +1956,7 @@ class Ui : public UiBase<Ui> {
         ImVec2(title_bar_min.x + ImGui::GetWindowWidth(),
                title_bar_min.y + title_bar_height),
         ImGui::ColorConvertFloat4ToU32(
-            theme_detail::CurrentTokens().title_bar_border));
+            ToImVec4(theme_detail::CurrentTokens().title_bar_border)));
     ImGui::End();
     PopTitleBarStyle();
   }
@@ -2374,7 +2379,7 @@ class Ui : public UiBase<Ui> {
         // 打开 Show Type Names 时，节点标题上方补一行 kind（type token 色）。
         if (_show_port_type_names && !node->typeId().empty()) {
           ImGui::PushStyleColor(ImGuiCol_Text,
-                                theme_detail::CurrentTokens().editor_type_foreground);
+                                ToImVec4(theme_detail::CurrentTokens().editor_type_foreground));
           ImGui::TextUnformatted(node->typeId().c_str());
           ImGui::PopStyleColor();
         }
@@ -2857,7 +2862,7 @@ class Ui : public UiBase<Ui> {
     const bool taken = !empty && RenameNameTaken();
     if (taken) {
       ImGui::PushStyleColor(ImGuiCol_Border,
-                            theme_detail::CurrentTokens().error_foreground);
+                            ToImVec4(theme_detail::CurrentTokens().error_foreground));
     }
     const bool enter_pressed = ImGui::InputText(
         "##ExplorerRename", _rename_buffer.data(), text_buffer_size,
@@ -3752,7 +3757,7 @@ class Ui : public UiBase<Ui> {
   int _resize_origin_w = 0;
   int _resize_origin_h = 0;
   // 画布内容区最近一次非零尺寸，以及它已经连续相同的帧数。
-  ImVec2 _canvas_content_size = ImVec2(0.0f, 0.0f);
+  Vec2 _canvas_content_size;
   int _canvas_content_stable_frames = 0;
   int _canvas_content_wait_frames = 0;
   // 用户右键平移、滚轮或 Frame 之后，不再把视图原点拉回 (0, 0)。

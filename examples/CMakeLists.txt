@@ -1,2 +1,6 @@
 add_subdirectory(simple-core)
-add_subdirectory(simple-ui)
+if(TASKGRAPH_UI STREQUAL "imgui")
+  add_subdirectory(simple-ui)
+elseif(TASKGRAPH_UI STREQUAL "qt")
+  add_subdirectory(simple-qt)
+endif()

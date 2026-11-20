@@ -1,8 +1,14 @@
 # 界面说明
 
-`Ui::Run()` 打开一套 VS Code 风格的工作台。分区从外到内是：标题栏、活动栏、主侧栏、编辑区、辅助侧栏、面板、状态栏。界面字符串用英文。主题是 **Dark Modern** 或 **Light Modern**，色值来自随仓库附带的 VS Code 官方主题 JSON。
+`Ui::Run()` 打开一套 VS Code 风格的工作台，两个后端共用 core 与 `ui/model`。界面字符串用英文。本文先写 **ImGui 版**（默认后端），再写 **Qt 版**。
 
-一个工程可以有多张 graph。节点属于创建它的那张 graph。种类要先 `registerNodeType`，编辑区里的新建、打开工程和粘贴都走这份登记。怎么建工程、怎么 `run`，见仓库根目录的 README。
+工程是目录：`project.json`、`graphs/`、`assets/`。工程内路径存相对路径；会话在用户配置目录的 `taskgraph/session.json`。`simple-ui` 与 `simple-qt` 都把源码里的 `demo-project` 复制到可执行文件旁再打开，改图不会弄脏仓库。
+
+一个工程可以有多张 graph。节点属于创建它的那张 graph。种类要先 `registerNodeType`，编辑区里的新建、打开工程和粘贴都走这份登记；界面名默认去掉 type id 末尾的 `Node`，显式 caption 原样使用。怎么建工程、怎么 `run`，见仓库根目录的 README。
+
+# ImGui 版
+
+分区从外到内是：标题栏、活动栏、主侧栏、编辑区、辅助侧栏、面板、状态栏。主题是 **Dark Modern** 或 **Light Modern**，色值来自随仓库附带的 VS Code 官方主题 JSON。
 
 ```text
 ┌──────────────────────────────────────────────────────────────┐
@@ -78,7 +84,7 @@
 - **Keyboard Shortcuts**：过滤框在上，下面三列是 Command、Keybinding、When。这一页只列出快捷键，不能在这里改键。
 - graph：页签名是图名。这一页的右侧、与页签同一行，有 **Show Type Names**。打开后，引脚功能名上方叠类型名，节点 identifier 上方补一行 kind。类型名用类型色，引脚仍和功能名对齐。
 
-graph 页签下面是画布。节点第一次出现时，工程里有坐标就用那个坐标，否则按列排开。之后的位置写回工程。
+graph 页签下面是画布。节点第一次出现时，工程里有坐标就用那个坐标，否则按列排开。之后的位置写回工程。针脚默认画成圆，颜色由类型 id 哈希；作者可在 `NodeData_` 上可选指定 `PinShape` / `PortTypeColor`。
 
 选中种类之后，编辑区里跟着指针走的是种类名，最后一个字的右下角贴着指针。这还不是节点，主侧栏里也没有这一行。下一次在编辑区按下左键，才在该点创建节点。**Esc** 或画布右键取消，不创建。
 
@@ -207,3 +213,51 @@ graph 页签下面是画布。节点第一次出现时，工程里有坐标就�
 ```
 
 标题从原点再往里 8×`s` 才开始，四边留白相同。引脚在标题下面，连线用引脚中心。
+
+# Qt 版
+
+用 `TASKGRAPH_UI=qt` 构建。`Ui` 是 `QMainWindow`，`QApplication` 和事件循环由程序自己持有（`simple-qt` 是范例）。界面用 Qt 6 控件、Qt-Advanced-Docking-System 停靠和 QtNodes 画布。
+
+## 外壳
+
+标题栏是系统窗口标题 `工程名 - taskgraph`。中间是编辑区页签；主侧栏停左边，Properties 停右边，Output 停在编辑区下面。停靠可拖动、浮出、关闭；启动布局是主侧栏占 2/12、Output 占编辑区列高度的 1/4。
+
+主侧栏最左边是活动栏：从上到下 **Explorer**、**Search**；再点当前图标不收起侧栏。Explorer 显示图和节点的树；Search 按图名和节点 identifier 过滤，点结果打开对应图（命中节点时同时选中它）。**View > Activity Bar** 隐藏/显示活动栏。
+
+## 菜单
+
+- **File**：New Project...、Open Project...、Open Recent、Save、Save As...；**Preferences > Keyboard Shortcuts** 打开只读快捷键页签；**Preferences > Theme** 在 **Dark Modern** / **Light Modern** 间即时切换，选择写入 `session.json`，下次启动恢复。
+- **Edit**：Undo、Redo、Cut、Copy、Paste、Duplicate、Delete，作用于当前画布。
+- **View**：Zoom In、Zoom Out、Fit All、Fit Selected；**Activity Bar**、**Explorer**、**Search**；**Properties** / **Output** 开关右侧属性表和底部面板。
+- **Run**：**Run Graph**（F5）跑当前页签的图。
+- **Help**：**Welcome**（暂不可用）。
+
+## 主侧栏
+
+树根是工程名，下面是图和节点。工程名行右侧：**+ Node**（有打开的图页签时可用）进入落点，**+ Graph** 新建空图。
+
+右键菜单：图行 **New Node** / **Rename** / **Delete Graph**，节点行 **New Node** / **Rename** / **Delete Node**，工程根行 **New Graph**。**F2** 或双击在原处改名；空名和同图重名会被拒绝，状态栏提示原因。**Delete** / **Backspace** 删除选中的节点或图。
+
+点图名打开页签；点节点选中它。
+
+## 编辑区
+
+每张打开的图一个页签；关页签不删图。快捷键页签是只读列表，和 imgui 版共用清单，但只列 Qt 实际绑定的命令，另加 Undo/Redo 两行。
+
+选中种类后进入落点：下一次在画布左键才创建节点。**Esc** 或画布右键取消；没有落点时，画布空白处右键打开种类列表。
+
+画布操作：拖动节点写回坐标；从引脚拖到另一个引脚连线；**Delete** / **Backspace** 删除选中的节点或连线；**View** 菜单里缩放、适配全部、适配选中。节点右键 **Delete Node**。
+
+**Ctrl+Z** 撤销、**Ctrl+Y** 重做画布上的创建/删除/移动/连线/粘贴；**Ctrl+C** / **Ctrl+V** / **Ctrl+D** 复制、粘贴、原位复制选中的节点，**Ctrl+X** 剪切（复制后删除）。macOS 上 Ctrl 换成 Command。剪贴板是 QtNodes 的场景 JSON，能跨页签粘贴；同图粘贴撞名时保留入图自动名。属性表、Explorer 改名和主侧栏删除目前不进撤销栈。
+
+## 属性表
+
+选中节点时三列：**Name**、**Type**、**Value**。int 用数字框，bool 用勾选框，string 可直接输入；路径值右键 **Browse...** 选文件。端口露面的输入行只读；右键 **Convert to Property**，改回时用 **Convert to Port**。
+
+## 面板与状态栏
+
+**Output** 只读，按行追加 core 日志。状态栏从左到右：工程名、**Run**、当前图名、运行提示；右侧是选中节点的 identifier。没有图时 **Run** 不可用。
+
+## 还没做
+
+属性表与 Explorer 改名的撤销、选中连线时属性表显示变量、**Space** 打开种类列表、**F / Shift+F** 框选、启动恢复打开的页签、切工程时提示未保存、QtNodes 节点配色跟随主题。

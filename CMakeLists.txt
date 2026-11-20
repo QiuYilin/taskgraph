@@ -8,12 +8,15 @@ set(project_name "taskgraph")
 
 set(INSTALL_CMAKEDIR share/${project_name})
 option(BUILD_EXAMPLES "Build examples" ON)
-option(BUILD_UI "Build ui" ON)
-if(BUILD_UI)
-  list(APPEND VCPKG_MANIFEST_FEATURES "ui")
+set(TASKGRAPH_UI "imgui" CACHE STRING "Ui frontend: imgui, qt, or none")
+set_property(CACHE TASKGRAPH_UI PROPERTY STRINGS imgui qt none)
+if(TASKGRAPH_UI STREQUAL "imgui")
+  list(APPEND VCPKG_MANIFEST_FEATURES "ui-imgui")
+elseif(TASKGRAPH_UI STREQUAL "qt")
+  list(APPEND VCPKG_MANIFEST_FEATURES "ui-qt")
 endif()
 
-project(${project_name} VERSION 0.1.0)
+project(${project_name} VERSION 0.2.0)
 
 # Without this, MSVC reads UTF-8 sources as the system code page.
 if(MSVC)
@@ -65,7 +68,7 @@ if(BUILD_EXAMPLES)
 add_subdirectory(examples)
 endif()
 
-if(BUILD_UI)
+if(TASKGRAPH_UI STREQUAL "imgui" OR TASKGRAPH_UI STREQUAL "qt")
 add_subdirectory(ui)
 endif()
 

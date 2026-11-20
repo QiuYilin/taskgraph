@@ -2,6 +2,7 @@
 // 内置 Dark Modern / Light Modern、未知主题拒绝、主题 token。
 
 #include "Theme.hpp"
+#include "ThemeStyle.hpp"
 
 #include <gtest/gtest.h>
 
@@ -11,12 +12,16 @@ namespace {
 
 constexpr std::size_t kMinimumBundledThemes = 2;
 
-bool SameColor(const ImVec4& left, const ImVec4& right) {
+bool SameColor(const Color& left, const Color& right) {
   constexpr float kTolerance = 0.002f;
-  return std::fabs(left.x - right.x) <= kTolerance &&
-         std::fabs(left.y - right.y) <= kTolerance &&
-         std::fabs(left.z - right.z) <= kTolerance &&
-         std::fabs(left.w - right.w) <= kTolerance;
+  return std::fabs(left.r - right.r) <= kTolerance &&
+         std::fabs(left.g - right.g) <= kTolerance &&
+         std::fabs(left.b - right.b) <= kTolerance &&
+         std::fabs(left.a - right.a) <= kTolerance;
+}
+
+Color AsColor(const ImVec4& color) {
+  return Color{color.x, color.y, color.z, color.w};
 }
 
 }  // namespace
@@ -71,7 +76,7 @@ TEST(Theme, Tokens) {
   EXPECT_TRUE(SameColor(dark->tokens.sidebar_border,
                         theme_detail::Rgb255(43, 43, 43)))
       << "dark sidebar border";
-  EXPECT_GT(dark->tokens.button_background.w, 0.01f)
+  EXPECT_GT(dark->tokens.button_background.a, 0.01f)
       << "dark secondary button gets visible fallback";
 
   EXPECT_TRUE(SameColor(light->tokens.editor_background,
@@ -121,27 +126,30 @@ TEST(Theme, Tokens) {
 
   ImGuiStyle style;
   theme_detail::ApplyThemeColors(style, light->tokens);
-  EXPECT_TRUE(SameColor(style.Colors[ImGuiCol_WindowBg],
+  EXPECT_TRUE(SameColor(AsColor(style.Colors[ImGuiCol_WindowBg]),
                         light->tokens.editor_background))
       << "light window background applied";
-  EXPECT_TRUE(SameColor(style.Colors[ImGuiCol_Text], light->tokens.editor_foreground))
+  EXPECT_TRUE(SameColor(AsColor(style.Colors[ImGuiCol_Text]),
+                        light->tokens.editor_foreground))
       << "light text applied";
-  EXPECT_TRUE(SameColor(style.Colors[ImGuiCol_TabSelected],
+  EXPECT_TRUE(SameColor(AsColor(style.Colors[ImGuiCol_TabSelected]),
                         light->tokens.tab_active_background))
       << "light selected tab applied";
-  EXPECT_TRUE(SameColor(style.Colors[ImGuiCol_TabSelectedOverline],
+  EXPECT_TRUE(SameColor(AsColor(style.Colors[ImGuiCol_TabSelectedOverline]),
                         light->tokens.tab_active_border_top))
       << "light tab overline applied";
-  EXPECT_TRUE(SameColor(style.Colors[ImGuiCol_PopupBg], light->tokens.menu_background))
+  EXPECT_TRUE(SameColor(AsColor(style.Colors[ImGuiCol_PopupBg]),
+                        light->tokens.menu_background))
       << "light popup background applied";
-  EXPECT_TRUE(SameColor(style.Colors[ImGuiCol_Border], light->tokens.border))
+  EXPECT_TRUE(SameColor(AsColor(style.Colors[ImGuiCol_Border]),
+                        light->tokens.border))
       << "light border applied";
 
   theme_detail::ApplyThemeColors(style, dark->tokens);
-  EXPECT_TRUE(SameColor(style.Colors[ImGuiCol_WindowBg],
+  EXPECT_TRUE(SameColor(AsColor(style.Colors[ImGuiCol_WindowBg]),
                         dark->tokens.editor_background))
       << "dark window background applied";
-  EXPECT_TRUE(SameColor(style.Colors[ImGuiCol_TabSelectedOverline],
+  EXPECT_TRUE(SameColor(AsColor(style.Colors[ImGuiCol_TabSelectedOverline]),
                         dark->tokens.tab_active_border_top))
       << "dark tab overline applied";
 }

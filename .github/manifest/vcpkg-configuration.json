@@ -3,8 +3,8 @@
     {
       "kind": "git",
       "repository": "https://github.com/QiuYilin/vcpkg-registry",
-      "baseline": "d6419e5f96b02557ceccb79b46f2f85de65361c0",
-      "packages": ["taskflow"]
+      "baseline": "66816546f4e403710fd51bc26fd1c6a10b57ccbf",
+      "packages": ["taskflow", "qtnodeeditor"]
     }
   ]
 }

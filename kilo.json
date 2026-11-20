@@ -3,5 +3,11 @@
   "instructions": [
     ".cursor/rules/*.mdc",
     ".cursor/rules/private/*.mdc"
-  ]
+  ],
+  "permission": {
+    "external_directory": {
+      "C:\\Users\\qiuyi\\program\\nodeeditor\\*": "allow",
+      "C:\\Users\\qiuyi\\program\\vcpkg-registry\\*": "allow"
+    }
+  }
 }
