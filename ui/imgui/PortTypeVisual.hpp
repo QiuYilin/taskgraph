@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Theme.hpp"
+#include "ThemeStyle.hpp"
 #include <imgui.h>
 #include <imgui-node-editor/imgui_node_editor.h>
 
@@ -10,12 +11,12 @@
 
 // 连线失败（类型不符、方向不对、属性露面等）用当前主题的 errorForeground。
 inline ImVec4 LinkFailureColor() {
-  return theme_detail::CurrentTokens().error_foreground;
+  return ToImVec4(theme_detail::CurrentTokens().error_foreground);
 }
 
 // 空类型针脚用当前主题的次要文字色。
 inline ImVec4 UntypedLinkColor() {
-  return theme_detail::CurrentTokens().description_foreground;
+  return ToImVec4(theme_detail::CurrentTokens().description_foreground);
 }
 inline constexpr float kLinkColorSaturation = 0.65f;
 inline constexpr float kLinkColorValue = 0.95f;

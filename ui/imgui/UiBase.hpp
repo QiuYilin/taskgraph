@@ -4,6 +4,7 @@
 #include <cstdlib>
 
 #include "Theme.hpp"
+#include "ThemeStyle.hpp"
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_opengl3.h"
@@ -258,7 +259,7 @@ class UiBase {
     theme_detail::SetActiveTheme(theme);
 
     theme_detail::ApplyThemeColors(style, theme.tokens);
-    _clear_color = theme.tokens.editor_background;
+    _clear_color = ToImVec4(theme.tokens.editor_background);
   }
 
   void CoverWorkArea() {

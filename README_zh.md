@@ -6,9 +6,24 @@
 
 # taskgraph
 
-对并行任务框架 [taskflow](https://github.com/taskflow/taskflow) 的 C++17 包装，面向数据流图，并可选提供 ImGui 工作台。
+对并行任务框架 [taskflow](https://github.com/taskflow/taskflow) 的 C++17 包装，面向数据流图，并可选提供 ImGui 或 Qt 工作台。核心用途是简化编写和调试能拆成算子流水线的算法：每个算子是一个带类型的节点，边是绑定，整条流水线可以当作一张图来编辑、检查和运行。
+
+也可以把它看作几个 C++ awesome 项目的整合：调度来自 taskflow，工作台在 imgui 版用 ImGui 与 imgui-node-editor，在 Qt 版用 Qt 与 QtNodes。
 
 taskgraph 目前满足 ANF 和无环项图：一张图是一阶、单赋值、无环的项。边是绑定。一次 `run` 算出这个项的值。
+
+## 模块
+
+| 路径 | 目标 | 内容 |
+| --- | --- | --- |
+| `core/` | `taskgraph::Core` | `Controller`、`Graph`、`Node`、节点数据、工程读写和日志；不依赖 UI。 |
+| `ui/model/` | `taskgraph::UiModel` | 只含头文件、与后端无关的状态（Facade）：会话、主题、主侧栏/编辑区/剪贴板逻辑、路径对话框。 |
+| `ui/imgui/` | `taskgraph::Ui` | ImGui 工作台：停靠加 imgui-node-editor 画布。 |
+| `ui/qt/` | `taskgraph::Ui` | Qt 工作台：Qt 6 控件、QtNodes 画布、Qt-Advanced-Docking-System 外壳。 |
+| `examples/` | — | `simple-core`、`simple-ui`（ImGui）、`simple-qt`（Qt）。 |
+| `tests/` | — | `core/`（gtest）、`ui/`（gtest，仅 ImGui）、`qt/`（QtTest）。 |
+
+同一时间只构建一个工作台，由 `TASKGRAPH_UI` 选择。
 
 # 依赖
 
@@ -18,15 +33,59 @@ C++17。推荐用 [vcpkg](https://github.com/microsoft/vcpkg)。Taskflow 须为 
 
 把 [`.github/manifest/vcpkg-configuration.json`](.github/manifest/vcpkg-configuration.json) 里的 `registries` 放进 vcpkg 根目录的 `vcpkg-configuration.json`，并补上 `default-registry`，把它的 `baseline` 写成这份 vcpkg 检出的提交。`taskflow` 从个人注册表解析，其余端口仍来自这份检出。
 
+基础（core 与 core 测试）：
+
 ```
 vcpkg install taskflow spdlog nlohmann-json gtest
 ```
 
-**core + ui** 还需安装 `portable-file-dialogs`。
+`TASKGRAPH_UI=imgui`（默认）另需：
+
+```
+vcpkg install imgui[glfw-binding,opengl3-binding,docking-experimental] opengl imgui-node-editor portable-file-dialogs
+```
+
+`TASKGRAPH_UI=qt` 另需：
+
+```
+vcpkg install qtbase qtnodeeditor qt-advanced-docking-system portable-file-dialogs
+```
 
 ## 清单模式
 
-使用 [`.github/manifest/vcpkg.json`](.github/manifest/vcpkg.json) 和 [`.github/manifest/vcpkg-configuration.json`](.github/manifest/vcpkg-configuration.json)。`BUILD_UI` 和 `BUILD_EXAMPLES` 分别打开 `ui` 与 `examples` 特性。
+使用 [`.github/manifest/vcpkg.json`](.github/manifest/vcpkg.json) 和 [`.github/manifest/vcpkg-configuration.json`](.github/manifest/vcpkg-configuration.json)。`TASKGRAPH_UI` 会加上对应的 `ui-imgui` 或 `ui-qt` 特性；`BUILD_EXAMPLES` 只决定是否构建示例。
+
+# 构建
+
+Windows 上用 `CMakePresets.json` 里的 `imgui` / `qt` 配置预设（Visual Studio 2026，vcpkg 在 `C:\vcpkg`），以及 `imgui-debug`、`imgui-release`、`qt-debug`、`qt-release` 构建预设：
+
+```
+cmake --preset imgui
+cmake --build --preset imgui-debug
+```
+
+Qt 工作台换成 `--preset qt` / `--build --preset qt-debug`。其它平台直接配置：
+
+```
+cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=<vcpkg>/scripts/buildsystems/vcpkg.cmake -DTASKGRAPH_UI=imgui
+cmake --build build --config Release
+```
+
+| 选项 | 取值 | 默认 | 含义 |
+| --- | --- | --- | --- |
+| `TASKGRAPH_UI` | `imgui`、`qt`、`none` | `imgui` | 工作台后端；`none` 只构建 core。 |
+| `BUILD_EXAMPLES` | `ON` / `OFF` | `ON` | 构建 `simple-core` 和对应的 `simple-ui` 或 `simple-qt`。 |
+| `BUILD_TESTING` | `ON` / `OFF` | `ON` | 构建与后端匹配的测试。 |
+
+可执行文件在构建目录的 `bin/<config>/`（用预设时是 `out/build/<preset>/bin/<config>/`）。Windows 上 Qt 示例链接后会跑 `windeployqt`，Qt DLL 和平台插件就在 exe 旁。
+
+# 测试
+
+```
+ctest --test-dir build -C Debug --output-on-failure
+```
+
+`tests/core` 在任何后端下都跑。`tests/ui`（gtest）只在 `TASKGRAPH_UI=imgui` 时编译；`tests/qt`（QtTest）只在 `qt` 时编译，ctest 用 `QT_QPA_PLATFORM=offscreen` 无界面运行。CI 在 windows-2025、ubuntu-22.04、macos-15 上构建 ImGui 后端。
 
 # 用法
 
@@ -65,18 +124,13 @@ int main() {
 
 ## core + ui
 
-仍用同一个 `tg::Controller`：在 **core** 上登记种类并打开工程，再套上 `Ui` 调用 `Run()`，得到 VS Code 风格工作台。
+仍用同一个 `tg::Controller`：在 **core** 上登记种类并打开工程，再套上 `Ui` 调用 `Run()`，得到 VS Code 风格工作台。两个后端共用同一份 core 和模型；两边的交互细节都在 [`docs/ui.md`](docs/ui.md)。
 
-![simple-ui 示例界面](docs/images/simple-ui.png)
+![simple-ui 示例界面（imgui 版）](docs/images/simple-ui.png)
 
-- 工程是目录：`project.json`、`graphs/`、`assets/`。File 菜单：New / Open / Save。工程内路径存相对路径；会话在用户配置目录的 `taskgraph/session.json`。
-- 画布连线按端口类型。针脚默认圆，颜色由类型 id 哈希；作者可在 `NodeData_` 上可选指定 `PinShape` / `PortTypeColor`。编辑区工具栏 **Show Type Names** 在功能名上方叠类型名，并在节点 identifier 上方补一行 kind；类型名用 VS Code `entity.name.type` token 色，针脚始终跟功能名对齐。输入口与属性是同一槽的两种露面（**Convert to Property** / **Convert to Port**）。选中连线时，属性表显示这根线代表的变量：类型；输出已经算出且能映成属性时还有值。变量目前没有名称。Delete 删掉这一条连线。主侧栏没有连线项，选中连线不改变那里的选中。
-- 所有编辑器页签关闭时，编辑区会提示从 Explorer 打开 graph，或使用 **+ Graph** 新建。
-- 每个节点类用 `registerNodeType<NodeT>()` 登记；种类字符串是 `NodeT::kTypeId`。界面名默认去掉末尾的 `Node`，传入的 caption 则原样使用。`node->typeId()` 是 kind，`node->getName()` 是图内唯一 identifier：入图时自动命名（`IntNode`、`IntNode2`…），可在 Explorer 用 **Rename** / `F2` 改名；同一张图内重名会被拒绝。选中种类只进入落点，在编辑区再点一次才创建节点；在那之前主侧栏没有这一行。`simple-ui` 源码带 `demo-project` 模板；构建复制到可执行文件旁再 `openProject`，改图不会弄脏仓库。`simple-core` 就是上面的 core 范例，运行后打印和。
-- 编辑区有焦点时：**Ctrl+C** 复制选中节点以及它们之间的连线，**Ctrl+X** 剪切这些节点，**Ctrl+V** 贴到指针处，**Ctrl+D** 按小偏移再复制一份，**Space** 打开种类列表而不创建节点。**F** 框住选中、指针下的节点或整张图；**Shift+F** 带边距框住。**Delete** 删除选中，**Alt+点击** 删掉一根连线。右键拖动平移，滚轮缩放。macOS 上这些 Ctrl 组合键是 Command。剪贴板只留在进程里。只选中连线时不会复制。
-- **File > Preferences > Keyboard Shortcuts** 在编辑区打开只读页签，列出全部快捷键。**File > Preferences > Theme** 可在 **Dark Modern** / **Light Modern** 间即时切换；选择写入 `session.json`，下次启动恢复。色值来自 `ui/themes/` 下随 VS Code 附带的官方主题 JSON（MIT，见 `NOTICE.md`），改主题不需要改 `Ui` 代码。
-- 活动栏在主侧栏左边。从上到下是 **Explorer** 和 **Search**。Explorer 显示图和节点的树。Search 按能看见的图名和节点 identifier 列出结果，不搜 kind。再点当前图标不收起主侧栏。新增面板视图会重建一次停靠布局，手工拖过的位置会重置。
-- 标题栏菜单栏 **View**：**Appearance > Activity Bar** 开关活动栏；**Explorer** / **Search** 切主侧栏视图；**Properties** / **Output** 开关属性表和输出面板；**Primary Side Bar** / **Status Bar** 开关主侧栏和状态栏；**Show Type Names** 开关类型名显示。
+### ImGui 版
+
+默认后端：带活动栏、Explorer/Search、imgui-node-editor 画布、属性表、Output 面板和 Dark Modern / Light Modern 主题的停靠工作台。
 
 ```
 #include "taskgraph/taskgraph.hpp"
@@ -93,3 +147,31 @@ int main() {
     return 0;
 }
 ```
+
+### Qt 版
+
+`TASKGRAPH_UI=qt`。`QMainWindow` 配 Qt-Advanced-Docking-System 停靠和 QtNodes 画布；`QApplication` 和事件循环由程序自己持有。
+
+```
+#include "taskgraph/taskgraph.hpp"
+#include "AddNode.hpp"
+#include "IntNode.hpp"
+#include "Ui.hpp"
+#include <QApplication>
+int main(int argc, char** argv) {
+    QApplication app(argc, argv);
+    tg::Controller project;
+    project.registerNodeType<IntNode>();
+    project.registerNodeType<AddNode>();
+    project.openProject(/* 可执行文件旁的 demo-project 副本 */);
+    Ui ui(project);
+    ui.Run();
+    return app.exec();
+}
+```
+
+![simple-qt 示例界面（Qt 版）](docs/images/simple-qt.png)
+
+### 为什么写两套 UI
+
+一部分原因是为了说明 core 能被任意 UI 框架使用：`taskgraph::Core` 不依赖任何 UI，两个前端都只是同一份模型上的观察者。imgui 版用 imgui-node-editor；立即模式很适合让 AI 随时完善 UI 代码：每一帧都从当前状态重建，改动集中在一处，改完立刻能看见。Qt 版基于 QtNodes，最新版支持 MVD，画布只是适配器，观察的仍是主侧栏、页签和属性表共用的工程/图模型；按 MVD 分层写下来，AI 实现 UI 的速度非常快。

@@ -1,0 +1,8 @@
+include(CMakeFindDependencyMacro)
+# UiModel 是 taskgraph 的兄弟组件，先带出 taskgraph::UiModel 与 taskgraph::Core。
+include("${CMAKE_CURRENT_LIST_DIR}/taskgraphUiModelConfig.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/taskgraphUiTargets.cmake")
+
+find_dependency(Qt6 COMPONENTS Widgets REQUIRED)
+find_dependency(qtadvanceddocking-qt6 CONFIG)
+find_dependency(QtNodes CONFIG)
