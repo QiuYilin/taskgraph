@@ -2,6 +2,7 @@
 #include "taskgraph/Node.hpp"
 #include "IntNodeData.hpp"
 
+/** \brief 加法节点：两个 IntData 输入相加后作为一个 IntData 输出。 */
 class AddNode : public tg::Node {
  public:
   static constexpr const char* kTypeId = "AddNode";

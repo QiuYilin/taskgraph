@@ -31,6 +31,7 @@ constexpr const char* kJsonPresentation = "presentation";
 constexpr const char* kJsonValue = "value";
 constexpr const char* kJsonValueType = "valueType";
 constexpr const char* kValueTypeInt = "int";
+constexpr const char* kValueTypeDouble = "double";
 constexpr const char* kValueTypeBool = "bool";
 constexpr const char* kValueTypeString = "string";
 constexpr const char* kPresentationProperty = "property";
@@ -49,6 +50,9 @@ QJsonObject PropertyToJson(const tg::PropertyValue& value) {
         using Held = std::decay_t<decltype(held)>;
         if constexpr (std::is_same_v<Held, int>) {
           out[kJsonValueType] = kValueTypeInt;
+          out[kJsonValue] = held;
+        } else if constexpr (std::is_same_v<Held, double>) {
+          out[kJsonValueType] = kValueTypeDouble;
           out[kJsonValue] = held;
         } else if constexpr (std::is_same_v<Held, bool>) {
           out[kJsonValueType] = kValueTypeBool;
@@ -69,6 +73,10 @@ bool PropertyFromJson(const QJsonObject& object, tg::PropertyValue& out) {
   const QString type = object.value(kJsonValueType).toString();
   if (type == QString::fromLatin1(kValueTypeInt)) {
     out = object.value(kJsonValue).toInt();
+    return true;
+  }
+  if (type == QString::fromLatin1(kValueTypeDouble)) {
+    out = object.value(kJsonValue).toDouble();
     return true;
   }
   if (type == QString::fromLatin1(kValueTypeBool)) {
@@ -501,6 +509,15 @@ bool TaskGraphModel::setNodeData(QtNodes::NodeId node_id,
   }
 }
 
+void TaskGraphModel::SetShowPortTypeNames(bool show) {
+  if (show == _show_port_type_names) {
+    return;
+  }
+  _show_port_type_names = show;
+  // 端口标签宽度变化，重算节点几何。
+  emit modelReset();
+}
+
 QVariant TaskGraphModel::portData(QtNodes::NodeId node_id,
                                   QtNodes::PortType port_type,
                                   QtNodes::PortIndex port_index,
@@ -529,11 +546,29 @@ QVariant TaskGraphModel::portData(QtNodes::NodeId node_id,
           ToQtNodeDataType(node->fixedDataType(tg_type, fixed)));
     case QtNodes::PortRole::Caption: {
       const char* caption = node->fixedPortCaption(tg_type, fixed);
-      return caption != nullptr ? QString::fromUtf8(caption) : QString();
+      const QString caption_text =
+          caption != nullptr ? QString::fromUtf8(caption) : QString();
+      if (!_show_port_type_names) {
+        return caption_text;
+      }
+      const QString type_name =
+          QString::fromStdString(node->fixedDataType(tg_type, fixed).name);
+      if (type_name.isEmpty()) {
+        return caption_text;
+      }
+      if (caption_text.isEmpty()) {
+        return type_name;
+      }
+      return QStringLiteral("%1 (%2)").arg(caption_text, type_name);
     }
     case QtNodes::PortRole::CaptionVisible: {
       const char* caption = node->fixedPortCaption(tg_type, fixed);
-      return caption != nullptr && caption[0] != '\0';
+      const bool has_caption = caption != nullptr && caption[0] != '\0';
+      if (!_show_port_type_names) {
+        return has_caption;
+      }
+      return has_caption ||
+             !node->fixedDataType(tg_type, fixed).name.empty();
     }
     case QtNodes::PortRole::ConnectionPolicyRole:
       return QVariant::fromValue(port_type == QtNodes::PortType::In

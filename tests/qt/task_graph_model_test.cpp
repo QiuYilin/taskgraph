@@ -58,6 +58,7 @@ class TaskGraphModelTest : public QObject {
   void nodeIdMapping();
   void nodeDataRoles();
   void portDataRoles();
+  void portTypeNamesCaption();
   void visibleInputRemapping();
   void connectAndDisconnect();
   void deleteNodeEmitsConnectionsFirst();
@@ -167,6 +168,32 @@ void TaskGraphModelTest::portDataRoles() {
                .isValid());
   QVERIFY(!fixture.model->setPortData(id, QtNodes::PortType::In, 0, QVariant(),
                                       QtNodes::PortRole::Data));
+}
+
+void TaskGraphModelTest::portTypeNamesCaption() {
+  Fixture fixture;
+  const QtNodes::NodeId id = fixture.IdOf(fixture.first);
+  const auto caption = [&](QtNodes::PortType type, QtNodes::PortIndex index) {
+    return fixture.model
+        ->portData(id, type, index, QtNodes::PortRole::Caption)
+        .toString();
+  };
+
+  QCOMPARE(caption(QtNodes::PortType::In, 0),
+           QString::fromStdString(tgtest::kFirstInputCaption));
+  fixture.model->SetShowPortTypeNames(true);
+  QCOMPARE(caption(QtNodes::PortType::In, 0),
+           QStringLiteral("%1 (%2)")
+               .arg(QString::fromStdString(tgtest::kFirstInputCaption),
+                    QString::fromStdString(tgtest::kTestDataName)));
+  QCOMPARE(caption(QtNodes::PortType::Out, 0),
+           QStringLiteral("%1 (%2)")
+               .arg(QString::fromStdString(tgtest::kOutputCaption),
+                    QString::fromStdString(tgtest::kTestDataName)));
+
+  fixture.model->SetShowPortTypeNames(false);
+  QCOMPARE(caption(QtNodes::PortType::In, 0),
+           QString::fromStdString(tgtest::kFirstInputCaption));
 }
 
 void TaskGraphModelTest::visibleInputRemapping() {

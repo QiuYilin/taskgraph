@@ -11,24 +11,6 @@
           "index": 0,
           "presentation": "property",
           "valueType": "int",
-          "value": 1
-        }
-      ],
-      "position": {
-        "x": 120.0,
-        "y": 80.0
-      }
-    },
-    {
-      "id": 1,
-      "type": "IntNode",
-      "name": "IntNode",
-      "properties": [],
-      "inputs": [
-        {
-          "index": 0,
-          "presentation": "property",
-          "valueType": "int",
           "value": 2
         }
       ],
@@ -38,7 +20,7 @@
       }
     },
     {
-      "id": 2,
+      "id": 1,
       "type": "AddNode",
       "name": "AddNode",
       "properties": [],
@@ -57,8 +39,41 @@
         }
       ],
       "position": {
+        "x": 760.0,
+        "y": 240.0
+      }
+    },
+    {
+      "id": 2,
+      "type": "DoubleNode",
+      "name": "DoubleNode",
+      "properties": [
+        {
+          "name": "factor",
+          "valueType": "double",
+          "value": 1.5
+        }
+      ],
+      "inputs": [],
+      "position": {
+        "x": 120.0,
+        "y": 380.0
+      }
+    },
+    {
+      "id": 3,
+      "type": "CastNode",
+      "name": "CastNode",
+      "properties": [],
+      "inputs": [
+        {
+          "index": 0,
+          "presentation": "port"
+        }
+      ],
+      "position": {
         "x": 420.0,
-        "y": 140.0
+        "y": 380.0
       }
     }
   ],
@@ -66,14 +81,20 @@
     {
       "from": 0,
       "out": 0,
-      "to": 2,
+      "to": 1,
+      "in": 1
+    },
+    {
+      "from": 2,
+      "out": 0,
+      "to": 3,
       "in": 0
     },
     {
-      "from": 1,
+      "from": 3,
       "out": 0,
-      "to": 2,
-      "in": 1
+      "to": 1,
+      "in": 0
     }
   ]
 }

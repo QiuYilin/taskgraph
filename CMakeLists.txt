@@ -16,7 +16,7 @@ elseif(TASKGRAPH_UI STREQUAL "qt")
   list(APPEND VCPKG_MANIFEST_FEATURES "ui-qt")
 endif()
 
-project(${project_name} VERSION 0.2.0)
+project(${project_name} VERSION 0.3.0)
 
 # Without this, MSVC reads UTF-8 sources as the system code page.
 if(MSVC)

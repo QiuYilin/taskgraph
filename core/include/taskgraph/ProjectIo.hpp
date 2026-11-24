@@ -25,13 +25,13 @@ class TASKGRAPH_EXPORT ProjectIo {
 
   /** \brief 从工程目录加载图到 controller（先清空已有图）。
    *
-   *  兼容 v1（节点 name 等于 type、允许重名）与当前 v2。
+   *  兼容 v1/v2/v3（v1 节点 name 等于 type、允许重名）。
    *
    *  \param[in,out] controller 载入目标；先清空已有图再填入。
    *  \param[in] root 工程目录。
    *  \param[out] out_project_name 读出的工程显示名。
    *  \param[in] pose_setter 节点落位回调，可为空。
-   *  \param[out] out_migrated 本次载入做了 v1→v2 迁移、名称去重，或丢弃了非法/重复边时写 true；可为空。
+   *  \param[out] out_migrated 本次载入做了 v1 迁移、名称去重，或丢弃了非法/重复边时写 true；可为空。
    */
   static bool load(Controller& controller, const std::filesystem::path& root,
                    std::string& out_project_name,

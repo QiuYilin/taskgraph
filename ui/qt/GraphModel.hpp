@@ -22,6 +22,7 @@ class GraphModel : public QObject {
              QObject* parent = nullptr);
 
   const std::shared_ptr<tg::Graph>& graph() const { return _graph; }
+  tg::Controller& controller() const { return _controller; }
   QString name() const;
   int nodeCount() const;
   std::shared_ptr<tg::Node> nodeAt(int index) const;

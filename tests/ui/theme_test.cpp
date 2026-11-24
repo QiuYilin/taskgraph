@@ -112,6 +112,16 @@ TEST(Theme, Tokens) {
   EXPECT_TRUE(SameColor(light->tokens.menu_border,
                         theme_detail::Rgb255(206, 206, 206)))
       << "light menu border";
+  EXPECT_TRUE(SameColor(light->tokens.button_primary_background,
+                        theme_detail::Rgb255(0, 95, 184)))
+      << "light primary button background";
+  EXPECT_TRUE(SameColor(dark->tokens.button_primary_background,
+                        theme_detail::Rgb255(0, 120, 212)))
+      << "dark primary button background";
+  EXPECT_GT(light->tokens.button_border.a, 0.0f)
+      << "light button border is drawn";
+  EXPECT_GT(dark->tokens.button_border.a, 0.0f)
+      << "dark button border is drawn";
 
   theme_detail::SetActiveTheme(*dark);
   EXPECT_EQ(CurrentThemeId(), "dark-modern") << "active theme id is dark";

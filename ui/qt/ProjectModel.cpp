@@ -117,6 +117,14 @@ bool ProjectModel::setData(const QModelIndex& index, const QVariant& value,
     if (item->graph->name().toStdString() == name) {
       return true;
     }
+    // 图改名也进工程撤销栈；撞名由命令应用阶段把关。
+    if (_project_undo_push) {
+      auto command = std::make_unique<ui::RenameGraphCommand>(
+          item->graph->name().toStdString(), name);
+      if (_project_undo_push(std::move(command))) {
+        return true;
+      }
+    }
     renameGraph(item->graph, name);
     return true;
   }
@@ -128,6 +136,18 @@ bool ProjectModel::setData(const QModelIndex& index, const QVariant& value,
     }
     if (item->node->getName() == name) {
       return true;
+    }
+    // 有打开的页签时，改名也进画布的撤销栈；撞名先拒绝，命令应用不会再失败。
+    if (_undo_push) {
+      if (graph->graph()->isNodeNameTaken(name, item->node.get())) {
+        emit renameRejected(tr("Name already used in this graph"));
+        return false;
+      }
+      auto command = std::make_unique<ui::RenameNodeCommand>(
+          item->node->getName(), name);
+      if (_undo_push(graph, std::move(command))) {
+        return true;
+      }
     }
     if (!graph->renameNode(item->node, name)) {
       emit renameRejected(tr("Name already used in this graph"));

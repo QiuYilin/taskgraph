@@ -5,8 +5,10 @@ set(HPP_HEADER_FILES
     WorkbenchParts.hpp
     WorkbenchFocus.hpp
     WorkbenchEdits.hpp
-    EditorClipboard.hpp
+    WorkbenchClipboard.hpp
+    Undo.hpp
     UiSession.hpp
+    LogView.hpp
     LinkVariable.hpp
     ExplorerProjectActions.hpp
     NativePathDialog.hpp

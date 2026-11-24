@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "taskgraph/ConnectionInfo.hpp"
+#include "taskgraph/Log.hpp"
 
 namespace {
 
@@ -192,8 +193,8 @@ bool Graph::canConnect(const Node::Port* from, const Node::Port* to) const {
   return !reaches(to->node, from->node);
 }
 
-bool Graph::connect(std::shared_ptr<Node> from, unsigned int port_out,
-                    std::shared_ptr<Node> to, unsigned int port_in) {
+bool Graph::connectPorts(std::shared_ptr<Node> from, unsigned int port_out,
+                         std::shared_ptr<Node> to, unsigned int port_in) {
   // 空指针不连；同一节点、类型、露面方式和重复边由 canConnect 统一判断。
   if (from == nullptr || to == nullptr) {
     return false;
@@ -221,12 +222,12 @@ bool Graph::connect(const Node::Port* from, const Node::Port* to) {
       from->node == nullptr || to->node == nullptr) {
     return false;
   }
-  return connect(from->node->shared_from_this(), from->index,
-                 to->node->shared_from_this(), to->index);
+  return connectPorts(from->node->shared_from_this(), from->index,
+                      to->node->shared_from_this(), to->index);
 }
 
-bool Graph::disconnect(std::shared_ptr<Node> from, unsigned int port_out,
-                        std::shared_ptr<Node> to, unsigned int port_in) {
+bool Graph::disconnectPorts(std::shared_ptr<Node> from, unsigned int port_out,
+                            std::shared_ptr<Node> to, unsigned int port_in) {
   if (from == nullptr || to == nullptr) {
     return false;
   }
@@ -244,6 +245,16 @@ bool Graph::disconnect(std::shared_ptr<Node> from, unsigned int port_out,
   });
   dropScheduleIfUnbound(from, to);
   return true;
+}
+
+bool Graph::disconnect(const Node::Port* from, const Node::Port* to) {
+  // 与 connect 同一套守卫：必须是输出连到输入，且两端都挂在节点上。
+  if (from == nullptr || to == nullptr || !from->is_output || to->is_output ||
+      from->node == nullptr || to->node == nullptr) {
+    return false;
+  }
+  return disconnectPorts(from->node->shared_from_this(), from->index,
+                         to->node->shared_from_this(), to->index);
 }
 
 void Graph::dropScheduleIfUnbound(const std::shared_ptr<Node>& from,
@@ -296,11 +307,84 @@ bool Graph::setInputPresentation(std::shared_ptr<Node> node, unsigned int index,
   if (node == nullptr) {
     return false;
   }
+  // 先查露面策略再断边：被拒时不能把现有入边拆掉。
+  if (presentation == InputPresentation::Property &&
+      !node->allowsPropertyPresentation(index)) {
+    return false;
+  }
   if (presentation == InputPresentation::Property) {
     disconnectInputsTo(node, index);
     node->setInPortData(index, nullptr);
   }
   return node->setInputPresentation(index, presentation);
+}
+
+bool Graph::refreshPortTypes(std::shared_ptr<Node> node) {
+  if (node == nullptr) {
+    return false;
+  }
+  // 先记下旧输入类型，用来判断 Property 露面的绑定属性是否要重置。
+  const unsigned int input_count = node->inputPortCount();
+  std::vector<NodeDataType> previous_inputs;
+  previous_inputs.reserve(input_count);
+  for (unsigned int index = 0; index < input_count; ++index) {
+    const Node::Port* port = node->inputPort(index);
+    previous_inputs.push_back(port != nullptr ? port->data_type
+                                              : NodeDataType{});
+  }
+
+  bool changed = node->refreshPortTypes();
+  for (unsigned int index = 0; index < input_count; ++index) {
+    const Node::Port* port = node->inputPort(index);
+    if (port == nullptr || port->data_type.id == previous_inputs[index].id ||
+        node->inputPresentation(index) != InputPresentation::Property) {
+      continue;
+    }
+    if (auto property = node->inputProperty(index)) {
+      property->value = node->defaultInputPropertyValue(index);
+    }
+  }
+
+  // 收集不再兼容的边，再统一断开，避免遍历中改动链表。
+  struct EdgeRef {
+    std::shared_ptr<Node> from;
+    unsigned int port_out;
+    std::shared_ptr<Node> to;
+    unsigned int port_in;
+  };
+  std::vector<EdgeRef> to_drop;
+  for (const ConnectionInfo& conn : node->incoming()) {
+    if (conn.adj == nullptr) {
+      continue;
+    }
+    const Node::Port* out_port = conn.adj->outputPort(conn.port_out);
+    const Node::Port* in_port = node->inputPort(conn.port_in);
+    if (out_port != nullptr && in_port != nullptr &&
+        !NodeDataTypeCompatible(out_port->data_type, in_port->data_type)) {
+      to_drop.push_back({conn.adj, conn.port_out, node, conn.port_in});
+    }
+  }
+  for (const ConnectionInfo& conn : node->outgoing()) {
+    if (conn.adj == nullptr) {
+      continue;
+    }
+    const Node::Port* out_port = node->outputPort(conn.port_out);
+    const Node::Port* in_port = conn.adj->inputPort(conn.port_in);
+    if (out_port != nullptr && in_port != nullptr &&
+        !NodeDataTypeCompatible(out_port->data_type, in_port->data_type)) {
+      to_drop.push_back({node, conn.port_out, conn.adj, conn.port_in});
+    }
+  }
+  for (const EdgeRef& edge : to_drop) {
+    const Node::Port* out_port = edge.from->outputPort(edge.port_out);
+    const Node::Port* in_port = edge.to->inputPort(edge.port_in);
+    TG_LOG_WARN(LogCategory::Graph,
+                "graph '{}': refreshPortTypes dropped edge {} -> {}", getName(),
+                out_port != nullptr ? out_port->data_type.name : std::string(),
+                in_port != nullptr ? in_port->data_type.name : std::string());
+    disconnectPorts(edge.from, edge.port_out, edge.to, edge.port_in);
+  }
+  return changed || !to_drop.empty();
 }
 
 std::string Graph::dump() { return _taskflow.dump(); }

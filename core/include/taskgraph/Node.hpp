@@ -19,6 +19,30 @@ enum class PortType { In, Out };
  */
 enum class InputPresentation { Port, Property };
 
+/** \brief 属性编辑器提示；Auto 由属性值类型决定。
+ */
+enum class PropertyEditor { Auto, Integer, Double, Text, File, Directory, Enum };
+
+/** \brief 属性在界面里的落点：属性表或端口上的类型选择器。 */
+enum class PropertyPlacement { Table, Port };
+
+/** \brief 属性提示：编辑器样式、数值范围/步进与路径语义。
+ *
+ *  choices 存枚举标签，枚举值以 int 下标存进 PropertyValue。
+ *  is_project_path 为真时 string 属性在存盘时参与工程相对路径换算。
+ */
+struct PropertyHints {
+  PropertyEditor editor = PropertyEditor::Auto;
+  double min = 0.0;  /**< 数值下限；editor 非数值类时忽略。 */
+  double max = 0.0;  /**< 数值上限；editor 非数值类时忽略。 */
+  double step = 0.0; /**< 步进；<= 0 用默认。 */
+  int decimals = -1; /**< 小数位数；< 0 用默认。 */
+  std::vector<std::string> choices; /**< Enum 标签，值存 int 下标。 */
+  PropertyPlacement placement =
+      PropertyPlacement::Table;   /**< 画在属性表还是端口类型行。 */
+  bool is_project_path = true;    /**< string 是否按工程相对路径存。 */
+};
+
 class Graph;
 
 template <typename DataT>
@@ -86,6 +110,8 @@ class TASKGRAPH_EXPORT Node : public std::enable_shared_from_this<Node> {
     PropertyValue value;
     /** \brief 绑定的固定输入下标；原生属性为 kNativePropertyInputIndex。 */
     int bound_input_index = kNativePropertyInputIndex;
+    /** \brief 编辑器/范围/枚举/路径语义提示。 */
+    PropertyHints hints;
   };
 
   // 原生属性（非输入槽绑定）在 Property::bound_input_index 上的标记。
@@ -141,6 +167,16 @@ public:
   virtual const char* fixedPortCaption(PortType port_type,
                                        unsigned int index) const;
 
+  /** \brief 该端口绑定的类型切换属性下标；-1 表示该端口没有类型选择器。
+   *
+   *  界面在显示端口类型名时，如果返回有效下标，就把类型名画成下拉框。
+   */
+  virtual int portTypeProperty(PortType port_type, unsigned int index) const {
+    (void)port_type;
+    (void)index;
+    return -1;
+  }
+
   /** \brief 输入端口数量。
    *  \return 已有输入端口的个数。第一次调用时按 nFixedPorts 生成端口。
    */
@@ -183,12 +219,36 @@ public:
    */
   std::shared_ptr<Property> inputProperty(unsigned int index) const;
 
+  /** \brief 该输入是否允许改为属性露面。默认允许。
+   *  \param[in] index 固定输入下标。
+   *  \return 允许改为属性时返回 true。
+   */
+  virtual bool allowsPropertyPresentation(unsigned int index) const {
+    (void)index;
+    return true;
+  }
+
+  /** \brief 输入槽在属性露面且无上游数据时的默认值。
+   *
+   *  默认按输入数据类型给：int→0、double→0.0、bool→false、其余空串。
+   *  \param[in] index 固定输入下标。
+   *  \return 该输入绑定属性的默认值。
+   */
+  virtual PropertyValue defaultInputPropertyValue(unsigned int index) const;
+
   /** \brief 设置输入槽露面方式（不断边；断边由 Graph 负责）。
    *  \param[in] index 固定输入下标。
    *  \param[in] presentation 端口或属性。
-   *  \return 节点没有固定输入或下标非法时返回 false。
+   *  \return 节点没有固定输入、下标非法或不允许改属性时返回 false。
    */
   bool setInputPresentation(unsigned int index, InputPresentation presentation);
+
+  /** \brief 属性改变后按 fixedDataType 原地刷新端口类型。
+   *
+   *  只更新已建端口的 data_type，不重建 Port（保持 PinId 指针稳定）。
+   *  \return 有端口类型变化时返回 true；端口尚未建立时返回 false。
+   */
+  bool refreshPortTypes();
 
   /** \brief 从本节点连出去的边。
    *  \return Graph::connect 写进 `_next` 的连边。用 list 保存，元素地址可当作连线身份。
@@ -222,17 +282,30 @@ public:
   }
 
   std::shared_ptr<Property> addProperty(std::string name, PropertyValue property) {
+    return addProperty(std::move(name), std::move(property), PropertyHints{});
+  }
+
+  /** \brief 添加原生属性并附带编辑器提示。
+   *  \param[in] name 属性名（属性表左列）。
+   *  \param[in] property 初值。
+   *  \param[in] hints 编辑器/范围/枚举/路径提示。
+   *  \return 新登记的原生属性。
+   */
+  std::shared_ptr<Property> addProperty(std::string name, PropertyValue property,
+                                        PropertyHints hints) {
     Property prop;
     prop.name = std::move(name);
-    prop.value = property;
+    prop.value = std::move(property);
+    prop.hints = std::move(hints);
     prop.bound_input_index = kNativePropertyInputIndex;
-    auto prop_ptr = std::make_shared<Property>(prop);
+    auto prop_ptr = std::make_shared<Property>(std::move(prop));
     _properties.push_back(prop_ptr);
     return prop_ptr;
   }
 
   void setProperty(int index, PropertyValue value) {
-    _properties[index]->value = value;
+    _properties[index]->value = std::move(value);
+    refreshPortTypes();
   }
 
   /** \brief 把这只输入改绑成常量（Facade 转到所属 Graph）。
@@ -344,15 +417,16 @@ class In {
 
 /** \brief 还没有输入槽的配置（Proxy 到原生 Property）。
  *
- *  声明时登记到节点。T 只限 int、string、bool。不提供赋值，写入走 Node::setProperty。
+ *  声明时登记到节点。T 只限 int、double、string、bool。不提供赋值，写入走 Node::setProperty。
  */
 template <typename T>
 class Prop {
  public:
   Prop(Node* node, std::string name, T initial) {
-    static_assert(std::is_same_v<T, int> || std::is_same_v<T, std::string> ||
+    static_assert(std::is_same_v<T, int> || std::is_same_v<T, double> ||
+                      std::is_same_v<T, std::string> ||
                       std::is_same_v<T, bool>,
-                  "Prop 只接受 int、string 或 bool");
+                  "Prop only accepts int, double, string, or bool");
     if (node == nullptr) {
       return;
     }

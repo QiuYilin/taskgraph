@@ -69,7 +69,7 @@ const char* AddNode::fixedPortCaption(PortType port_type,
 }
 
 void AddNode::compute() {
-  logInfo("[{}]computing ...", "AddNode");
+  TG_LOG_DEBUG(tg::LogCategory::App, "[{}]computing ...", "AddNode");
   const auto resolve_int = [this](unsigned int index,
                                   const std::weak_ptr<NodeData>& weak,
                                   const char* port_name) {
@@ -99,7 +99,7 @@ void AddNode::compute() {
   const int rhs = resolve_int(kInRhsIndex, _in_data2, kInRhsId);
   const int sum = lhs + rhs;
   _out_data = std::make_shared<IntData_t>(sum);
-  logInfo("[{}]result: {} + {} = {}", "AddNode", lhs, rhs, sum);
+  TG_LOG_DEBUG(tg::LogCategory::App, "[{}]result: {} + {} = {}", "AddNode", lhs, rhs, sum);
   return;
 }
 

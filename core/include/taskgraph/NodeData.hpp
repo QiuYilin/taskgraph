@@ -38,8 +38,8 @@ inline bool NodeDataTypeCompatible(const NodeDataType& output,
   return !output.id.empty() && output.id == input.id;
 }
 
-/** \brief 属性表可编辑值；与输入口绑定时由 NodeData 同步可映类型（如 int）。 */
-using PropertyValue = std::variant<int, std::string, bool>;
+/** \brief 属性表可编辑值；与输入口绑定时由 NodeData 同步可映类型（如 int、double）。 */
+using PropertyValue = std::variant<int, double, std::string, bool>;
 
 class NodeData {
  public:
@@ -56,6 +56,18 @@ class NodeData {
 
   /// Type for inner use
   virtual NodeDataType type() const = 0;
+
+  /** \brief 日志用的简短摘要。
+   *
+   *  默认只返回类型名。实现必须是 const、线程安全、无副作用：一个输出
+   *  可能被多个下游节点并发读取并调用本函数，不能懒加载或修改载荷。
+   *
+   *  \return 单行短摘要；没有类型名时返回 "NodeData"。
+   */
+  virtual std::string debugSummary() const {
+    const std::string name = type().name;
+    return name.empty() ? "NodeData" : name;
+  }
 
   /** \brief 若载荷可映成属性值则写入 out（Observer 同步用）。默认不可映。 */
   virtual bool tryAsPropertyValue(PropertyValue& out) const {
@@ -110,7 +122,7 @@ class NodeData_ : public NodeData {
   const T& data() const { return _data; }
 
   bool tryAsPropertyValue(PropertyValue& out) const override {
-    if constexpr (std::is_same_v<T, int>) {
+    if constexpr (std::is_same_v<T, int> || std::is_same_v<T, double>) {
       out = _data;
       return true;
     }

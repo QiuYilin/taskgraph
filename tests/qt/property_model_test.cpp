@@ -55,6 +55,7 @@ class PropertyModelTest : public QObject {
   void editNativeValues();
   void convertPresentation();
   void browseValue();
+  void hintRolesAndBrowse();
   void externalChangeEmitsDataChanged();
   void nodeRemovalClearsModel();
 };
@@ -135,6 +136,8 @@ void PropertyModelTest::editNativeValues() {
 
 void PropertyModelTest::convertPresentation() {
   Fixture fixture;
+  QVERIFY(fixture.model->AllowsPropertyConversion(kFirstInputRow));
+  QVERIFY(!fixture.model->AllowsPropertyConversion(kValueRow));
   QVERIFY(!fixture.model->ConvertPresentation(kValueRow, true));
   QVERIFY(!fixture.model->ConvertPresentation(99, true));
 
@@ -174,6 +177,61 @@ void PropertyModelTest::browseValue() {
       [](const std::string&, const std::string&)
           -> std::optional<std::string> { return std::optional<std::string>{}; });
   QVERIFY(!fixture.model->BrowseValue(kFirstInputRow));
+}
+
+void PropertyModelTest::hintRolesAndBrowse() {
+  tg::Controller controller;
+  tgtest::RegisterHintsTestType(controller);
+  auto graph = controller.createGraph("Graph");
+  GraphModel graph_model(graph, controller);
+  auto node = graph_model.addNode(tgtest::kHintsNodeTypeId);
+  PropertyModel model;
+  model.setNode(&graph_model, node);
+
+  constexpr int kRatioRow = 0;
+  constexpr int kModeRow = 1;
+  constexpr int kTextRow = 2;
+  constexpr int kFileRow = 3;
+  constexpr int kFolderRow = 4;
+
+  QCOMPARE(model.data(model.index(kRatioRow, 1)).toString(), QString("double"));
+  QCOMPARE(model.data(model.index(kModeRow, 1)).toString(), QString("enum"));
+  QCOMPARE(model.data(model.index(kTextRow, 1)).toString(), QString("string"));
+  QCOMPARE(model.data(model.index(kFileRow, 1)).toString(), QString("file"));
+  QCOMPARE(model.data(model.index(kFolderRow, 1)).toString(),
+           QString("directory"));
+
+  QCOMPARE(model.data(model.index(kRatioRow, 2),
+                      PropertyModel::HintsEditorRole)
+               .toInt(),
+           static_cast<int>(tg::PropertyEditor::Double));
+  QCOMPARE(model.data(model.index(kRatioRow, 2), PropertyModel::HintsMinRole)
+               .toDouble(),
+           0.0);
+  QCOMPARE(model.data(model.index(kRatioRow, 2), PropertyModel::HintsMaxRole)
+               .toDouble(),
+           10.0);
+  QCOMPARE(model.data(model.index(kRatioRow, 2), PropertyModel::HintsStepRole)
+               .toDouble(),
+           0.5);
+  QCOMPARE(
+      model.data(model.index(kRatioRow, 2), PropertyModel::HintsDecimalsRole)
+          .toInt(),
+      2);
+
+  QCOMPARE(model.data(model.index(kModeRow, 2), PropertyModel::HintsEditorRole)
+               .toInt(),
+           static_cast<int>(tg::PropertyEditor::Enum));
+  QCOMPARE(model.data(model.index(kModeRow, 2), PropertyModel::HintsChoicesRole)
+               .toStringList()
+               .size(),
+           2);
+
+  QVERIFY(!model.AllowsBrowse(kRatioRow));
+  QVERIFY(!model.AllowsBrowse(kModeRow));
+  QVERIFY(!model.AllowsBrowse(kTextRow));
+  QVERIFY(model.AllowsBrowse(kFileRow));
+  QVERIFY(model.AllowsBrowse(kFolderRow));
 }
 
 void PropertyModelTest::externalChangeEmitsDataChanged() {

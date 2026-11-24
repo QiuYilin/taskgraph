@@ -25,6 +25,8 @@ inline constexpr float kBetweenControlsEpx = 8.0f;
 inline constexpr float kControlLabelSpacingEpx = 12.0f;
 inline constexpr float kStandardControlHeightEpx = 32.0f;
 inline constexpr float kFramePaddingSideCount = 2.0f;
+// VS Code button.border 是 10% 前景色；主题 JSON 缺这一项时用它兜底。
+inline constexpr float kButtonBorderAlpha = 0.1f;
 // https://github.com/microsoft/vscode/blob/main/src/vs/workbench/browser/parts/statusbar/statusbarPart.ts
 // StatusbarPart.HEIGHT
 inline constexpr float kStatusBarHeightEpx = 22.0f;
@@ -151,6 +153,7 @@ struct ThemeTokens {
 
   Color focus_border;
   Color error_foreground;
+  Color warning_foreground;
   Color description_foreground;
   Color disabled_foreground;
 
@@ -158,9 +161,14 @@ struct ThemeTokens {
   Color input_border;
   Color input_foreground;
   Color input_active_background;
+  // 无前缀的 button_* 是 VS Code secondary button；primary 见 button_primary_*。
   Color button_background;
   Color button_hover_background;
   Color button_foreground;
+  Color button_border;
+  Color button_primary_background;
+  Color button_primary_hover_background;
+  Color button_primary_foreground;
   Color scrollbar_background;
   Color scrollbar_grab;
   Color scrollbar_grab_hovered;
@@ -362,6 +370,7 @@ static ThemeTokens FallbackTokens(ThemeKind kind) {
 
   t.focus_border = light ? Rgb255(0, 95, 184) : Rgb255(0, 120, 212);
   t.error_foreground = light ? Rgb255(248, 81, 73) : Rgb255(244, 135, 113);
+  t.warning_foreground = light ? Rgb255(191, 136, 3) : Rgb255(204, 167, 0);
   t.description_foreground = light ? Rgb255(59, 59, 59) : Rgb255(157, 157, 157);
   t.disabled_foreground = light ? Rgb255(118, 118, 118) : Rgb255(128, 128, 128);
 
@@ -374,6 +383,12 @@ static ThemeTokens FallbackTokens(ThemeKind kind) {
   t.button_hover_background =
       light ? Rgb255(204, 204, 204) : Rgb255(60, 60, 60);
   t.button_foreground = light ? Rgb255(59, 59, 59) : Rgb255(204, 204, 204);
+  t.button_border = WithAlpha(t.editor_foreground, kButtonBorderAlpha);
+  t.button_primary_background =
+      light ? Rgb255(0, 95, 184) : Rgb255(0, 120, 212);
+  t.button_primary_hover_background =
+      light ? Rgb255(2, 88, 168) : Rgb255(2, 110, 193);
+  t.button_primary_foreground = Rgb255(255, 255, 255);
   t.scrollbar_background = t.editor_background;
   t.scrollbar_grab =
       light ? Rgb255(100, 100, 100, 0.7f) : Rgb255(121, 121, 121, 0.4f);
@@ -464,6 +479,7 @@ static ThemeTokens ResolveTokens(const nlohmann::json& colors,
 
   take("focusBorder", t.focus_border);
   take("errorForeground", t.error_foreground);
+  take("editorWarning.foreground", t.warning_foreground);
   take("descriptionForeground", t.description_foreground);
   take("disabledForeground", t.disabled_foreground);
 
@@ -474,6 +490,10 @@ static ThemeTokens ResolveTokens(const nlohmann::json& colors,
   take("button.secondaryBackground", t.button_background);
   take("button.secondaryHoverBackground", t.button_hover_background);
   take("button.secondaryForeground", t.button_foreground);
+  take("button.border", t.button_border);
+  take("button.background", t.button_primary_background);
+  take("button.hoverBackground", t.button_primary_hover_background);
+  take("button.foreground", t.button_primary_foreground);
   take("scrollbarSlider.background", t.scrollbar_grab);
   take("scrollbarSlider.hoverBackground", t.scrollbar_grab_hovered);
   take("scrollbarSlider.activeBackground", t.scrollbar_grab_active);

@@ -11,6 +11,8 @@ class EditorModel;
 class GraphCanvasView;
 class GraphModel;
 class KeyboardShortcutsView;
+class QUndoStack;
+enum class NodeClipboardCommand;
 namespace tg {
 class Node;
 }
@@ -27,15 +29,25 @@ class EditorTabsView : public QTabWidget {
   using SceneContextMenuHandler = std::function<void(GraphModel*, QPointF)>;
   using NodeSelectedHandler =
       std::function<void(GraphModel*, std::shared_ptr<tg::Node>)>;
+  using ClipboardHandler =
+      std::function<void(NodeClipboardCommand, GraphCanvasView*)>;
+  /** \brief 新画布创建时把它的撤销栈交给上层做全局排序。 */
+  using UndoStackHandler = std::function<void(QUndoStack*)>;
 
   explicit EditorTabsView(EditorModel* model, QWidget* parent = nullptr);
 
   void SetSceneClickHandler(SceneClickHandler handler);
   void SetSceneContextMenuHandler(SceneContextMenuHandler handler);
   void SetNodeSelectedHandler(NodeSelectedHandler handler);
+  void SetClipboardHandler(ClipboardHandler handler);
+  void SetUndoStackHandler(UndoStackHandler handler);
 
   GraphCanvasView* currentCanvas() const;
+  /** \brief 这张图当前打开的页签画布；没有页签时为 nullptr。 */
+  GraphCanvasView* canvasFor(GraphModel* graph) const;
   void ApplyTheme();
+  /** \brief 所有画布（含以后新建的）端口标签是否附带类型名。 */
+  void SetShowPortTypeNames(bool show);
 
  private:
   void RefreshTabs();
@@ -46,4 +58,7 @@ class EditorTabsView : public QTabWidget {
   SceneClickHandler _scene_click;
   SceneContextMenuHandler _scene_context_menu;
   NodeSelectedHandler _node_selected;
+  ClipboardHandler _clipboard;
+  UndoStackHandler _undo_stack;
+  bool _show_port_type_names = false;
 };

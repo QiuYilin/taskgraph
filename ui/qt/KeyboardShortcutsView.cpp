@@ -9,21 +9,12 @@
 #include <string>
 #include <vector>
 
-#include "EditorClipboard.hpp"
+#include "WorkbenchClipboard.hpp"
 
 namespace {
 
 enum Column { kCommand = 0, kKeybinding = 1, kWhen = 2, kColumnCount = 3 };
 inline constexpr int kRowHeight = 22;
-inline constexpr const char* kUndoCommand = "Undo";
-inline constexpr const char* kRedoCommand = "Redo";
-#if defined(__APPLE__)
-inline constexpr const char* kUndoKey = "Cmd+Z";
-inline constexpr const char* kRedoKey = "Cmd+Shift+Z";
-#else
-inline constexpr const char* kUndoKey = "Ctrl+Z";
-inline constexpr const char* kRedoKey = "Ctrl+Y";
-#endif
 
 // Qt 画布只接了一部分共享清单；没绑定的键位不列，免得页签说谎。
 bool IsQtShortcutCommand(const char* command) {
@@ -31,15 +22,17 @@ bool IsQtShortcutCommand(const char* command) {
     return false;
   }
   const std::string name(command);
-  return name == "Cut" || name == "Copy" || name == "Paste" ||
-         name == "Duplicate" || name == "Delete" || name == "Rename" ||
-         name == "Delete Node or Graph" || name == "Cancel Placement";
+  return name == "Undo" || name == "Redo" || name == "Cut" ||
+         name == "Copy" || name == "Paste" || name == "Delete" ||
+         name == "Rename" || name == "Delete Node or Graph" ||
+         name == "Cancel Placement";
 }
 
-// QtNodes 自带撤销/重做，共享清单里没有这两行。
-constexpr ShortcutRow kQtExtraRows[] = {
-    {kUndoCommand, kUndoKey, kWhenEditorFocused},
-    {kRedoCommand, kRedoKey, kWhenEditorFocused},
+// Qt 把同一组剪贴板键也绑到 Explorer；这组行只属于 Qt 页签，不进共享清单。
+const ShortcutRow kQtExplorerRows[] = {
+    {"Cut", kEditorCutShortcut, kWhenExplorerFocused},
+    {"Copy", kEditorCopyShortcut, kWhenExplorerFocused},
+    {"Paste Graph", kEditorPasteShortcut, kWhenExplorerFocused},
 };
 
 }  // namespace
@@ -87,7 +80,7 @@ void KeyboardShortcutsView::Refresh() {
     }
     rows.push_back(catalog[index]);
   }
-  for (const ShortcutRow& row : kQtExtraRows) {
+  for (const ShortcutRow& row : kQtExplorerRows) {
     if (ShortcutRowMatches(row, filter)) {
       rows.push_back(row);
     }

@@ -33,6 +33,17 @@ class FixedTypeData : public tg::NodeData {
   tg::NodeDataType _type;
 };
 
+class SummarizedData : public FixedTypeData {
+ public:
+  explicit SummarizedData(std::string summary)
+      : FixedTypeData("summary-id", "Summary"), _summary(std::move(summary)) {}
+
+  std::string debugSummary() const override { return _summary; }
+
+ private:
+  std::string _summary;
+};
+
 }  // namespace
 
 TEST(NodeData, SameIdMatches) {
@@ -73,4 +84,19 @@ TEST(NodeData, ShapeAndColorComeFromTemplate) {
   EXPECT_EQ(tinted.type().shape, tg::PinShape::Square) << "模板可指定方针脚";
   EXPECT_TRUE(tinted.type().has_color) << "模板可指定显式色";
   EXPECT_EQ(tinted.type().color.r, kDemoColor.r) << "显式色 r 应透传";
+}
+
+TEST(NodeData, DebugSummaryDefaultsToTypeName) {
+  const IntData plain;
+  EXPECT_EQ(plain.debugSummary(), kIntDataName)
+      << "默认摘要返回类型 name";
+
+  const FixedTypeData unnamed{"id", ""};
+  EXPECT_EQ(unnamed.debugSummary(), "NodeData")
+      << "没有类型名时返回通用名";
+}
+
+TEST(NodeData, DebugSummaryCanBeOverridden) {
+  const SummarizedData data("12 points");
+  EXPECT_EQ(data.debugSummary(), "12 points");
 }
