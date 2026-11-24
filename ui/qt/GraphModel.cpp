@@ -91,7 +91,12 @@ bool GraphModel::connect(const std::shared_ptr<tg::Node>& from,
                          unsigned int port_out,
                          const std::shared_ptr<tg::Node>& to,
                          unsigned int port_in) {
-  if (!_graph->connect(from, port_out, to, port_in)) {
+  if (from == nullptr || to == nullptr) {
+    return false;
+  }
+  const tg::Node::Port* out = from->outputPort(port_out);
+  const tg::Node::Port* in = to->inputPort(port_in);
+  if (!_graph->connect(out, in)) {
     return false;
   }
   _controller.markDirty();
@@ -103,7 +108,12 @@ bool GraphModel::disconnect(const std::shared_ptr<tg::Node>& from,
                             unsigned int port_out,
                             const std::shared_ptr<tg::Node>& to,
                             unsigned int port_in) {
-  if (!_graph->disconnect(from, port_out, to, port_in)) {
+  if (from == nullptr || to == nullptr) {
+    return false;
+  }
+  const tg::Node::Port* out = from->outputPort(port_out);
+  const tg::Node::Port* in = to->inputPort(port_in);
+  if (!_graph->disconnect(out, in)) {
     return false;
   }
   _controller.markDirty();
@@ -135,8 +145,13 @@ bool GraphModel::setProperty(const std::shared_ptr<tg::Node>& node,
   properties[static_cast<std::size_t>(property_index)]->value = std::move(value);
   _controller.markDirty();
   const int node_index = indexOf(node.get());
+  const bool ports_changed =
+      _graph != nullptr && _graph->refreshPortTypes(node);
   if (node_index >= 0) {
     emit propertyChanged(node_index);
+    if (ports_changed) {
+      emit portsChanged(node_index);
+    }
   }
   return true;
 }

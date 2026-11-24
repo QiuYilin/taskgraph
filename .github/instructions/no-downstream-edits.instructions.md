@@ -1,0 +1,16 @@
+---
+description: "taskgraph 是库，不能直接改 PCLgraph 等依赖它的衍生项目；只能提示改动点和命令。"
+applyTo: "**"
+---
+
+# 不改衍生项目
+
+taskgraph 是库，PCLgraph 等依赖 taskgraph 的项目属于衍生项目。在 taskgraph 仓库工作时：
+
+- 不要直接修改、格式化、重命名或删除衍生项目的源码、工程文件、示例数据和文档。
+- 不要在衍生项目里执行会改变文件或构建产物的命令；只读检查、搜索和阅读可以。
+- 不要替衍生项目提交、暂存或回滚改动。
+- 衍生项目需要同步修改时，在回复里给出具体文件、改动点和建议命令，由衍生项目自己的会话执行。
+- taskgraph 自己的 `examples/`、`core/`、`ui/` 不属于衍生项目，可正常修改。
+
+示例：需要 PCLgraph 适配新的 monitor API 时，只说明改 `point_cloud_view.cpp` / `main.cpp` 的位置和接口，不在 taskgraph 会话里改 PCLgraph。

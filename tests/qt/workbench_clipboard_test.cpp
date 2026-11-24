@@ -7,7 +7,8 @@
 // When 决定这一帧生不生效。快捷键页可按命令或键位过滤，
 // 打开不创建节点，再开只激活，叉掉不删图。
 
-#include "EditorClipboard.hpp"
+#include "WorkbenchClipboard.hpp"
+#include "Undo.hpp"
 
 #include <QtTest>
 
@@ -15,6 +16,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 namespace {
 
@@ -26,6 +28,8 @@ constexpr float kRightX = 40.0f;
 constexpr float kRightY = 80.0f;
 constexpr float kOutsideX = 1.0f;
 constexpr float kOutsideY = 2.0f;
+constexpr float kThirdX = 20.0f;
+constexpr float kThirdY = 30.0f;
 constexpr float kPasteX = 100.0f;
 constexpr float kPasteY = 50.0f;
 constexpr int kNativeNumber = 4;
@@ -100,8 +104,8 @@ void ExpectTaskgraphRow(const ShortcutRow& row) {
     return;
   }
   const std::string command = row.command;
-  if (command == "Cut" || command == "Copy" || command == "Paste" ||
-      command == "Duplicate") {
+  if (command == "Undo" || command == "Redo" || command == "Cut" ||
+      command == "Copy" || command == "Paste") {
     QVERIFY(ShortcutCommandApplies(row.command, on));
     QVERIFY(!ShortcutCommandApplies(row.command, off));
     return;
@@ -260,7 +264,7 @@ int EdgeCount(const tg::Graph& graph) {
 
 }  // namespace
 
-class EditorClipboardTest : public QObject {
+class WorkbenchClipboardTest : public QObject {
   Q_OBJECT
 
  private slots:
@@ -268,14 +272,12 @@ class EditorClipboardTest : public QObject {
   void linkOnlySelectionDoesNotReplaceClipboard();
   void pasteKeepsNameUntilItCollides();
   void pasteRestoresPropertyValueAndPresentation();
-  void duplicateDoesNotChangeClipboard();
   void cutRemovesNodesAndPasteStillWorks();
   void spaceOpensKindListWithoutCreating();
   void contextNodeOutsideSelectionStandsAlone();
   void emptyPasteLeavesGraphAndClipboard();
   void unknownKindIsSkippedAndItsEdgeDrops();
   void pasteAnchorsAtSelectionMinNotFirstNode();
-  void duplicateOffsetsTheGroupAndKeepsItsEdge();
   void cutDropsExternalEdgeAndKeepsOutsideNode();
   void sameGraphPasteLeavesOriginals();
   void pasteKeepsPortValueAndRejectsPropertyEdge();
@@ -284,12 +286,14 @@ class EditorClipboardTest : public QObject {
   void nullSampleDoesNotReplaceClipboard();
   void armedPlacementDoesNotRetargetKindList();
   void contextInsideSelectionKeepsEveryNode();
+  void preparePasteRenamesWithinBatchAndTarget();
+  void deletionLinksKeepExternalBothSides();
   void catalogRowsFollowTheirWhen();
   void shortcutFilterMatchesCommandOrKey();
   void keyboardShortcutsTabDoesNotCreateOrDeleteNodes();
 };
 
-void EditorClipboardTest::copyKeepsInternalEdgeAndDropsExternal() {
+void WorkbenchClipboardTest::copyKeepsInternalEdgeAndDropsExternal() {
   tg::Controller controller;
   RegisterKind(controller);
   tg::Graph graph("Graph");
@@ -298,8 +302,8 @@ void EditorClipboardTest::copyKeepsInternalEdgeAndDropsExternal() {
   auto right = AddKind(controller, graph, "Beta", kRightX, kRightY, poses);
   auto outside =
       AddKind(controller, graph, "Gamma", kOutsideX, kOutsideY, poses);
-  QVERIFY(graph.connect(left, kPortIndex, right, kPortIndex));
-  QVERIFY(graph.connect(left, kPortIndex, outside, kPortIndex));
+  QVERIFY(graph.connect(left->outputPort(kPortIndex), right->inputPort(kPortIndex)));
+  QVERIFY(graph.connect(left->outputPort(kPortIndex), outside->inputPort(kPortIndex)));
 
   NodeClipboard clipboard;
   const NodeClipboardResult copied = ApplyNodeClipboard(
@@ -331,7 +335,7 @@ void EditorClipboardTest::copyKeepsInternalEdgeAndDropsExternal() {
   QVERIFY(other.getNodes().size() == 2);
 }
 
-void EditorClipboardTest::linkOnlySelectionDoesNotReplaceClipboard() {
+void WorkbenchClipboardTest::linkOnlySelectionDoesNotReplaceClipboard() {
   tg::Controller controller;
   RegisterKind(controller);
   tg::Graph graph("Graph");
@@ -357,7 +361,7 @@ void EditorClipboardTest::linkOnlySelectionDoesNotReplaceClipboard() {
   QVERIFY2(graph.getNodes().size() == 1, "没有节点时剪切不删图");
 }
 
-void EditorClipboardTest::pasteKeepsNameUntilItCollides() {
+void WorkbenchClipboardTest::pasteKeepsNameUntilItCollides() {
   tg::Controller controller;
   RegisterKind(controller);
   tg::Graph source("Graph");
@@ -383,12 +387,12 @@ void EditorClipboardTest::pasteKeepsNameUntilItCollides() {
                                          tg::NodePose{kPasteX, kPasteY},
                                          target_poses);
   QCOMPARE(static_cast<int>(second.created.size()), 1);
-  QVERIFY2(second.created.front()->getName() == kKindId,
-           "撞名时留下入图时的自动名");
+  QVERIFY2(second.created.front()->getName() == "Alpha_copy",
+           "撞名时用 <原名>_copy");
   QVERIFY(target.getNodes().size() == 2);
 }
 
-void EditorClipboardTest::pasteRestoresPropertyValueAndPresentation() {
+void WorkbenchClipboardTest::pasteRestoresPropertyValueAndPresentation() {
   tg::Controller controller;
   RegisterKind(controller);
   tg::Graph graph("Graph");
@@ -423,41 +427,14 @@ void EditorClipboardTest::pasteRestoresPropertyValueAndPresentation() {
   QVERIFY(copy->outgoing().empty());
 }
 
-void EditorClipboardTest::duplicateDoesNotChangeClipboard() {
-  tg::Controller controller;
-  RegisterKind(controller);
-  tg::Graph graph("Graph");
-  std::unordered_map<tg::Node*, tg::NodePose> poses;
-  auto kept = AddKind(controller, graph, "Kept", kOutsideX, kOutsideY, poses);
-  auto node = AddKind(controller, graph, "Alpha", kLeftX, kLeftY, poses);
-  NodeClipboard clipboard;
-  QVERIFY(ApplyNodeClipboard(NodeClipboardCommand::Copy, clipboard,
-                             {SampleOf(kept, poses)}, controller, graph, {},
-                             poses)
-              .wrote_clipboard);
-
-  const NodeClipboardResult duplicated = ApplyNodeClipboard(
-      NodeClipboardCommand::Duplicate, clipboard, {SampleOf(node, poses)},
-      controller, graph, tg::NodePose{kPasteX, kPasteY}, poses);
-  QVERIFY(!duplicated.wrote_clipboard);
-  QCOMPARE(static_cast<int>(clipboard.nodes.size()), 1);
-  QVERIFY2(clipboard.nodes.front().name == "Kept", "原位复制不改剪贴板");
-  QCOMPARE(static_cast<int>(duplicated.created.size()), 1);
-  QCOMPARE(poses[duplicated.created.front().get()].x,
-           kLeftX + kDuplicateOffset);
-  QCOMPARE(poses[duplicated.created.front().get()].y,
-           kLeftY + kDuplicateOffset);
-  QVERIFY(graph.getNodes().size() == 3);
-}
-
-void EditorClipboardTest::cutRemovesNodesAndPasteStillWorks() {
+void WorkbenchClipboardTest::cutRemovesNodesAndPasteStillWorks() {
   tg::Controller controller;
   RegisterKind(controller);
   tg::Graph graph("Graph");
   std::unordered_map<tg::Node*, tg::NodePose> poses;
   auto left = AddKind(controller, graph, "Alpha", kLeftX, kLeftY, poses);
   auto right = AddKind(controller, graph, "Beta", kRightX, kRightY, poses);
-  QVERIFY(graph.connect(left, kPortIndex, right, kPortIndex));
+  QVERIFY(graph.connect(left->outputPort(kPortIndex), right->inputPort(kPortIndex)));
   NodeClipboard clipboard;
   const NodeClipboardResult cut = ApplyNodeClipboard(
       NodeClipboardCommand::Cut, clipboard,
@@ -479,7 +456,7 @@ void EditorClipboardTest::cutRemovesNodesAndPasteStillWorks() {
   QCOMPARE(EdgeCount(target), 1);
 }
 
-void EditorClipboardTest::spaceOpensKindListWithoutCreating() {
+void WorkbenchClipboardTest::spaceOpensKindListWithoutCreating() {
   tg::Controller controller;
   RegisterKind(controller);
   controller.addGraph(std::make_shared<tg::Graph>("Graph"));
@@ -498,7 +475,7 @@ void EditorClipboardTest::spaceOpensKindListWithoutCreating() {
   QVERIFY(!focus.armed_placement().armed);
 }
 
-void EditorClipboardTest::contextNodeOutsideSelectionStandsAlone() {
+void WorkbenchClipboardTest::contextNodeOutsideSelectionStandsAlone() {
   auto selected = std::make_shared<ClipboardKindNode>();
   auto other = std::make_shared<ClipboardKindNode>();
   const std::vector<const tg::Node*> selection = {selected.get()};
@@ -513,7 +490,7 @@ void EditorClipboardTest::contextNodeOutsideSelectionStandsAlone() {
   QVERIFY(from_keys.front() == selected.get());
 }
 
-void EditorClipboardTest::emptyPasteLeavesGraphAndClipboard() {
+void WorkbenchClipboardTest::emptyPasteLeavesGraphAndClipboard() {
   tg::Controller controller;
   RegisterKind(controller);
   tg::Graph graph("Graph");
@@ -531,7 +508,7 @@ void EditorClipboardTest::emptyPasteLeavesGraphAndClipboard() {
   QVERIFY2(!controller.isDirty(), "空剪贴板粘贴不把工程标脏");
 }
 
-void EditorClipboardTest::unknownKindIsSkippedAndItsEdgeDrops() {
+void WorkbenchClipboardTest::unknownKindIsSkippedAndItsEdgeDrops() {
   tg::Controller controller;
   RegisterKind(controller);
   NodeClipboard clipboard;
@@ -559,14 +536,14 @@ void EditorClipboardTest::unknownKindIsSkippedAndItsEdgeDrops() {
   QVERIFY(graph.getNodes().size() == 1);
 }
 
-void EditorClipboardTest::pasteAnchorsAtSelectionMinNotFirstNode() {
+void WorkbenchClipboardTest::pasteAnchorsAtSelectionMinNotFirstNode() {
   tg::Controller controller;
   RegisterKind(controller);
   tg::Graph source("Graph");
   std::unordered_map<tg::Node*, tg::NodePose> poses;
   auto low = AddKind(controller, source, "Low", kLeftX, kLeftY, poses);
   auto high = AddKind(controller, source, "High", kRightX, kRightY, poses);
-  QVERIFY(source.connect(high, kPortIndex, low, kPortIndex));
+  QVERIFY(source.connect(high->outputPort(kPortIndex), low->inputPort(kPortIndex)));
   NodeClipboard clipboard;
   QVERIFY(ApplyNodeClipboard(NodeClipboardCommand::Copy, clipboard,
                              {SampleOf(high, poses), SampleOf(low, poses)},
@@ -602,46 +579,7 @@ void EditorClipboardTest::pasteAnchorsAtSelectionMinNotFirstNode() {
   QVERIFY2(EdgeCount(source) == 1, "粘贴不改源图的边");
 }
 
-void EditorClipboardTest::duplicateOffsetsTheGroupAndKeepsItsEdge() {
-  tg::Controller controller;
-  RegisterKind(controller);
-  tg::Graph graph("Graph");
-  std::unordered_map<tg::Node*, tg::NodePose> poses;
-  auto kept = AddKind(controller, graph, "Kept", kOutsideX, kOutsideY, poses);
-  auto left = AddKind(controller, graph, "Alpha", kLeftX, kLeftY, poses);
-  auto right = AddKind(controller, graph, "Beta", kRightX, kRightY, poses);
-  QVERIFY(graph.connect(left, kPortIndex, right, kPortIndex));
-  NodeClipboard clipboard;
-  QVERIFY(ApplyNodeClipboard(NodeClipboardCommand::Copy, clipboard,
-                             {SampleOf(kept, poses)}, controller, graph, {},
-                             poses)
-              .wrote_clipboard);
-  controller.clearDirty();
-  const NodeClipboardResult duplicated = ApplyNodeClipboard(
-      NodeClipboardCommand::Duplicate, clipboard,
-      {SampleOf(left, poses), SampleOf(right, poses)}, controller, graph,
-      tg::NodePose{kPasteX, kPasteY}, poses);
-  QVERIFY(!duplicated.wrote_clipboard);
-  QVERIFY(clipboard.nodes.front().name == "Kept");
-  QVERIFY2(poses[left.get()].x == kLeftX, "原节点坐标不变");
-  QCOMPARE(poses[left.get()].y, kLeftY);
-  QCOMPARE(poses[right.get()].x, kRightX);
-  QCOMPARE(poses[right.get()].y, kRightY);
-  QCOMPARE(static_cast<int>(duplicated.created.size()), 2);
-  QCOMPARE(poses[duplicated.created[0].get()].x, kLeftX + kDuplicateOffset);
-  QCOMPARE(poses[duplicated.created[0].get()].y, kLeftY + kDuplicateOffset);
-  QCOMPARE(poses[duplicated.created[1].get()].x, kRightX + kDuplicateOffset);
-  QCOMPARE(poses[duplicated.created[1].get()].y, kRightY + kDuplicateOffset);
-  QVERIFY(graph.getNodes().size() == 5);
-  QVERIFY2(EdgeCount(graph) == 2, "原边还在，副本之间也有一条");
-  QVERIFY(duplicated.created[0]->outgoing().size() == 1);
-  QVERIFY(duplicated.created[0]->outgoing().front().adj ==
-          duplicated.created[1]);
-  QVERIFY(controller.isDirty());
-  QVERIFY(left->output_pulls == 0);
-}
-
-void EditorClipboardTest::cutDropsExternalEdgeAndKeepsOutsideNode() {
+void WorkbenchClipboardTest::cutDropsExternalEdgeAndKeepsOutsideNode() {
   tg::Controller controller;
   RegisterKind(controller);
   tg::Graph graph("Graph");
@@ -650,8 +588,8 @@ void EditorClipboardTest::cutDropsExternalEdgeAndKeepsOutsideNode() {
   auto right = AddKind(controller, graph, "Beta", kRightX, kRightY, poses);
   auto outside =
       AddKind(controller, graph, "Gamma", kOutsideX, kOutsideY, poses);
-  QVERIFY(graph.connect(left, kPortIndex, right, kPortIndex));
-  QVERIFY(graph.connect(outside, kPortIndex, left, kPortIndex));
+  QVERIFY(graph.connect(left->outputPort(kPortIndex), right->inputPort(kPortIndex)));
+  QVERIFY(graph.connect(outside->outputPort(kPortIndex), left->inputPort(kPortIndex)));
   NodeClipboard clipboard;
   const NodeClipboardResult cut = ApplyNodeClipboard(
       NodeClipboardCommand::Cut, clipboard,
@@ -666,14 +604,14 @@ void EditorClipboardTest::cutDropsExternalEdgeAndKeepsOutsideNode() {
   QVERIFY(poses.find(left.get()) == poses.end());
 }
 
-void EditorClipboardTest::sameGraphPasteLeavesOriginals() {
+void WorkbenchClipboardTest::sameGraphPasteLeavesOriginals() {
   tg::Controller controller;
   RegisterKind(controller);
   tg::Graph graph("Graph");
   std::unordered_map<tg::Node*, tg::NodePose> poses;
   auto left = AddKind(controller, graph, "Alpha", kLeftX, kLeftY, poses);
   auto right = AddKind(controller, graph, "Beta", kRightX, kRightY, poses);
-  QVERIFY(graph.connect(left, kPortIndex, right, kPortIndex));
+  QVERIFY(graph.connect(left->outputPort(kPortIndex), right->inputPort(kPortIndex)));
   NodeClipboard clipboard;
   QVERIFY(ApplyNodeClipboard(NodeClipboardCommand::Copy, clipboard,
                              {SampleOf(left, poses), SampleOf(right, poses)},
@@ -696,7 +634,7 @@ void EditorClipboardTest::sameGraphPasteLeavesOriginals() {
   QVERIFY2(!clipboard.empty(), "粘贴不清空剪贴板");
 }
 
-void EditorClipboardTest::pasteKeepsPortValueAndRejectsPropertyEdge() {
+void WorkbenchClipboardTest::pasteKeepsPortValueAndRejectsPropertyEdge() {
   tg::Controller controller;
   RegisterKind(controller);
   tg::Graph source("Graph");
@@ -705,7 +643,7 @@ void EditorClipboardTest::pasteKeepsPortValueAndRejectsPropertyEdge() {
   auto right = AddKind(controller, source, "Beta", kRightX, kRightY, poses);
   QVERIFY(right->inputProperty(kPortIndex) != nullptr);
   right->inputProperty(kPortIndex)->value = kInputNumber;
-  QVERIFY(source.connect(left, kPortIndex, right, kPortIndex));
+  QVERIFY(source.connect(left->outputPort(kPortIndex), right->inputPort(kPortIndex)));
   left->setProperty(1, std::string(kPathValue));
   left->setProperty(2, true);
   NodeClipboard clipboard;
@@ -753,14 +691,14 @@ void EditorClipboardTest::pasteKeepsPortValueAndRejectsPropertyEdge() {
   QVERIFY2(EdgeCount(properties) == 0, "属性露面的输入不接受贴上来的边");
 }
 
-void EditorClipboardTest::illegalPortIsDropped() {
+void WorkbenchClipboardTest::illegalPortIsDropped() {
   tg::Controller controller;
   RegisterKind(controller);
   tg::Graph source("Graph");
   std::unordered_map<tg::Node*, tg::NodePose> poses;
   auto left = AddKind(controller, source, "Alpha", kLeftX, kLeftY, poses);
   auto right = AddKind(controller, source, "Beta", kRightX, kRightY, poses);
-  QVERIFY(source.connect(left, kPortIndex, right, kPortIndex));
+  QVERIFY(source.connect(left->outputPort(kPortIndex), right->inputPort(kPortIndex)));
   NodeClipboard clipboard;
   QVERIFY(ApplyNodeClipboard(NodeClipboardCommand::Copy, clipboard,
                              {SampleOf(left, poses), SampleOf(right, poses)},
@@ -777,7 +715,7 @@ void EditorClipboardTest::illegalPortIsDropped() {
   QCOMPARE(EdgeCount(source), 1);
 }
 
-void EditorClipboardTest::secondCopyReplacesClipboard() {
+void WorkbenchClipboardTest::secondCopyReplacesClipboard() {
   tg::Controller controller;
   RegisterKind(controller);
   tg::Graph graph("Graph");
@@ -801,7 +739,7 @@ void EditorClipboardTest::secondCopyReplacesClipboard() {
   QVERIFY(graph.getNodes().size() == 2);
 }
 
-void EditorClipboardTest::nullSampleDoesNotReplaceClipboard() {
+void WorkbenchClipboardTest::nullSampleDoesNotReplaceClipboard() {
   tg::Controller controller;
   RegisterKind(controller);
   tg::Graph graph("Graph");
@@ -818,15 +756,11 @@ void EditorClipboardTest::nullSampleDoesNotReplaceClipboard() {
       poses);
   QVERIFY(!copied.wrote_clipboard);
   QVERIFY(clipboard.nodes.front().name == "Alpha");
-  const NodeClipboardResult duplicated = ApplyNodeClipboard(
-      NodeClipboardCommand::Duplicate, clipboard, {empty}, controller, graph,
-      tg::NodePose{kPasteX, kPasteY}, poses);
-  QVERIFY(duplicated.created.empty());
   QVERIFY(graph.getNodes().size() == 1);
   QVERIFY(clipboard.nodes.front().name == "Alpha");
 }
 
-void EditorClipboardTest::armedPlacementDoesNotRetargetKindList() {
+void WorkbenchClipboardTest::armedPlacementDoesNotRetargetKindList() {
   WorkbenchFocus focus;
   focus.RequestPickNodeKind(1);
   QVERIFY(!OpenEditorKindList(focus, 0, true));
@@ -838,7 +772,7 @@ void EditorClipboardTest::armedPlacementDoesNotRetargetKindList() {
   QVERIFY(!focus.armed_placement().armed);
 }
 
-void EditorClipboardTest::contextInsideSelectionKeepsEveryNode() {
+void WorkbenchClipboardTest::contextInsideSelectionKeepsEveryNode() {
   auto first = std::make_shared<ClipboardKindNode>();
   auto second = std::make_shared<ClipboardKindNode>();
   const std::vector<const tg::Node*> selection = {nullptr, first.get(),
@@ -854,7 +788,90 @@ void EditorClipboardTest::contextInsideSelectionKeepsEveryNode() {
   QVERIFY(NodesForEditorCommand({}, nullptr).empty());
 }
 
-void EditorClipboardTest::catalogRowsFollowTheirWhen() {
+void WorkbenchClipboardTest::preparePasteRenamesWithinBatchAndTarget() {
+  tg::Controller controller;
+  RegisterKind(controller);
+  NodeClipboard clipboard;
+  ClipboardNode first;
+  first.type_id = kKindId;
+  first.name = "Alpha";
+  first.x = kLeftX;
+  first.y = kLeftY;
+  ClipboardNode second = first;
+  second.x = kRightX;
+  second.y = kRightY;
+  ClipboardNode third = first;
+  third.name.clear();
+  third.x = kThirdX;
+  third.y = kThirdY;
+  clipboard.nodes.push_back(first);
+  clipboard.nodes.push_back(second);
+  clipboard.nodes.push_back(third);
+  clipboard.edges.push_back(ClipboardEdge{0, kPortIndex, 1, kPortIndex});
+
+  tg::Graph target("Graph 2");
+  std::unordered_map<tg::Node*, tg::NodePose> poses;
+  AddKind(controller, target, "Alpha", kOutsideX, kOutsideY, poses);
+
+  const NodeClipboard prepared = PrepareClipboardForPaste(
+      clipboard, target, tg::NodePose{kPasteX, kPasteY});
+  QCOMPARE(static_cast<int>(prepared.nodes.size()), 3);
+  QVERIFY2(prepared.nodes[0].name == "Alpha_copy", "撞名时用 <原名>_copy 起名");
+  QVERIFY2(prepared.nodes[1].name == "Alpha_copy2",
+           "同一批里再撞名就加序号");
+  QVERIFY2(prepared.nodes[2].name == "ClipboardKind_copy",
+           "空名字用 type id 起底再加 _copy");
+  QCOMPARE(prepared.nodes[0].x, kPasteX);
+  QCOMPARE(prepared.nodes[0].y, kPasteY);
+  QCOMPARE(prepared.nodes[1].x, kPasteX + (kRightX - kLeftX));
+  QCOMPARE(prepared.nodes[1].y, kPasteY + (kRightY - kLeftY));
+  QCOMPARE(prepared.nodes[2].x, kPasteX + (kThirdX - kLeftX));
+  QCOMPARE(prepared.nodes[2].y, kPasteY + (kThirdY - kLeftY));
+  QCOMPARE(static_cast<int>(prepared.edges.size()), 1);
+  QVERIFY2(clipboard.nodes[0].name == "Alpha", "准备阶段不改原剪贴板");
+}
+
+void WorkbenchClipboardTest::deletionLinksKeepExternalBothSides() {
+  tg::Controller controller;
+  RegisterKind(controller);
+  tg::Graph graph("Graph");
+  std::unordered_map<tg::Node*, tg::NodePose> poses;
+  auto alpha = AddKind(controller, graph, "Alpha", kLeftX, kLeftY, poses);
+  auto beta = AddKind(controller, graph, "Beta", kRightX, kRightY, poses);
+  auto gamma = AddKind(controller, graph, "Gamma", kOutsideX, kOutsideY, poses);
+  auto delta = AddKind(controller, graph, "Delta", kThirdX, kThirdY, poses);
+  QVERIFY(
+      graph.connect(alpha->outputPort(kPortIndex), beta->inputPort(kPortIndex)));
+  QVERIFY(
+      graph.connect(gamma->outputPort(kPortIndex), alpha->inputPort(kPortIndex)));
+  QVERIFY(
+      graph.connect(beta->outputPort(kPortIndex), delta->inputPort(kPortIndex)));
+
+  std::vector<ui::LinkSnapshot> links;
+  ui::CaptureLinksForDeletion({SampleOf(alpha, poses), SampleOf(beta, poses)},
+                              links);
+  QCOMPARE(static_cast<int>(links.size()), 3);
+  bool saw_internal = false;
+  bool saw_incoming = false;
+  bool saw_outgoing = false;
+  for (const ui::LinkSnapshot& link : links) {
+    // 内部边只作为 Beta 的入边收一次，不再从 Alpha 的出边重复收。
+    if (link.from == "Alpha" && link.to == "Beta") {
+      saw_internal = true;
+    }
+    if (link.from == "Gamma" && link.to == "Alpha") {
+      saw_incoming = true;
+    }
+    if (link.from == "Beta" && link.to == "Delta") {
+      saw_outgoing = true;
+    }
+  }
+  QVERIFY(saw_internal);
+  QVERIFY(saw_incoming);
+  QVERIFY(saw_outgoing);
+}
+
+void WorkbenchClipboardTest::catalogRowsFollowTheirWhen() {
   std::size_t count = 0;
   const ShortcutRow* const rows = EditorShortcutCatalog(count);
   QVERIFY(count > 0);
@@ -906,7 +923,7 @@ void EditorClipboardTest::catalogRowsFollowTheirWhen() {
   QVERIFY(FindShortcutRow(kUnknownShortcutCommand) == nullptr);
 }
 
-void EditorClipboardTest::shortcutFilterMatchesCommandOrKey() {
+void WorkbenchClipboardTest::shortcutFilterMatchesCommandOrKey() {
   std::size_t catalog_count = 0;
   EditorShortcutCatalog(catalog_count);
   QCOMPARE(MatchingShortcutRows("").size(), catalog_count);
@@ -936,7 +953,7 @@ void EditorClipboardTest::shortcutFilterMatchesCommandOrKey() {
   QVERIFY(MatchingShortcutRows("not-a-shortcut").empty());
 }
 
-void EditorClipboardTest::keyboardShortcutsTabDoesNotCreateOrDeleteNodes() {
+void WorkbenchClipboardTest::keyboardShortcutsTabDoesNotCreateOrDeleteNodes() {
   tg::Controller controller;
   RegisterKind(controller);
   auto graph = std::make_shared<tg::Graph>("Graph");
@@ -982,5 +999,5 @@ void EditorClipboardTest::keyboardShortcutsTabDoesNotCreateOrDeleteNodes() {
   QVERIFY(graph_tab_remains);
 }
 
-QTEST_GUILESS_MAIN(EditorClipboardTest)
-#include "editor_clipboard_test.moc"
+QTEST_GUILESS_MAIN(WorkbenchClipboardTest)
+#include "workbench_clipboard_test.moc"

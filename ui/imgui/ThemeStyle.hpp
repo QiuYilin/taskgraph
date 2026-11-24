@@ -42,10 +42,23 @@ inline constexpr int kStatusBarStyleColorCount = 2;
 inline constexpr int kTitleBarStyleVarCount = 5;
 inline constexpr int kTitleBarStyleColorCount = 1;
 inline constexpr int kCommandCenterStyleColorCount = 3;
-inline constexpr int kPickNodeKindStyleVarCount = 4;
-inline constexpr int kPickNodeKindStyleColorCount = 3;
+inline constexpr int kQuickPickStyleVarCount = 5;
+inline constexpr int kQuickPickStyleColorCount = 3;
 inline constexpr int kSideBarStyleColorCount = 2;
 inline constexpr int kPanelStyleColorCount = 2;
+inline constexpr int kPanelStyleVarCount = 1;
+// 面板内容紧贴页签条，只留一点呼吸空间。
+inline constexpr float kPanelContentTopPaddingEpx = 2.0f;
+
+// Output 顶部控件按 VS Code 面板工具栏密度压缩；数值是有效像素。
+inline constexpr float kOutputToolbarHeightEpx = 22.0f;
+inline constexpr float kOutputToolbarPaddingXEpx = 4.0f;
+inline constexpr float kOutputToolbarGapEpx = 4.0f;
+inline constexpr float kOutputFilterWidthEpx = 200.0f;
+inline constexpr float kOutputFilterMinWidthEpx = 120.0f;
+inline constexpr float kOutputCheckboxSizeEpx = 16.0f;
+inline constexpr int kOutputToolbarStyleVarCount = 2;
+inline constexpr int kOutputToolbarStyleColorCount = 3;
 
 namespace theme_detail {
 
@@ -204,8 +217,13 @@ static void PopSideBarStyle() {
   ImGui::PopStyleColor(kSideBarStyleColorCount);
 }
 
-// 面板窗口底色（Begin 之前 Push）。
+// 面板窗口底色（Begin 之前 Push），内容紧贴页签条。
 static void PushPanelStyle() {
+  const float ui_scale = ImGui::GetStyle().FontScaleMain;
+  ImGui::PushStyleVar(
+      ImGuiStyleVar_WindowPadding,
+      ImVec2(kSurfaceTextMarginEpx * ui_scale,
+             kPanelContentTopPaddingEpx * ui_scale));
   ImGui::PushStyleColor(
       ImGuiCol_WindowBg,
       ToImVec4(theme_detail::CurrentTokens().panel_background));
@@ -216,6 +234,7 @@ static void PushPanelStyle() {
 
 static void PopPanelStyle() {
   ImGui::PopStyleColor(kPanelStyleColorCount);
+  ImGui::PopStyleVar(kPanelStyleVarCount);
 }
 
 // 属性窗口底色（Begin 之前 Push）。
@@ -261,6 +280,31 @@ static void PushPropertiesContentStyle() {
 static void PopPropertiesContentStyle() {
   ImGui::PopStyleColor(kPropertiesContentStyleColorCount);
   ImGui::PopStyleVar(kPropertiesContentStyleVarCount);
+}
+
+// Output 顶部控件：紧凑单行工具栏，只在该作用域内生效。
+static void PushOutputToolbarStyle() {
+  const float ui_scale = ImGui::GetStyle().FontScaleMain;
+  const float toolbar_padding_y =
+      (kOutputToolbarHeightEpx - kBodyFontSizeEpx) / kFramePaddingSideCount *
+      ui_scale;
+  ImGui::PushStyleVar(
+      ImGuiStyleVar_FramePadding,
+      ImVec2(kOutputToolbarPaddingXEpx * ui_scale, toolbar_padding_y));
+  ImGui::PushStyleVar(
+      ImGuiStyleVar_ItemSpacing,
+      ImVec2(kOutputToolbarGapEpx * ui_scale, kOutputToolbarGapEpx * ui_scale));
+  const theme_detail::ThemeTokens& tokens = theme_detail::CurrentTokens();
+  ImGui::PushStyleColor(ImGuiCol_FrameBg, ToImVec4(tokens.input_background));
+  ImGui::PushStyleColor(ImGuiCol_FrameBgHovered,
+                        ToImVec4(tokens.input_background));
+  ImGui::PushStyleColor(ImGuiCol_FrameBgActive,
+                        ToImVec4(tokens.input_active_background));
+}
+
+static void PopOutputToolbarStyle() {
+  ImGui::PopStyleColor(kOutputToolbarStyleColorCount);
+  ImGui::PopStyleVar(kOutputToolbarStyleVarCount);
 }
 
 // 状态栏内边距与无边框。
@@ -321,8 +365,8 @@ static void PopCommandCenterStyle() {
   ImGui::PopStyleColor(kCommandCenterStyleColorCount);
 }
 
-// 节点种类选择浮层：小圆角与紧凑列表间距。
-static void PushPickNodeKindStyle() {
+// Quick Pick 浮层：小圆角、紧凑列表间距、统一控件高度。
+static void PushQuickPickStyle() {
   const float ui_scale = ImGui::GetStyle().FontScaleMain;
   ImGui::PushStyleVar(ImGuiStyleVar_PopupRounding, kControlCornerRadiusEpx);
   ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,
@@ -333,6 +377,11 @@ static void PushPickNodeKindStyle() {
                              kPickNodeKindListSpacingYEpx * ui_scale));
   ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize,
                       kExplorerRenameBorderSizeEpx * ui_scale);
+  ImGui::PushStyleVar(
+      ImGuiStyleVar_FramePadding,
+      ImVec2(kControlLabelSpacingEpx * ui_scale,
+             (kStandardControlHeightEpx - kBodyFontSizeEpx) /
+                 kFramePaddingSideCount * ui_scale));
   ImGui::PushStyleColor(
       ImGuiCol_PopupBg,
       ToImVec4(theme_detail::CurrentTokens().quick_input_background));
@@ -342,9 +391,9 @@ static void PushPickNodeKindStyle() {
                         ToImVec4(theme_detail::CurrentTokens().input_background));
 }
 
-static void PopPickNodeKindStyle() {
-  ImGui::PopStyleColor(kPickNodeKindStyleColorCount);
-  ImGui::PopStyleVar(kPickNodeKindStyleVarCount);
+static void PopQuickPickStyle() {
+  ImGui::PopStyleColor(kQuickPickStyleColorCount);
+  ImGui::PopStyleVar(kQuickPickStyleVarCount);
 }
 
 // 把当前主题写进节点编辑器样式；选中环在节点外侧，随编辑区焦点换色。

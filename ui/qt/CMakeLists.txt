@@ -18,6 +18,8 @@ set(PRIVATE_HEADER_FILES
     PropertyValueDelegate.hpp
     ThemeStyleQt.hpp
     UiColors.hpp
+    UndoTarget.hpp
+    ContextMenuSpec.hpp
     )
 set(SOURCE_FILES
     Ui.cpp
@@ -34,6 +36,7 @@ set(SOURCE_FILES
     PropertyModel.cpp
     PropertyValueDelegate.cpp
     ThemeStyleQt.cpp
+    UndoTarget.cpp
     )
 
 find_package(Qt6 COMPONENTS Widgets REQUIRED)

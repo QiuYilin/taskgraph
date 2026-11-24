@@ -5,6 +5,10 @@ set(simple_core_dir "${CMAKE_CURRENT_SOURCE_DIR}/../simple-core")
 add_executable(simple-qt main.cpp
                          "${simple_core_dir}/AddNode.hpp"
                          "${simple_core_dir}/AddNode.cpp"
+                         "${simple_core_dir}/CastNode.hpp"
+                         "${simple_core_dir}/DoubleNode.hpp"
+                         "${simple_core_dir}/GainNode.hpp"
+                         "${simple_core_dir}/LabelNode.hpp"
                          "${simple_core_dir}/IntNode.hpp"
                          "${simple_core_dir}/IntNode.cpp"
                          "${simple_core_dir}/IntNodeData.hpp")

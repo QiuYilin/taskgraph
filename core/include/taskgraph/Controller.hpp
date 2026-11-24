@@ -55,26 +55,30 @@ class TASKGRAPH_EXPORT Controller {
    */
   std::optional<std::string> tryRun(tg::Graph& graph);
 
-  /** \brief 登记节点种类；caption 供界面列表，空则用 type_id。 */
+  /** \brief 最近一次成功 run 的总耗时（毫秒）；没有成功记录时为空。 */
+  std::optional<double> lastRunMilliseconds() const { return _last_run_ms; }
+
+  /** \brief 登记节点种类；caption 供界面列表，空则用 type_id；category 为空则默认组。 */
   void registerNodeType(std::string type_id, NodeFactory factory,
-                        std::string caption = {});
+                        std::string caption = {}, std::string category = {});
 
   /** \brief 按类型登记默认工厂（Factory）；caption 空则去掉 type id 末尾的 Node。
    *
    *  NodeT 需默认可构造，并提供 static constexpr const char* kTypeId。
-   *  显式 caption 原样使用。
+   *  显式 caption 原样使用。category 供界面分组，空则默认组。
    *
    *  \param[in] caption 界面列表名；空则由 type id 推导。
+   *  \param[in] category 界面分组名；空则默认组。
    */
   template <typename NodeT>
-  void registerNodeType(std::string caption = {}) {
+  void registerNodeType(std::string caption = {}, std::string category = {}) {
     static_assert(std::is_default_constructible<NodeT>::value,
                   "NodeT must be default constructible");
     if (caption.empty()) {
       caption = CaptionFromTypeId(NodeT::kTypeId);
     }
     registerNodeType(NodeT::kTypeId, [] { return std::make_shared<NodeT>(); },
-                     std::move(caption));
+                     std::move(caption), std::move(category));
   }
 
   bool hasNodeType(const std::string& type_id) const;
@@ -126,6 +130,7 @@ class TASKGRAPH_EXPORT Controller {
   std::filesystem::path _project_root;
   std::string _project_name{"Untitled"};
   bool _dirty = false;
+  std::optional<double> _last_run_ms;
   tf::Executor _executor{std::max(
       1u, std::thread::hardware_concurrency())}; /**< 至少 1 个 worker，hardware_concurrency() 可能返回 0。 */
 };

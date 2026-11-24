@@ -21,6 +21,14 @@
 - ImGui 没有官方 VS Code 工作台主题；视觉 token 与对照出处集中在 `Theme.hpp` / `ApplyTheme`。页签栏与画布共用同一套编辑区底色，不要再各写一套默认色。
 - `Ui.hpp` 布局注释不写“对照 VS Code”，只调主题 API 做分区风格设置。
 - 主侧栏与编辑区通过 `WorkbenchFocus` 共享选中与页签（立即模式 Observer / pull），不要写成两边互相推送。
+
+详细界面以本机思源「界面风格 / VSCODE风格」章节为准（访问方式见私有规则），本规则只保留强制摘要。当前尺寸与界面行为按该章节：
+
+- 标题栏高 30×s、状态栏高 22×s、活动栏宽 48×s；面板内容顶边距 2×s。
+- 常规控件高 32×s；Output 工具栏高 22×s、复选框 16×s。
+- 活动栏点击当前图标收起/恢复主侧栏；Properties/Output 有最大化/还原与关闭；Output Detail 预设包含 Timing，状态栏有 `Last run`。
+- Output 日志为 Level/Category/Context/Message 四列，Message 自动换行；具体行为以思源章节和 `docs/logging.md` 为准。
+- Qt 版按思源章节的后端差异执行：活动栏固定在工作区最左列，Output 暂无细节控件，状态消息显示 `Run finished in X ms`。
 - 回复里写明对照了哪一块。这次改动不涉及界面时，也写明已核对过，不要默默跳过。
 - 对照时明确写出容器名：标题栏、主侧栏、辅助侧栏、编辑区、面板、状态栏；标题栏再分菜单栏、命令中心、右侧动作、窗口按钮。说明控件从左到右的顺序，以及要避免的内容（例如不要第二条工具栏、不要把搜索框放进标题栏）。
 - 不要把标题栏菜单栏、标题栏右侧动作、编辑区工具栏、状态栏项混为同一块。
@@ -125,7 +133,7 @@ if (file == nullptr) {
 
 ## 主侧栏按 graph 列节点
 
-主侧栏对应 VS Code 工作台的主侧栏，窗口是 `Nodes###Project`。活动栏在主侧栏左边，从上到下是 Explorer 和 Search。Search 替换这棵树，只按图名和节点 identifier 列出结果；Explorer 回到这棵树。再点当前图标不收起主侧栏。
+主侧栏对应 VS Code 工作台的主侧栏，窗口是 `Nodes###Project`。活动栏在主侧栏左边，从上到下是 Explorer 和 Search。Search 替换这棵树，只按图名和节点 identifier 列出结果；Explorer 回到这棵树。再点当前图标收起主侧栏；收起时点当前图标恢复同一视图，点另一个图标切过去并展开。活动栏不随主侧栏收起；View 菜单的 Explorer/Search 只负责显示，不收起。
 
 - 主侧栏与编辑区画布共同观察 `WorkbenchFocus`（每帧 pull），不互相同步；点选、页签、新建节点请求都写进这份焦点。
 - 里面是多张 graph。每张 graph 是一项，下面只列出用 `Graph::addNode` 创建在这张 graph 上的节点。节点跟所属 graph 走，不挂到别的 graph 下面。

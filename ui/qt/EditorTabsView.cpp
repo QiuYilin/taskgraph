@@ -71,6 +71,10 @@ void EditorTabsView::RefreshTabs() {
     GraphCanvasView* canvas = previous.take(graph);
     if (canvas == nullptr) {
       canvas = new GraphCanvasView(graph, this);
+      canvas->SetShowPortTypeNames(_show_port_type_names);
+      if (_undo_stack) {
+        _undo_stack(&canvas->undoStack());
+      }
     }
     canvas->on_scene_click = [this, canvas](QPointF position) {
       return _scene_click ? _scene_click(canvas->graphModel(), position) : false;
@@ -84,6 +88,12 @@ void EditorTabsView::RefreshTabs() {
                                       std::shared_ptr<tg::Node> node) {
       if (_node_selected) {
         _node_selected(graph, node);
+      }
+    };
+    canvas->on_clipboard_command = [this](NodeClipboardCommand command,
+                                          GraphCanvasView* source) {
+      if (_clipboard) {
+        _clipboard(command, source);
       }
     };
     _canvases.insert(graph, canvas);
@@ -111,8 +121,37 @@ void EditorTabsView::SetNodeSelectedHandler(NodeSelectedHandler handler) {
   _node_selected = std::move(handler);
 }
 
+void EditorTabsView::SetClipboardHandler(ClipboardHandler handler) {
+  _clipboard = std::move(handler);
+}
+
+void EditorTabsView::SetUndoStackHandler(UndoStackHandler handler) {
+  _undo_stack = std::move(handler);
+  // 先把已存在的画布栈补登记，避免在建 handler 之前就已打开的页签漏掉。
+  if (_undo_stack) {
+    for (GraphCanvasView* canvas : _canvases) {
+      if (canvas != nullptr) {
+        _undo_stack(&canvas->undoStack());
+      }
+    }
+  }
+}
+
+void EditorTabsView::SetShowPortTypeNames(bool show) {
+  _show_port_type_names = show;
+  for (GraphCanvasView* canvas : _canvases) {
+    if (canvas != nullptr) {
+      canvas->SetShowPortTypeNames(show);
+    }
+  }
+}
+
 GraphCanvasView* EditorTabsView::currentCanvas() const {
   return dynamic_cast<GraphCanvasView*>(currentWidget());
+}
+
+GraphCanvasView* EditorTabsView::canvasFor(GraphModel* graph) const {
+  return _canvases.value(graph, nullptr);
 }
 
 void EditorTabsView::ApplyTheme() {

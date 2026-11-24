@@ -68,22 +68,10 @@ class TASKGRAPH_EXPORT Graph {
    */
   bool canConnect(const Node::Port* from, const Node::Port* to) const;
 
-  /** \brief 把上游节点的一个输出端口连到下游节点的一个输入端口。
-   *
-   *  规则见 canConnect。同一对节点之间已有数据边时不再加调度边。
-   *
-   *  \param[in] from 上游节点。
-   *  \param[in] port_out 上游输出端口号。
-   *  \param[in] to 下游节点。
-   *  \param[in] port_in 下游输入端口号。
-   *  \return 连边写入成功时返回 true，拒绝时返回 false。
-   */
-  bool connect(std::shared_ptr<Node> from, unsigned int port_out,
-               std::shared_ptr<Node> to, unsigned int port_in);
-
   /** \brief 用两端端口对象连边。
    *
-   *  from 须是输出端口，to 须是输入端口；内部转到按下标的 connect。
+   *  from 须是输出端口，to 须是输入端口；规则见 canConnect。只接受端口
+   *  对象，不提供 (节点, 下标) 形式的数字索引重载。
    *
    *  \param[in] from 上游输出端口。
    *  \param[in] to 下游输入端口。
@@ -106,16 +94,14 @@ class TASKGRAPH_EXPORT Graph {
 
   /** \brief 断开指定的一条端口边。
    *
-   *  只删这一对端口的 ConnectionInfo。没有这条边时不改图。
+   *  只删这一对端口的 ConnectionInfo。没有这条边时不改图。只接受端口
+   *  对象，不提供 (节点, 下标) 形式的数字索引重载。
    *
-   *  \param[in] from 上游节点。
-   *  \param[in] port_out 上游输出端口号。
-   *  \param[in] to 下游节点。
-   *  \param[in] port_in 下游输入端口号。
+   *  \param[in] from 上游输出端口。
+   *  \param[in] to 下游输入端口。
    *  \return 这条边存在并已删除时返回 true。
    */
-  bool disconnect(std::shared_ptr<Node> from, unsigned int port_out,
-                  std::shared_ptr<Node> to, unsigned int port_in);
+  bool disconnect(const Node::Port* from, const Node::Port* to);
 
   /** \brief 断开所有连到指定下游输入口的边。
    *  \param[in] node 下游节点。
@@ -132,6 +118,16 @@ class TASKGRAPH_EXPORT Graph {
   bool setInputPresentation(std::shared_ptr<Node> node, unsigned int index,
                             InputPresentation presentation);
 
+  /** \brief 节点属性改变后刷新端口类型；类型变化时断开不再兼容的边。
+   *
+   *  原地更新端口 data_type（不重建 Port），并断开该节点上两端 id 不再
+   *  相等的入/出边。Property 露面的输入类型变化时，绑定属性重置为默认值。
+   *
+   *  \param[in] node 节点。
+   *  \return 端口类型变化或拆过边时返回 true。
+   */
+  bool refreshPortTypes(std::shared_ptr<Node> node);
+
   const std::vector<std::shared_ptr<Node>>& getNodes() const { return _nodes; }
   const std::string& getName() const { return _name; }
 
@@ -143,6 +139,14 @@ class TASKGRAPH_EXPORT Graph {
   std::string dump();
 
  private:
+  /** \brief 按下标写连边，供端口对象重载复用；不对外公开。 */
+  bool connectPorts(std::shared_ptr<Node> from, unsigned int port_out,
+                    std::shared_ptr<Node> to, unsigned int port_in);
+
+  /** \brief 按下标断边，供端口对象重载与图内逻辑复用；不对外公开。 */
+  bool disconnectPorts(std::shared_ptr<Node> from, unsigned int port_out,
+                       std::shared_ptr<Node> to, unsigned int port_in);
+
   /** \brief 按基名取图内最小未占用的 identifier：base、base2、base3… */
   std::string uniqueNodeName(const std::string& base) const;
 

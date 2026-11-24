@@ -5,7 +5,7 @@ alwaysApply: true
 
 # 主侧栏按 graph 列节点
 
-主侧栏对应 [VS Code 工作台](https://code.visualstudio.com/api/ux-guidelines/overview) 的主侧栏，窗口是 `Nodes###Project`。活动栏在主侧栏左边，从上到下是 Explorer 和 Search。Search 替换这棵树，只按图名和节点 identifier 列出结果；Explorer 回到这棵树。再点当前图标不收起主侧栏。
+主侧栏对应 [VS Code 工作台](https://code.visualstudio.com/api/ux-guidelines/overview) 的主侧栏，窗口是 `Nodes###Project`。活动栏在主侧栏左边，从上到下是 Explorer 和 Search。Search 替换这棵树，只按图名和节点 identifier 列出结果；Explorer 回到这棵树。再点当前图标收起主侧栏；收起时点当前图标恢复同一视图，点另一个图标切过去并展开。活动栏不随主侧栏收起；View 菜单的 Explorer/Search 只负责显示，不收起。
 
 主侧栏与编辑区画布共同观察 `WorkbenchFocus`（每帧 pull），不互相同步；点选、页签、新建节点请求都写进这份焦点。
 

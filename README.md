@@ -25,6 +25,8 @@ Taskgraph currently satisfies ANF and acyclic term graphs: a graph is a first-or
 
 Only one workbench is built at a time; `TASKGRAPH_UI` selects it.
 
+Core logging conventions (levels, categories, automatic node logs, threading) are in [docs/logging.md](docs/logging.md).
+
 # Dependencies
 
 C++17. Prefer [vcpkg](https://github.com/microsoft/vcpkg). Taskflow must be **3.11.0** (last release that builds as C++17); take it from the personal registry [QiuYilin/vcpkg-registry](https://github.com/QiuYilin/vcpkg-registry).
@@ -122,6 +124,8 @@ int main() {
 }
 ```
 
+0.3.0 adds `double` property values and `PropertyHints` (`editor`, `min`/`max`/`step`/`decimals`, enum `choices`, `is_project_path`); `registerNodeType<NodeT>(caption, category)` groups the palette and node menu by category; and `Node::refreshPortTypes()` lets a node change its port types from a property (incompatible edges are dropped). Project files are version 3 and still load v1/v2.
+
 ## core + ui
 
 Same `tg::Controller`: register kinds and open a project on **core**, then wrap with `Ui` and `Run()` for a VS Code–style workbench. Two backends share the same core and models; the interaction details for both are in [`docs/ui.md`](docs/ui.md).
@@ -130,7 +134,7 @@ Same `tg::Controller`: register kinds and open a project on **core**, then wrap 
 
 ### ImGui build
 
-The default backend: a docking workbench with an activity bar, Explorer/Search, an imgui-node-editor canvas, the Properties table, the Output panel, and the Dark Modern / Light Modern themes.
+The default backend: a docking workbench with an activity bar, Explorer/Search, an imgui-node-editor canvas, the Properties table, the Output panel, and the Dark Modern / Light Modern themes. Its dependencies are lightweight — imgui, imgui-node-editor, and GLFW/OpenGL — so it does not pull in a full widget toolkit like the Qt build.
 
 ```
 #include "taskgraph/taskgraph.hpp"
@@ -150,7 +154,7 @@ int main() {
 
 ### Qt build
 
-`TASKGRAPH_UI=qt`. A `QMainWindow` with Qt-Advanced-Docking-System docks and a QtNodes canvas; the program owns the `QApplication` and event loop.
+`TASKGRAPH_UI=qt`. A `QMainWindow` with Qt-Advanced-Docking-System docks and a QtNodes canvas; the program owns the `QApplication` and event loop. The Qt frontend is not covered by CI (CI only builds and tests the ImGui backend); it is verified locally and may contain issues.
 
 ```
 #include "taskgraph/taskgraph.hpp"

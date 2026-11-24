@@ -4,10 +4,12 @@
 #include <QModelIndex>
 #include <QVariant>
 
+#include <functional>
 #include <memory>
 #include <vector>
 
 #include "GraphModel.hpp"
+#include "Undo.hpp"
 
 /** \brief 属性表模型：观察选中节点（core tg::Node）的可编辑属性。
  *
@@ -19,8 +21,23 @@ class PropertyModel : public QAbstractTableModel {
  public:
   explicit PropertyModel(QObject* parent = nullptr);
 
+  /** \brief 属性提示 role：委托据此选择编辑器/范围/枚举项。 */
+  enum PropertyRole {
+    HintsEditorRole = Qt::UserRole + 1,
+    HintsMinRole,
+    HintsMaxRole,
+    HintsStepRole,
+    HintsDecimalsRole,
+    HintsChoicesRole,
+  };
+
   void setNode(GraphModel* graph, std::shared_ptr<tg::Node> node);
   std::shared_ptr<tg::Node> node() const { return _node; }
+
+  /** \brief 属性/露面命令的入栈出口；没有对应画布时返回 false，调用方直接写。 */
+  using UndoPush =
+      std::function<bool(GraphModel*, std::unique_ptr<ui::Command>)>;
+  void SetUndoPush(UndoPush push) { _undo_push = std::move(push); }
 
   int rowCount(const QModelIndex& parent = QModelIndex()) const override;
   int columnCount(const QModelIndex& parent = QModelIndex()) const override;
@@ -35,7 +52,9 @@ class PropertyModel : public QAbstractTableModel {
   bool IsInputAsPort(int row) const;
   int BoundInputIndex(int row) const;
   bool IsStringValue(int row) const;
+  bool AllowsPropertyConversion(int row) const;
   bool ConvertPresentation(int row, bool to_property);
+  bool AllowsBrowse(int row) const;
   bool BrowseValue(int row);
 
  private:
@@ -48,4 +67,5 @@ class PropertyModel : public QAbstractTableModel {
   std::shared_ptr<tg::Node> _node;
   std::vector<std::shared_ptr<tg::Node::Property>> _properties;
   std::vector<QMetaObject::Connection> _connections;
+  UndoPush _undo_push;
 };

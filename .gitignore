@@ -36,3 +36,6 @@ uml/
 *.wsd
 /*-diagram.png
 /*-diagram.svg
+
+# 本地备份文件，不进 Git
+*.bak

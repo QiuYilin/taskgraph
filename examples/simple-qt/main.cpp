@@ -1,6 +1,10 @@
 #include "taskgraph/taskgraph.hpp"
 #include "AddNode.hpp"
+#include "CastNode.hpp"
+#include "DoubleNode.hpp"
+#include "GainNode.hpp"
 #include "IntNode.hpp"
+#include "LabelNode.hpp"
 #include "Ui.hpp"
 
 #include <QApplication>
@@ -31,8 +35,12 @@ int main(int argc, char** argv) {
   QApplication app(argc, argv);
 
   tg::Controller project;
-  project.registerNodeType<IntNode>();
-  project.registerNodeType<AddNode>();
+  project.registerNodeType<IntNode>("Int", "Math");
+  project.registerNodeType<AddNode>("Add", "Math");
+  project.registerNodeType<DoubleNode>("Double", "Math");
+  project.registerNodeType<CastNode>("Cast", "Math");
+  project.registerNodeType<GainNode>("Gain", "Math");
+  project.registerNodeType<LabelNode>("Label", "Text");
 
   const char* argv0 = argc > 0 ? argv[0] : nullptr;
   const std::filesystem::path exe_dir = ExecutableDirectory(argv0);

@@ -7,7 +7,7 @@
 // When 决定这一帧生不生效。快捷键页可按命令或键位过滤，
 // 打开不创建节点，再开只激活，叉掉不删图。
 
-#include "EditorClipboard.hpp"
+#include "WorkbenchClipboard.hpp"
 
 #include <gtest/gtest.h>
 
@@ -83,8 +83,8 @@ void ExpectTaskgraphRow(const ShortcutRow& row) {
   ASSERT_TRUE(ShortcutRowApplies(&row, on));
   ASSERT_FALSE(ShortcutRowApplies(&row, off));
   const std::string command = row.command;
-  if (command == "Cut" || command == "Copy" || command == "Paste" ||
-      command == "Duplicate") {
+  if (command == "Undo" || command == "Redo" || command == "Cut" ||
+      command == "Copy" || command == "Paste") {
     EXPECT_TRUE(ShortcutCommandApplies(row.command, on));
     EXPECT_FALSE(ShortcutCommandApplies(row.command, off));
     return;
@@ -242,7 +242,7 @@ int EdgeCount(const tg::Graph& graph) {
 
 }  // namespace
 
-TEST(EditorClipboard, CopyKeepsInternalEdgeAndDropsExternal) {
+TEST(WorkbenchClipboard, CopyKeepsInternalEdgeAndDropsExternal) {
   tg::Controller controller;
   RegisterKind(controller);
   tg::Graph graph("Graph");
@@ -251,8 +251,8 @@ TEST(EditorClipboard, CopyKeepsInternalEdgeAndDropsExternal) {
   auto right = AddKind(controller, graph, "Beta", kRightX, kRightY, poses);
   auto outside =
       AddKind(controller, graph, "Gamma", kOutsideX, kOutsideY, poses);
-  ASSERT_TRUE(graph.connect(left, kPortIndex, right, kPortIndex));
-  ASSERT_TRUE(graph.connect(left, kPortIndex, outside, kPortIndex));
+  ASSERT_TRUE(graph.connect(left->outputPort(kPortIndex), right->inputPort(kPortIndex)));
+  ASSERT_TRUE(graph.connect(left->outputPort(kPortIndex), outside->inputPort(kPortIndex)));
 
   NodeClipboard clipboard;
   const NodeClipboardResult copied = ApplyNodeClipboard(
@@ -286,7 +286,7 @@ TEST(EditorClipboard, CopyKeepsInternalEdgeAndDropsExternal) {
   EXPECT_EQ(other.getNodes().size(), std::size_t{2});
 }
 
-TEST(EditorClipboard, LinkOnlySelectionDoesNotReplaceClipboard) {
+TEST(WorkbenchClipboard, LinkOnlySelectionDoesNotReplaceClipboard) {
   tg::Controller controller;
   RegisterKind(controller);
   tg::Graph graph("Graph");
@@ -312,7 +312,7 @@ TEST(EditorClipboard, LinkOnlySelectionDoesNotReplaceClipboard) {
   EXPECT_EQ(graph.getNodes().size(), std::size_t{1}) << "没有节点时剪切不删图";
 }
 
-TEST(EditorClipboard, PasteKeepsNameUntilItCollides) {
+TEST(WorkbenchClipboard, PasteKeepsNameUntilItCollides) {
   tg::Controller controller;
   RegisterKind(controller);
   tg::Graph source("Graph");
@@ -338,12 +338,12 @@ TEST(EditorClipboard, PasteKeepsNameUntilItCollides) {
                                          tg::NodePose{kPasteX, kPasteY},
                                          target_poses);
   ASSERT_EQ(second.created.size(), std::size_t{1});
-  EXPECT_EQ(second.created.front()->getName(), kKindId)
-      << "撞名时留下入图时的自动名";
+  EXPECT_EQ(second.created.front()->getName(), "Alpha_copy")
+      << "撞名时用 <原名>_copy";
   EXPECT_EQ(target.getNodes().size(), std::size_t{2});
 }
 
-TEST(EditorClipboard, PasteRestoresPropertyValueAndPresentation) {
+TEST(WorkbenchClipboard, PasteRestoresPropertyValueAndPresentation) {
   tg::Controller controller;
   RegisterKind(controller);
   tg::Graph graph("Graph");
@@ -377,41 +377,14 @@ TEST(EditorClipboard, PasteRestoresPropertyValueAndPresentation) {
   EXPECT_TRUE(copy->outgoing().empty());
 }
 
-TEST(EditorClipboard, DuplicateDoesNotChangeClipboard) {
-  tg::Controller controller;
-  RegisterKind(controller);
-  tg::Graph graph("Graph");
-  std::unordered_map<tg::Node*, tg::NodePose> poses;
-  auto kept = AddKind(controller, graph, "Kept", kOutsideX, kOutsideY, poses);
-  auto node = AddKind(controller, graph, "Alpha", kLeftX, kLeftY, poses);
-  NodeClipboard clipboard;
-  ASSERT_TRUE(ApplyNodeClipboard(NodeClipboardCommand::Copy, clipboard,
-                                 {SampleOf(kept, poses)}, controller, graph, {},
-                                 poses)
-                  .wrote_clipboard);
-
-  const NodeClipboardResult duplicated = ApplyNodeClipboard(
-      NodeClipboardCommand::Duplicate, clipboard, {SampleOf(node, poses)},
-      controller, graph, tg::NodePose{kPasteX, kPasteY}, poses);
-  EXPECT_FALSE(duplicated.wrote_clipboard);
-  ASSERT_EQ(clipboard.nodes.size(), std::size_t{1});
-  EXPECT_EQ(clipboard.nodes.front().name, "Kept") << "原位复制不改剪贴板";
-  ASSERT_EQ(duplicated.created.size(), std::size_t{1});
-  EXPECT_FLOAT_EQ(poses[duplicated.created.front().get()].x,
-                  kLeftX + kDuplicateOffset);
-  EXPECT_FLOAT_EQ(poses[duplicated.created.front().get()].y,
-                  kLeftY + kDuplicateOffset);
-  EXPECT_EQ(graph.getNodes().size(), std::size_t{3});
-}
-
-TEST(EditorClipboard, CutRemovesNodesAndPasteStillWorks) {
+TEST(WorkbenchClipboard, CutRemovesNodesAndPasteStillWorks) {
   tg::Controller controller;
   RegisterKind(controller);
   tg::Graph graph("Graph");
   std::unordered_map<tg::Node*, tg::NodePose> poses;
   auto left = AddKind(controller, graph, "Alpha", kLeftX, kLeftY, poses);
   auto right = AddKind(controller, graph, "Beta", kRightX, kRightY, poses);
-  ASSERT_TRUE(graph.connect(left, kPortIndex, right, kPortIndex));
+  ASSERT_TRUE(graph.connect(left->outputPort(kPortIndex), right->inputPort(kPortIndex)));
   NodeClipboard clipboard;
   const NodeClipboardResult cut = ApplyNodeClipboard(
       NodeClipboardCommand::Cut, clipboard,
@@ -433,7 +406,7 @@ TEST(EditorClipboard, CutRemovesNodesAndPasteStillWorks) {
   EXPECT_EQ(EdgeCount(target), 1);
 }
 
-TEST(EditorClipboard, SpaceOpensKindListWithoutCreating) {
+TEST(WorkbenchClipboard, SpaceOpensKindListWithoutCreating) {
   tg::Controller controller;
   RegisterKind(controller);
   controller.addGraph(std::make_shared<tg::Graph>("Graph"));
@@ -452,7 +425,7 @@ TEST(EditorClipboard, SpaceOpensKindListWithoutCreating) {
   EXPECT_FALSE(focus.armed_placement().armed);
 }
 
-TEST(EditorClipboard, ContextNodeOutsideSelectionStandsAlone) {
+TEST(WorkbenchClipboard, ContextNodeOutsideSelectionStandsAlone) {
   auto selected = std::make_shared<ClipboardKindNode>();
   auto other = std::make_shared<ClipboardKindNode>();
   const std::vector<const tg::Node*> selection = {selected.get()};
@@ -467,7 +440,7 @@ TEST(EditorClipboard, ContextNodeOutsideSelectionStandsAlone) {
   EXPECT_EQ(from_keys.front(), selected.get());
 }
 
-TEST(EditorClipboard, EmptyPasteLeavesGraphAndClipboard) {
+TEST(WorkbenchClipboard, EmptyPasteLeavesGraphAndClipboard) {
   tg::Controller controller;
   RegisterKind(controller);
   tg::Graph graph("Graph");
@@ -485,7 +458,7 @@ TEST(EditorClipboard, EmptyPasteLeavesGraphAndClipboard) {
   EXPECT_FALSE(controller.isDirty()) << "空剪贴板粘贴不把工程标脏";
 }
 
-TEST(EditorClipboard, UnknownKindIsSkippedAndItsEdgeDrops) {
+TEST(WorkbenchClipboard, UnknownKindIsSkippedAndItsEdgeDrops) {
   tg::Controller controller;
   RegisterKind(controller);
   NodeClipboard clipboard;
@@ -514,14 +487,14 @@ TEST(EditorClipboard, UnknownKindIsSkippedAndItsEdgeDrops) {
   EXPECT_EQ(graph.getNodes().size(), std::size_t{1});
 }
 
-TEST(EditorClipboard, PasteAnchorsAtSelectionMinNotFirstNode) {
+TEST(WorkbenchClipboard, PasteAnchorsAtSelectionMinNotFirstNode) {
   tg::Controller controller;
   RegisterKind(controller);
   tg::Graph source("Graph");
   std::unordered_map<tg::Node*, tg::NodePose> poses;
   auto low = AddKind(controller, source, "Low", kLeftX, kLeftY, poses);
   auto high = AddKind(controller, source, "High", kRightX, kRightY, poses);
-  ASSERT_TRUE(source.connect(high, kPortIndex, low, kPortIndex));
+  ASSERT_TRUE(source.connect(high->outputPort(kPortIndex), low->inputPort(kPortIndex)));
   NodeClipboard clipboard;
   ASSERT_TRUE(ApplyNodeClipboard(
                   NodeClipboardCommand::Copy, clipboard,
@@ -557,47 +530,7 @@ TEST(EditorClipboard, PasteAnchorsAtSelectionMinNotFirstNode) {
   EXPECT_EQ(EdgeCount(source), 1) << "粘贴不改源图的边";
 }
 
-TEST(EditorClipboard, DuplicateOffsetsTheGroupAndKeepsItsEdge) {
-  tg::Controller controller;
-  RegisterKind(controller);
-  tg::Graph graph("Graph");
-  std::unordered_map<tg::Node*, tg::NodePose> poses;
-  auto kept = AddKind(controller, graph, "Kept", kOutsideX, kOutsideY, poses);
-  auto left = AddKind(controller, graph, "Alpha", kLeftX, kLeftY, poses);
-  auto right = AddKind(controller, graph, "Beta", kRightX, kRightY, poses);
-  ASSERT_TRUE(graph.connect(left, kPortIndex, right, kPortIndex));
-  NodeClipboard clipboard;
-  ASSERT_TRUE(ApplyNodeClipboard(NodeClipboardCommand::Copy, clipboard,
-                                 {SampleOf(kept, poses)}, controller, graph, {},
-                                 poses)
-                  .wrote_clipboard);
-  controller.clearDirty();
-  const NodeClipboardResult duplicated = ApplyNodeClipboard(
-      NodeClipboardCommand::Duplicate, clipboard,
-      {SampleOf(left, poses), SampleOf(right, poses)}, controller, graph,
-      tg::NodePose{kPasteX, kPasteY}, poses);
-  EXPECT_FALSE(duplicated.wrote_clipboard);
-  EXPECT_EQ(clipboard.nodes.front().name, "Kept");
-  EXPECT_FLOAT_EQ(poses[left.get()].x, kLeftX) << "原节点坐标不变";
-  EXPECT_FLOAT_EQ(poses[left.get()].y, kLeftY);
-  EXPECT_FLOAT_EQ(poses[right.get()].x, kRightX);
-  EXPECT_FLOAT_EQ(poses[right.get()].y, kRightY);
-  ASSERT_EQ(duplicated.created.size(), std::size_t{2});
-  EXPECT_FLOAT_EQ(poses[duplicated.created[0].get()].x, kLeftX + kDuplicateOffset);
-  EXPECT_FLOAT_EQ(poses[duplicated.created[0].get()].y, kLeftY + kDuplicateOffset);
-  EXPECT_FLOAT_EQ(poses[duplicated.created[1].get()].x,
-                  kRightX + kDuplicateOffset);
-  EXPECT_FLOAT_EQ(poses[duplicated.created[1].get()].y,
-                  kRightY + kDuplicateOffset);
-  EXPECT_EQ(graph.getNodes().size(), std::size_t{5});
-  EXPECT_EQ(EdgeCount(graph), 2) << "原边还在，副本之间也有一条";
-  EXPECT_EQ(duplicated.created[0]->outgoing().size(), std::size_t{1});
-  EXPECT_EQ(duplicated.created[0]->outgoing().front().adj, duplicated.created[1]);
-  EXPECT_TRUE(controller.isDirty());
-  EXPECT_EQ(left->output_pulls, 0);
-}
-
-TEST(EditorClipboard, CutDropsExternalEdgeAndKeepsOutsideNode) {
+TEST(WorkbenchClipboard, CutDropsExternalEdgeAndKeepsOutsideNode) {
   tg::Controller controller;
   RegisterKind(controller);
   tg::Graph graph("Graph");
@@ -606,8 +539,8 @@ TEST(EditorClipboard, CutDropsExternalEdgeAndKeepsOutsideNode) {
   auto right = AddKind(controller, graph, "Beta", kRightX, kRightY, poses);
   auto outside =
       AddKind(controller, graph, "Gamma", kOutsideX, kOutsideY, poses);
-  ASSERT_TRUE(graph.connect(left, kPortIndex, right, kPortIndex));
-  ASSERT_TRUE(graph.connect(outside, kPortIndex, left, kPortIndex));
+  ASSERT_TRUE(graph.connect(left->outputPort(kPortIndex), right->inputPort(kPortIndex)));
+  ASSERT_TRUE(graph.connect(outside->outputPort(kPortIndex), left->inputPort(kPortIndex)));
   NodeClipboard clipboard;
   const NodeClipboardResult cut = ApplyNodeClipboard(
       NodeClipboardCommand::Cut, clipboard,
@@ -622,14 +555,14 @@ TEST(EditorClipboard, CutDropsExternalEdgeAndKeepsOutsideNode) {
   EXPECT_EQ(poses.find(left.get()), poses.end());
 }
 
-TEST(EditorClipboard, SameGraphPasteLeavesOriginals) {
+TEST(WorkbenchClipboard, SameGraphPasteLeavesOriginals) {
   tg::Controller controller;
   RegisterKind(controller);
   tg::Graph graph("Graph");
   std::unordered_map<tg::Node*, tg::NodePose> poses;
   auto left = AddKind(controller, graph, "Alpha", kLeftX, kLeftY, poses);
   auto right = AddKind(controller, graph, "Beta", kRightX, kRightY, poses);
-  ASSERT_TRUE(graph.connect(left, kPortIndex, right, kPortIndex));
+  ASSERT_TRUE(graph.connect(left->outputPort(kPortIndex), right->inputPort(kPortIndex)));
   NodeClipboard clipboard;
   ASSERT_TRUE(ApplyNodeClipboard(
                   NodeClipboardCommand::Copy, clipboard,
@@ -653,7 +586,7 @@ TEST(EditorClipboard, SameGraphPasteLeavesOriginals) {
   ASSERT_FALSE(clipboard.empty()) << "粘贴不清空剪贴板";
 }
 
-TEST(EditorClipboard, PasteKeepsPortValueAndRejectsPropertyEdge) {
+TEST(WorkbenchClipboard, PasteKeepsPortValueAndRejectsPropertyEdge) {
   tg::Controller controller;
   RegisterKind(controller);
   tg::Graph source("Graph");
@@ -662,7 +595,7 @@ TEST(EditorClipboard, PasteKeepsPortValueAndRejectsPropertyEdge) {
   auto right = AddKind(controller, source, "Beta", kRightX, kRightY, poses);
   ASSERT_NE(right->inputProperty(kPortIndex), nullptr);
   right->inputProperty(kPortIndex)->value = kInputNumber;
-  ASSERT_TRUE(source.connect(left, kPortIndex, right, kPortIndex));
+  ASSERT_TRUE(source.connect(left->outputPort(kPortIndex), right->inputPort(kPortIndex)));
   left->setProperty(1, std::string(kPathValue));
   left->setProperty(2, true);
   NodeClipboard clipboard;
@@ -709,14 +642,14 @@ TEST(EditorClipboard, PasteKeepsPortValueAndRejectsPropertyEdge) {
   EXPECT_EQ(EdgeCount(properties), 0) << "属性露面的输入不接受贴上来的边";
 }
 
-TEST(EditorClipboard, IllegalPortIsDropped) {
+TEST(WorkbenchClipboard, IllegalPortIsDropped) {
   tg::Controller controller;
   RegisterKind(controller);
   tg::Graph source("Graph");
   std::unordered_map<tg::Node*, tg::NodePose> poses;
   auto left = AddKind(controller, source, "Alpha", kLeftX, kLeftY, poses);
   auto right = AddKind(controller, source, "Beta", kRightX, kRightY, poses);
-  ASSERT_TRUE(source.connect(left, kPortIndex, right, kPortIndex));
+  ASSERT_TRUE(source.connect(left->outputPort(kPortIndex), right->inputPort(kPortIndex)));
   NodeClipboard clipboard;
   ASSERT_TRUE(ApplyNodeClipboard(
                   NodeClipboardCommand::Copy, clipboard,
@@ -734,7 +667,7 @@ TEST(EditorClipboard, IllegalPortIsDropped) {
   EXPECT_EQ(EdgeCount(source), 1);
 }
 
-TEST(EditorClipboard, SecondCopyReplacesClipboard) {
+TEST(WorkbenchClipboard, SecondCopyReplacesClipboard) {
   tg::Controller controller;
   RegisterKind(controller);
   tg::Graph graph("Graph");
@@ -758,7 +691,7 @@ TEST(EditorClipboard, SecondCopyReplacesClipboard) {
   EXPECT_EQ(graph.getNodes().size(), std::size_t{2});
 }
 
-TEST(EditorClipboard, NullSampleDoesNotReplaceClipboard) {
+TEST(WorkbenchClipboard, NullSampleDoesNotReplaceClipboard) {
   tg::Controller controller;
   RegisterKind(controller);
   tg::Graph graph("Graph");
@@ -775,15 +708,11 @@ TEST(EditorClipboard, NullSampleDoesNotReplaceClipboard) {
       poses);
   EXPECT_FALSE(copied.wrote_clipboard);
   EXPECT_EQ(clipboard.nodes.front().name, "Alpha");
-  const NodeClipboardResult duplicated = ApplyNodeClipboard(
-      NodeClipboardCommand::Duplicate, clipboard, {empty}, controller, graph,
-      tg::NodePose{kPasteX, kPasteY}, poses);
-  EXPECT_TRUE(duplicated.created.empty());
   EXPECT_EQ(graph.getNodes().size(), std::size_t{1});
   EXPECT_EQ(clipboard.nodes.front().name, "Alpha");
 }
 
-TEST(EditorClipboard, ArmedPlacementDoesNotRetargetKindList) {
+TEST(WorkbenchClipboard, ArmedPlacementDoesNotRetargetKindList) {
   WorkbenchFocus focus;
   focus.RequestPickNodeKind(1);
   EXPECT_FALSE(OpenEditorKindList(focus, 0, true));
@@ -795,7 +724,7 @@ TEST(EditorClipboard, ArmedPlacementDoesNotRetargetKindList) {
   EXPECT_FALSE(focus.armed_placement().armed);
 }
 
-TEST(EditorClipboard, ContextInsideSelectionKeepsEveryNode) {
+TEST(WorkbenchClipboard, ContextInsideSelectionKeepsEveryNode) {
   auto first = std::make_shared<ClipboardKindNode>();
   auto second = std::make_shared<ClipboardKindNode>();
   const std::vector<const tg::Node*> selection = {nullptr, first.get(),
@@ -811,7 +740,7 @@ TEST(EditorClipboard, ContextInsideSelectionKeepsEveryNode) {
   EXPECT_TRUE(NodesForEditorCommand({}, nullptr).empty());
 }
 
-TEST(EditorClipboard, CatalogRowsFollowTheirWhen) {
+TEST(WorkbenchClipboard, CatalogRowsFollowTheirWhen) {
   std::size_t count = 0;
   const ShortcutRow* const rows = EditorShortcutCatalog(count);
   ASSERT_GT(count, std::size_t{0});
@@ -861,7 +790,7 @@ TEST(EditorClipboard, CatalogRowsFollowTheirWhen) {
   EXPECT_EQ(FindShortcutRow(kUnknownShortcutCommand), nullptr);
 }
 
-TEST(EditorClipboard, ShortcutFilterMatchesCommandOrKey) {
+TEST(WorkbenchClipboard, ShortcutFilterMatchesCommandOrKey) {
   std::size_t catalog_count = 0;
   EditorShortcutCatalog(catalog_count);
   EXPECT_EQ(MatchingShortcutRows("").size(), catalog_count);
@@ -891,7 +820,7 @@ TEST(EditorClipboard, ShortcutFilterMatchesCommandOrKey) {
   EXPECT_TRUE(MatchingShortcutRows("not-a-shortcut").empty());
 }
 
-TEST(EditorClipboard, KeyboardShortcutsTabDoesNotCreateOrDeleteNodes) {
+TEST(WorkbenchClipboard, KeyboardShortcutsTabDoesNotCreateOrDeleteNodes) {
   tg::Controller controller;
   RegisterKind(controller);
   auto graph = std::make_shared<tg::Graph>("Graph");
@@ -934,4 +863,29 @@ TEST(EditorClipboard, KeyboardShortcutsTabDoesNotCreateOrDeleteNodes) {
     }
   }
   EXPECT_TRUE(graph_tab_remains);
+}
+
+TEST(WorkbenchClipboard, GraphClipboardEmptyTracksValidity) {
+  GraphClipboard clipboard;
+  EXPECT_TRUE(clipboard.empty());
+  EXPECT_FALSE(clipboard.valid);
+
+  // 空图（没有任何节点）也是有效捕获，不能当成「没有图」。
+  clipboard.name = "Graph";
+  clipboard.valid = true;
+  EXPECT_FALSE(clipboard.empty());
+  EXPECT_TRUE(clipboard.content.empty());
+}
+
+TEST(WorkbenchClipboard, CopiedGraphNameSuffixesAndAvoidsCollisions) {
+  std::vector<std::shared_ptr<tg::Graph>> graphs;
+  EXPECT_EQ(CopiedGraphName(graphs, "Graph"), "Graph_copy");
+  graphs.push_back(std::make_shared<tg::Graph>("Graph_copy"));
+  EXPECT_EQ(CopiedGraphName(graphs, "Graph"), "Graph_copy2");
+  graphs.push_back(std::make_shared<tg::Graph>("Graph_copy2"));
+  EXPECT_EQ(CopiedGraphName(graphs, "Graph"), "Graph_copy3");
+
+  // 空源名用默认图名起底。
+  std::vector<std::shared_ptr<tg::Graph>> empty_source_graphs;
+  EXPECT_EQ(CopiedGraphName(empty_source_graphs, ""), "Graph_copy");
 }

@@ -5,7 +5,7 @@
 # path_dialog_test：选择路径。
 # explorer_project_actions_test：主侧栏工程名行。
 # workbench_edits_test：编辑区拉线、主侧栏新建节点和新建图、连线变量。
-# editor_clipboard_test：编辑区剪切、复制、粘贴、原位复制和空格种类列表。
+# workbench_clipboard_test：工作台剪切、复制、粘贴、原位复制和空格种类列表。
 
 find_package(GTest CONFIG REQUIRED)
 include(GoogleTest)
@@ -40,6 +40,10 @@ add_executable(workbench_edits_test workbench_edits_test.cpp)
 target_link_libraries(workbench_edits_test PRIVATE taskgraph::Core taskgraph::Ui)
 taskgraph_add_ui_gtest(workbench_edits_test)
 
-add_executable(editor_clipboard_test editor_clipboard_test.cpp)
-target_link_libraries(editor_clipboard_test PRIVATE taskgraph::Core taskgraph::Ui)
-taskgraph_add_ui_gtest(editor_clipboard_test)
+add_executable(workbench_clipboard_test workbench_clipboard_test.cpp)
+target_link_libraries(workbench_clipboard_test PRIVATE taskgraph::Core taskgraph::Ui)
+taskgraph_add_ui_gtest(workbench_clipboard_test)
+
+add_executable(undo_test undo_test.cpp)
+target_link_libraries(undo_test PRIVATE taskgraph::Core taskgraph::Ui)
+taskgraph_add_ui_gtest(undo_test)

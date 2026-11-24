@@ -2,6 +2,7 @@
 
 #include "Types.hpp"
 
+#include <cctype>
 #include <cstring>
 #include <functional>
 #include <string>
@@ -9,8 +10,9 @@
 #include <utility>
 #include <vector>
 
-// 工作台可扩展部件的数据模型（Facade）：命令、活动栏项、视图动作、面板视图。
-// 默认不注册任何可见项；只有注册后对应槽位才画内容。
+namespace tg {
+class NodeData;
+}
 
 // 活动栏 / 标题动作的图标种类；具体怎么画由各前端决定。
 enum class ActivityIcon { None, Explorer, Search };
@@ -102,6 +104,25 @@ struct ActivityBarItem {
   ActivityIcon icon = ActivityIcon::None;
 };
 
+inline constexpr const char* kTogglePrimarySideBarCommand =
+    "view.togglePrimarySideBar";
+
+// 活动栏点击后执行的命令：点已激活项切主侧栏，否则切到该项视图。
+inline std::string_view ActivityClickCommand(const ActivityBarItem& item,
+                                             bool active) {
+  return active ? std::string_view(kTogglePrimarySideBarCommand)
+                : std::string_view(item.command);
+}
+
+// 当前铺满停靠区的视图；两个视图共用同一块最大化区域。
+enum class MaximizedView { None, Output, Properties };
+
+// 点最大化/还原：同一视图再点还原，否则切到目标视图。
+inline MaximizedView ToggleMaximizedView(MaximizedView current,
+                                         MaximizedView target) {
+  return current == target ? MaximizedView::None : target;
+}
+
 // 面板视图；draw 只画内容，窗口由前端开。
 struct PanelView {
   std::string id;
@@ -171,6 +192,72 @@ inline constexpr const char* kWindowIdSeparator = "###";
 inline constexpr const char* kActivityBarDockId = "ActivityBar";
 inline constexpr const char* kActivityBarWindowName = "Activity Bar###ActivityBar";
 
+// 节点输出监视器：窗口 chrome 和来源选择由 taskgraph 提供，内容由注册方画。
+struct MonitorView {
+  std::string id;
+  std::string title;
+  bool open = false;
+  bool open_on_first_run = false;
+  // 可接受的 NodeData；空表示任何类型。
+  std::function<bool(const tg::NodeData&)> accepts;
+  // 内容区：width/height 是 taskgraph 算好的可用尺寸，从当前光标开始画。
+  std::function<void(const tg::NodeData&, float width, float height)> draw;
+  // 有来源时的短状态（如 "63 points"）；空则不占行。
+  std::function<std::string(const tg::NodeData*)> status;
+
+  std::string window_name() const { return title + kWindowIdSeparator + id; }
+  std::string command_id() const { return std::string("view.") + id; }
+};
+
+// 监视器 Source 的显示名：graph / node / port。
+inline std::string MonitorSourceLabel(std::string_view graph,
+                                      std::string_view node,
+                                      std::string_view port) {
+  std::string label(graph);
+  label += " / ";
+  label += node;
+  label += " / ";
+  label += port;
+  return label;
+}
+
+// Source 浮层的过滤：大小写不敏感的子串。
+inline bool MonitorSourceMatchesFilter(std::string_view label,
+                                       std::string_view filter) {
+  if (filter.empty()) {
+    return true;
+  }
+  std::string lower_label(label);
+  std::string lower_filter(filter);
+  const auto lower = [](std::string& text) {
+    for (char& ch : text) {
+      ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+    }
+  };
+  lower(lower_label);
+  lower(lower_filter);
+  return lower_label.find(lower_filter) != std::string::npos;
+}
+
+// Follow 切换：从 on 切到 off 时固定当前来源；从 off 切回 on 时清 pin。
+struct MonitorFollowDecision {
+  bool follow = true;
+  bool pin_current = false;
+  bool clear_pin = false;
+};
+
+inline MonitorFollowDecision DecideMonitorFollowToggle(bool follow,
+                                                       bool has_source) {
+  MonitorFollowDecision decision;
+  decision.follow = !follow;
+  decision.pin_current = follow && has_source;
+  decision.clear_pin = !follow;
+  return decision;
+}
+
+// 最大化只对浮动窗口可用；停靠时按钮置灰。
+inline bool MonitorMaximizeAvailable(bool docked) { return !docked; }
+
 // Begin 的名字和 DockBuilderDockWindow 的登记必须是同一个 ID。
 inline bool DockIdMatchesWindowName(const char* window_name,
                                     const char* dock_id) {
@@ -186,6 +273,19 @@ inline bool DockIdMatchesWindowName(const char* window_name,
   return std::strcmp(id, dock_id) == 0;
 }
 
+// 独立视图窗口：由前端开窗，默认浮动，也可拖进停靠区。
+// open_on_first_run 只决定从未记录过开关状态时是否打开。
+struct ViewWindow {
+  std::string id;
+  std::string title;
+  bool open = false;
+  bool open_on_first_run = false;
+  std::function<void()> draw;
+
+  std::string window_name() const { return title + kWindowIdSeparator + id; }
+  std::string command_id() const { return std::string("view.") + id; }
+};
+
 // 工作台部件集合；前端只读这些槽位。
 struct WorkbenchParts {
   CommandRegistry commands;
@@ -193,6 +293,8 @@ struct WorkbenchParts {
   bool activity_bar_visible = false;
   std::vector<ViewAction> explorer_title_actions;
   std::vector<PanelView> panel_views;
+  std::vector<ViewWindow> view_windows;
+  std::vector<MonitorView> monitor_views;
   CommandCenter command_center;
   // View 菜单控制的各区域可见性，默认全开。
   bool primary_sidebar_visible = true;
@@ -303,6 +405,22 @@ inline float ClampDockSplitRatio(float ratio) {
     return kMaxDockSplitRatio;
   }
   return ratio;
+}
+
+// 记住用户拖过的主侧栏宽度，换算成停靠宿主里的比例；0 表示还没量到。
+inline float SidebarRatioFromWidth(float width, float dock_width) {
+  if (width <= 0.0f || dock_width <= 0.0f) {
+    return 0.0f;
+  }
+  return ClampDockSplitRatio(width / dock_width);
+}
+
+// 按 ImGui 同层两个子节点的 SizeRef 之比换算停靠比例。
+inline float DockSplitRatioFromSizeRef(float size_ref, float sibling_size_ref) {
+  if (size_ref <= 0.0f || sibling_size_ref <= 0.0f) {
+    return 0.0f;
+  }
+  return SidebarRatioFromWidth(size_ref, size_ref + sibling_size_ref);
 }
 
 // 活动栏可见时，主侧栏仍按整窗宽度的 2/12，再换算成停靠宿主里的比例。

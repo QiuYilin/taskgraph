@@ -11,6 +11,14 @@ alwaysApply: true
 
 界面仍用现有的 ImGui。要求落到现有窗口上，不换成 Electron，也不引入第三方 VS Code 工作台库。ImGui 没有官方 VS Code 工作台主题，视觉 token 与对照出处集中在 `Theme.hpp` / `ApplyTheme`；页签栏与画布共用同一套编辑区底色，不要再各写一套默认色。`Ui.hpp` 布局注释不写「对照 VS Code」，只调主题 API 做分区风格设置。主侧栏与编辑区通过 `WorkbenchFocus` 共享选中与页签（立即模式 Observer / pull），不要写成两边互相推送。
 
+详细界面以本机思源「界面风格 / VSCODE风格」章节为准（访问方式见私有规则），本规则只保留强制摘要。当前尺寸与界面行为按该章节：
+
+- 标题栏高 30×s、状态栏高 22×s、活动栏宽 48×s；面板内容顶边距 2×s。
+- 常规控件高 32×s；Output 工具栏高 22×s、复选框 16×s。
+- 活动栏点击当前图标收起/恢复主侧栏；Properties/Output 有最大化/还原与关闭；Output Detail 预设包含 Timing，状态栏有 `Last run`。
+- Output 日志为 Level/Category/Context/Message 四列，Message 自动换行；具体行为以思源章节和 `docs/logging.md` 为准。
+- Qt 版按思源章节的后端差异执行：活动栏固定在工作区最左列，Output 暂无细节控件，状态消息显示 `Run finished in X ms`。
+
 回复里写明对照了哪一块。这次改动不涉及界面时，写明核对过，不要默默跳过。
 
 对照时写清这几项：

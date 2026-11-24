@@ -28,8 +28,8 @@
 // - 同一对端口再连一次，拒绝。
 // - Port* 连接成功；同一对再连拒绝；空 Port* 拒绝。
 // - connect<DataT> 成功并写入数据边；同一对再连、以及输入改成属性后，由 canConnect 拒绝。
-// - 空节点指针拒绝。
-// - 越界端口拒绝。
+// - 空 Port* 拒绝。
+// - 越界下标取不到端口（nullptr），connect 拒绝。
 // - 同一数据 id、不同 name 可以连；不同 id、空 id 拒绝。
 // - 同一输出连到另一个输入口可以。
 // - 自环拒绝。
@@ -68,11 +68,13 @@
 #include "taskgraph/Controller.hpp"
 #include "taskgraph/Error.hpp"
 #include "taskgraph/Graph.hpp"
+#include "taskgraph/Log.hpp"
 #include "taskgraph/NodeData.hpp"
 
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <atomic>
 #include <list>
 #include <memory>
 #include <stdexcept>
@@ -429,6 +431,299 @@ bool receivedPort(const PortNode& node, unsigned int index) {
                    index) != node.received_ports.end();
 }
 
+// 记录 debugSummary 调用次数，用来验证关掉 Data 后不取摘要。
+class CountingIntData : public TestIntData {
+ public:
+  CountingIntData(int value, std::shared_ptr<std::atomic<int>> calls)
+      : TestIntData(value), _calls(std::move(calls)) {}
+
+  std::string debugSummary() const override {
+    ++*_calls;
+    return "counted";
+  }
+
+ private:
+  std::shared_ptr<std::atomic<int>> _calls;
+};
+
+class CountingSourceNode : public tg::Node {
+ public:
+  explicit CountingSourceNode(std::shared_ptr<std::atomic<int>> calls)
+      : _calls(std::move(calls)) {}
+
+  unsigned int nFixedPorts(tg::PortType port_type) const override {
+    constexpr unsigned int kOutputCount = 1;
+    return port_type == tg::PortType::Out ? kOutputCount : 0;
+  }
+
+  tg::NodeDataType fixedDataType(tg::PortType port_type,
+                                 unsigned int) const override {
+    if (port_type == tg::PortType::Out) {
+      return TestIntData{}.type();
+    }
+    return {};
+  }
+
+  const char* fixedPortId(tg::PortType port_type,
+                          unsigned int) const override {
+    return port_type == tg::PortType::Out ? "value" : "";
+  }
+
+  const char* fixedPortCaption(tg::PortType port_type,
+                               unsigned int index) const override {
+    return fixedPortId(port_type, index);
+  }
+
+  void compute() override {
+    _out = std::make_shared<CountingIntData>(kSyncedIntValue, _calls);
+  }
+
+  void onSetInPortData(unsigned int, std::shared_ptr<tg::NodeData>) override {}
+
+  std::shared_ptr<tg::NodeData> getOutPortData(unsigned int) override {
+    return _out;
+  }
+
+ private:
+  std::shared_ptr<std::atomic<int>> _calls;
+  std::shared_ptr<tg::NodeData> _out;
+};
+
+struct GraphLogConfigGuard {
+  tg::LogConfig original = tg::GetLogConfig();
+  ~GraphLogConfigGuard() { tg::SetLogConfig(original); }
+};
+
+std::vector<tg::LogRecord> CollectGraphLogs() {
+  std::vector<tg::LogRecord> records;
+  tg::copyLogRecordsSince(0, records);
+  return records;
+}
+
+bool HasLogContaining(const std::vector<tg::LogRecord>& records,
+                      const std::string& needle) {
+  return std::any_of(records.begin(), records.end(),
+                     [&](const tg::LogRecord& record) {
+                       return record.text.find(needle) != std::string::npos;
+                     });
+}
+
+TEST(GraphLog, AutoLogsNodePropertiesInputsOutputsAndTiming) {
+  GraphLogConfigGuard guard;
+  tg::SetLogConfig({tg::LogLevel::Info, tg::kAllLogCategories});
+  tg::clearLogRecords();
+
+  tg::Graph graph;
+  graph.setName("LogGraph");
+  auto source = std::make_shared<IntSourceNode>(kLeftInt);
+  source->setTypeId("IntSource");
+  source->setName("Source");
+  auto add = std::make_shared<IntAddNode>();
+  add->setTypeId("IntAdd");
+  add->setName("Add");
+  graph.addNode(source);
+  graph.addNode(add);
+  ASSERT_TRUE(graph.connect(source->outputPort(kFirstPort),
+                            add->inputPort(kFirstPort)));
+  ASSERT_TRUE(graph.connect(source->outputPort(kFirstPort),
+                            add->inputPort(kSecondPort)));
+
+  tg::Controller controller;
+  controller.run(graph);
+  ASSERT_TRUE(controller.lastRunMilliseconds().has_value())
+      << "总耗时始终记录，不依赖 Timing 日志";
+  EXPECT_GE(*controller.lastRunMilliseconds(), 0.0);
+
+  const std::vector<tg::LogRecord> records = CollectGraphLogs();
+  EXPECT_TRUE(HasLogContaining(records,
+                               "graph 'LogGraph' node 'Source': start "
+                               "(IntSource)"))
+      << "节点 start 带图名/节点名/type";
+  EXPECT_TRUE(HasLogContaining(records, "property 'value'=2"))
+      << "属性摘要";
+  EXPECT_TRUE(HasLogContaining(records, "in[0] 'lhs' <- Int"))
+      << "输入摘要带端口和上游摘要";
+  const auto text_index = [&](const std::string& needle) {
+    return std::find_if(records.begin(), records.end(),
+                        [&](const tg::LogRecord& record) {
+                          return record.text.find(needle) != std::string::npos;
+                        }) -
+           records.begin();
+  };
+  EXPECT_LT(text_index("in[0]"), text_index("in[1]"))
+      << "输入按端口下标记录";
+  EXPECT_TRUE(HasLogContaining(records, "out[0] 'value' = Int"))
+      << "输出摘要";
+  EXPECT_TRUE(HasLogContaining(records, "took ")) << "单节点耗时";
+  EXPECT_TRUE(HasLogContaining(records,
+                               "graph 'LogGraph' node 'Add': end"))
+      << "节点 end";
+}
+
+TEST(GraphLog, DisabledDataSkipsSummary) {
+  GraphLogConfigGuard guard;
+  tg::SetLogConfig({tg::LogLevel::Info,
+                    static_cast<tg::LogCategoryMask>(
+                        tg::LogCategory::Node) |
+                        static_cast<tg::LogCategoryMask>(
+                            tg::LogCategory::Timing)});
+  tg::clearLogRecords();
+
+  auto calls = std::make_shared<std::atomic<int>>(0);
+  tg::Graph graph;
+  graph.setName("NoDataGraph");
+  auto source = std::make_shared<CountingSourceNode>(calls);
+  source->setTypeId("CountingSource");
+  source->setName("Count");
+  graph.addNode(source);
+
+  tg::Controller controller;
+  controller.run(graph);
+
+  const std::vector<tg::LogRecord> records = CollectGraphLogs();
+  EXPECT_FALSE(HasLogContaining(records, "counted"))
+      << "关 Data 时不应调用 debugSummary";
+  EXPECT_EQ(calls->load(), 0);
+  EXPECT_TRUE(HasLogContaining(records, "node 'Count': start (CountingSource)"))
+      << "Node 类别仍记录";
+  EXPECT_TRUE(HasLogContaining(records, "took ")) << "Timing 类别仍记录";
+}
+
+TEST(GraphLog, TimingOnlyPresetKeepsTimingRecords) {
+  GraphLogConfigGuard guard;
+  tg::SetLogConfig(
+      {tg::LogLevel::Info,
+       static_cast<tg::LogCategoryMask>(tg::LogCategory::Timing)});
+  tg::clearLogRecords();
+
+  tg::Graph graph;
+  graph.setName("TimingGraph");
+  auto source = std::make_shared<IntSourceNode>(kLeftInt);
+  source->setTypeId("IntSource");
+  source->setName("Timed");
+  graph.addNode(source);
+
+  tg::Controller controller;
+  controller.run(graph);
+
+  const std::vector<tg::LogRecord> records = CollectGraphLogs();
+  ASSERT_FALSE(records.empty());
+  for (const tg::LogRecord& record : records) {
+    EXPECT_EQ(record.category, tg::LogCategory::Timing)
+        << "Timing 预设只保留 Timing 记录";
+  }
+  EXPECT_TRUE(HasLogContaining(records, "node 'Timed': took "));
+  EXPECT_TRUE(HasLogContaining(records, "graph 'TimingGraph': took "));
+}
+
+TEST(GraphLog, NodeFailureLogsErrorAndRethrows) {
+  GraphLogConfigGuard guard;
+  tg::SetLogConfig({tg::LogLevel::Error, tg::kAllLogCategories});
+  tg::clearLogRecords();
+
+  tg::Graph graph;
+  graph.setName("ErrorGraph");
+  auto throwing = std::make_shared<ThrowingNode>("boom");
+  throwing->setTypeId("ThrowingNode");
+  throwing->setName("Boom");
+  graph.addNode(throwing);
+
+  tg::Controller controller;
+  EXPECT_THROW(controller.run(graph), tg::NodeError);
+  EXPECT_FALSE(controller.lastRunMilliseconds().has_value())
+      << "失败 run 不留下旧耗时";
+
+  const std::vector<tg::LogRecord> records = CollectGraphLogs();
+  EXPECT_TRUE(HasLogContaining(
+      records, "graph 'ErrorGraph' node 'Boom': failed: boom"))
+      << "节点 Error 记录带限定名和异常文本";
+  EXPECT_TRUE(HasLogContaining(records, "graph 'ErrorGraph': failed"))
+      << "图级 Error 记录";
+}
+
+TEST(GraphLog, ParallelNodesKeepTheirOwnOrderAndIdentity) {
+  GraphLogConfigGuard guard;
+  tg::SetLogConfig({tg::LogLevel::Info, tg::kAllLogCategories});
+  tg::clearLogRecords();
+
+  tg::Graph graph;
+  graph.setName("ParallelGraph");
+  auto first = std::make_shared<IntSourceNode>(kLeftInt);
+  first->setTypeId("IntSource");
+  first->setName("P1");
+  auto second = std::make_shared<IntSourceNode>(kRightInt);
+  second->setTypeId("IntSource");
+  second->setName("P2");
+  graph.addNode(first);
+  graph.addNode(second);
+
+  tg::Controller controller;
+  controller.run(graph);
+
+  const std::vector<tg::LogRecord> records = CollectGraphLogs();
+  const auto find_text = [&](const std::string& needle) {
+    return std::find_if(records.begin(), records.end(),
+                        [&](const tg::LogRecord& record) {
+                          return record.text.find(needle) != std::string::npos;
+                        });
+  };
+  const auto p1_start = find_text("graph 'ParallelGraph' node 'P1'");
+  const auto p2_start = find_text("graph 'ParallelGraph' node 'P2'");
+  EXPECT_NE(p1_start, records.end());
+  EXPECT_NE(p2_start, records.end());
+  EXPECT_TRUE(HasLogContaining(records, "node 'P1': start (IntSource)"));
+  EXPECT_TRUE(HasLogContaining(records, "node 'P1': end"));
+  EXPECT_TRUE(HasLogContaining(records, "node 'P2': start (IntSource)"));
+  EXPECT_TRUE(HasLogContaining(records, "node 'P2': end"));
+}
+
+TEST(GraphLog, SameNodeNameInDifferentGraphsIsQualified) {
+  GraphLogConfigGuard guard;
+  tg::SetLogConfig({tg::LogLevel::Info, tg::kAllLogCategories});
+  tg::clearLogRecords();
+
+  tg::Graph first_graph;
+  first_graph.setName("G1");
+  auto first = std::make_shared<IntSourceNode>(kLeftInt);
+  first->setTypeId("IntSource");
+  first->setName("A");
+  first_graph.addNode(first);
+
+  tg::Graph second_graph;
+  second_graph.setName("G2");
+  auto second = std::make_shared<IntSourceNode>(kRightInt);
+  second->setTypeId("IntSource");
+  second->setName("A");
+  second_graph.addNode(second);
+
+  tg::Controller controller;
+  controller.run(first_graph);
+  controller.run(second_graph);
+
+  const std::vector<tg::LogRecord> records = CollectGraphLogs();
+  EXPECT_TRUE(HasLogContaining(records,
+                               "graph 'G1' node 'A': start (IntSource)"))
+      << "第一张图的 A";
+  EXPECT_TRUE(HasLogContaining(records,
+                               "graph 'G2' node 'A': start (IntSource)"))
+      << "第二张图的 A 不混淆";
+}
+
+TEST(GraphLog, DetachedNodeUsesDetachedGraphLabel) {
+  GraphLogConfigGuard guard;
+  tg::SetLogConfig({tg::LogLevel::Info, tg::kAllLogCategories});
+  tg::clearLogRecords();
+
+  auto source = std::make_shared<IntSourceNode>(kLeftInt);
+  source->setTypeId("IntSource");
+  source->setName("Alone");
+  source->computeAndUpdateData();
+
+  const std::vector<tg::LogRecord> records = CollectGraphLogs();
+  EXPECT_TRUE(HasLogContaining(records, "graph '(detached)' node 'Alone'"));
+}
+
+
 }  // namespace
 
 TEST(GraphAdd, AddsInOrder) {
@@ -457,7 +752,7 @@ TEST(GraphCreateNode, AddsAndConnects) {
   ASSERT_NE(sink, nullptr) << "createNode 应返回非空节点";
   EXPECT_EQ(graph.getNodes().size(), std::size_t{2}) << "两个节点都应入图";
 
-  EXPECT_TRUE(graph.connect(source, kFirstPort, sink, kFirstPort))
+  EXPECT_TRUE(graph.connect(source->outputPort(kFirstPort), sink->inputPort(kFirstPort)))
       << "createNode 创建的节点应能连边";
 }
 
@@ -494,7 +789,7 @@ TEST(GraphRemove, OutOnlyNode) {
   auto sink = std::make_shared<PortNode>();
   out_only.addNode(source);
   out_only.addNode(sink);
-  ASSERT_TRUE(out_only.connect(source, kFirstPort, sink, kFirstPort))
+  ASSERT_TRUE(out_only.connect(source->outputPort(kFirstPort), sink->inputPort(kFirstPort)))
       << "只有出边的节点应能连到下游";
   source->computeAndUpdateData();
   const auto sink_received = sink->received_ports.size();
@@ -520,7 +815,7 @@ TEST(GraphRemove, InOnlyNode) {
   auto downstream = std::make_shared<PortNode>();
   in_only.addNode(upstream);
   in_only.addNode(downstream);
-  ASSERT_TRUE(in_only.connect(upstream, kFirstPort, downstream, kSecondPort))
+  ASSERT_TRUE(in_only.connect(upstream->outputPort(kFirstPort), downstream->inputPort(kSecondPort)))
       << "只有入边的节点应能接上上游";
   upstream->computeAndUpdateData();
   const auto downstream_received = downstream->received_ports.size();
@@ -543,9 +838,9 @@ TEST(GraphRemove, MiddleNode) {
   middle_graph.addNode(head);
   middle_graph.addNode(middle);
   middle_graph.addNode(tail);
-  ASSERT_TRUE(middle_graph.connect(head, kFirstPort, middle, kFirstPort))
+  ASSERT_TRUE(middle_graph.connect(head->outputPort(kFirstPort), middle->inputPort(kFirstPort)))
       << "中间节点的入边应连上";
-  ASSERT_TRUE(middle_graph.connect(middle, kFirstPort, tail, kFirstPort))
+  ASSERT_TRUE(middle_graph.connect(middle->outputPort(kFirstPort), tail->inputPort(kFirstPort)))
       << "中间节点的出边应连上";
   middle_graph.removeNode(middle);
   EXPECT_FALSE(hasConnection(head->outgoing(), middle, kFirstPort, kFirstPort))
@@ -564,9 +859,9 @@ TEST(GraphRemove, KeepsOtherNodesAndEdges) {
   rest.addNode(left);
   rest.addNode(dropped);
   rest.addNode(right);
-  ASSERT_TRUE(rest.connect(left, kFirstPort, right, kFirstPort))
+  ASSERT_TRUE(rest.connect(left->outputPort(kFirstPort), right->inputPort(kFirstPort)))
       << "保留的边应连上";
-  ASSERT_TRUE(rest.connect(dropped, kFirstPort, right, kSecondPort))
+  ASSERT_TRUE(rest.connect(dropped->outputPort(kFirstPort), right->inputPort(kSecondPort)))
       << "将被删节点的边应连上";
   rest.removeNode(dropped);
   const std::vector<std::shared_ptr<tg::Node>> survivors{left, right};
@@ -584,7 +879,7 @@ TEST(GraphConnect, FirstEdgeAndDuplicate) {
   auto to = std::make_shared<PortNode>();
   first_edge.addNode(from);
   first_edge.addNode(to);
-  ASSERT_TRUE(first_edge.connect(from, kFirstPort, to, kSecondPort))
+  ASSERT_TRUE(first_edge.connect(from->outputPort(kFirstPort), to->inputPort(kSecondPort)))
       << "首次 connect 应成功";
   EXPECT_TRUE(hasConnection(from->outgoing(), to, kFirstPort, kSecondPort))
       << "首次 connect 后上游应有 ConnectionInfo";
@@ -592,7 +887,7 @@ TEST(GraphConnect, FirstEdgeAndDuplicate) {
       << "首次 connect 后下游应有 ConnectionInfo";
   EXPECT_EQ(scheduleEdgeCount(first_edge), std::size_t{1})
       << "首次 connect 后调度边应为 1";
-  EXPECT_FALSE(first_edge.connect(from, kFirstPort, to, kSecondPort))
+  EXPECT_FALSE(first_edge.connect(from->outputPort(kFirstPort), to->inputPort(kSecondPort)))
       << "同一对端口再连一次应拒绝";
 }
 
@@ -641,10 +936,10 @@ TEST(GraphConnect, NullNodes) {
   tg::Graph null_nodes;
   auto present = std::make_shared<PortNode>();
   null_nodes.addNode(present);
-  EXPECT_FALSE(null_nodes.connect(nullptr, kFirstPort, present, kFirstPort))
-      << "空上游节点应拒绝";
-  EXPECT_FALSE(null_nodes.connect(present, kFirstPort, nullptr, kFirstPort))
-      << "空下游节点应拒绝";
+  EXPECT_FALSE(null_nodes.connect(nullptr, present->inputPort(kFirstPort)))
+      << "空上游端口应拒绝";
+  EXPECT_FALSE(null_nodes.connect(present->outputPort(kFirstPort), nullptr))
+      << "空下游端口应拒绝";
 }
 
 TEST(GraphConnect, OutOfRangePort) {
@@ -653,8 +948,9 @@ TEST(GraphConnect, OutOfRangePort) {
   auto range_to = std::make_shared<PortNode>();
   out_of_range.addNode(range_from);
   out_of_range.addNode(range_to);
-  EXPECT_FALSE(out_of_range.connect(range_from, kOutOfRangePortIndex, range_to,
-                                    kFirstPort))
+  const tg::Node::Port* missing = range_from->outputPort(kOutOfRangePortIndex);
+  EXPECT_EQ(missing, nullptr) << "越界下标应取不到端口";
+  EXPECT_FALSE(out_of_range.connect(missing, range_to->inputPort(kFirstPort)))
       << "越界端口应拒绝";
 }
 
@@ -671,9 +967,11 @@ TEST(GraphConnect, DataId) {
   EXPECT_TRUE(typed.connect(typed_source->outputPort(kFirstPort),
                             same_data->inputPort(kFirstPort)))
       << "同一数据 id、不同 name 应能连接";
-  EXPECT_FALSE(typed.connect(typed_source, kFirstPort, other_data, kFirstPort))
+  EXPECT_FALSE(typed.connect(typed_source->outputPort(kFirstPort),
+                             other_data->inputPort(kFirstPort)))
       << "不同数据 id 应拒绝";
-  EXPECT_FALSE(typed.connect(typed_source, kFirstPort, empty_data, kFirstPort))
+  EXPECT_FALSE(typed.connect(typed_source->outputPort(kFirstPort),
+                             empty_data->inputPort(kFirstPort)))
       << "空数据 id 应拒绝";
 }
 
@@ -683,9 +981,11 @@ TEST(GraphConnect, SameOutputAnotherInput) {
   auto fan_to = std::make_shared<PortNode>();
   another_input.addNode(fan_from);
   another_input.addNode(fan_to);
-  ASSERT_TRUE(another_input.connect(fan_from, kFirstPort, fan_to, kFirstPort))
+  ASSERT_TRUE(another_input.connect(fan_from->outputPort(kFirstPort),
+                                    fan_to->inputPort(kFirstPort)))
       << "同一输出连第一个输入应成功";
-  EXPECT_TRUE(another_input.connect(fan_from, kFirstPort, fan_to, kSecondPort))
+  EXPECT_TRUE(another_input.connect(fan_from->outputPort(kFirstPort),
+                                    fan_to->inputPort(kSecondPort)))
       << "同一输出连到另一个输入口应成功";
 }
 
@@ -693,7 +993,7 @@ TEST(GraphConnect, SelfLoop) {
   tg::Graph loop;
   auto self = std::make_shared<PortNode>();
   loop.addNode(self);
-  EXPECT_FALSE(loop.connect(self, kFirstPort, self, kSecondPort))
+  EXPECT_FALSE(loop.connect(self->outputPort(kFirstPort), self->inputPort(kSecondPort)))
       << "自环应拒绝";
 }
 
@@ -706,9 +1006,9 @@ TEST(GraphConnect, TwoSourcesTwoInputs) {
   two_sources.addNode(right_source);
   two_sources.addNode(joined);
   const bool left_ok =
-      two_sources.connect(left_source, kFirstPort, joined, kFirstPort);
+      two_sources.connect(left_source->outputPort(kFirstPort), joined->inputPort(kFirstPort));
   const bool right_ok =
-      two_sources.connect(right_source, kFirstPort, joined, kSecondPort);
+      two_sources.connect(right_source->outputPort(kFirstPort), joined->inputPort(kSecondPort));
   EXPECT_TRUE(left_ok) << "第一个源汇入应成功";
   EXPECT_TRUE(right_ok) << "第二个源汇入另一个输入应成功";
   std::size_t joined_edges = 0;
@@ -731,14 +1031,14 @@ TEST(GraphConnect, PropertyMode) {
   ASSERT_TRUE(property_mode.setInputPresentation(
       property_to, kFirstPort, tg::InputPresentation::Property))
       << "输入应能改为属性露面";
-  EXPECT_FALSE(property_mode.connect(property_from, kFirstPort, property_to,
-                                     kFirstPort))
+  EXPECT_FALSE(property_mode.connect(property_from->outputPort(kFirstPort),
+                                     property_to->inputPort(kFirstPort)))
       << "属性露面的输入应拒绝连线";
   ASSERT_TRUE(property_mode.setInputPresentation(property_to, kFirstPort,
                                                  tg::InputPresentation::Port))
       << "输入应能改回端口露面";
-  EXPECT_TRUE(property_mode.connect(property_from, kFirstPort, property_to,
-                                    kFirstPort))
+  EXPECT_TRUE(property_mode.connect(property_from->outputPort(kFirstPort),
+                                    property_to->inputPort(kFirstPort)))
       << "改回端口后应能再连";
 }
 
@@ -750,9 +1050,11 @@ TEST(GraphConnect, SecondUpstreamSameInput) {
   single_source.addNode(first_up);
   single_source.addNode(second_up);
   single_source.addNode(shared_in);
-  ASSERT_TRUE(single_source.connect(first_up, kFirstPort, shared_in, kFirstPort))
+  ASSERT_TRUE(single_source.connect(first_up->outputPort(kFirstPort),
+                                    shared_in->inputPort(kFirstPort)))
       << "同一个输入口的第一条边应成功";
-  EXPECT_FALSE(single_source.connect(second_up, kFirstPort, shared_in, kFirstPort))
+  EXPECT_FALSE(single_source.connect(second_up->outputPort(kFirstPort),
+                                     shared_in->inputPort(kFirstPort)))
       << "第二个上游接到同一个输入口应拒绝";
   EXPECT_TRUE(hasConnection(first_up->outgoing(), shared_in, kFirstPort, kFirstPort))
       << "拒绝第二个上游后第一条边应还在";
@@ -764,9 +1066,9 @@ TEST(GraphConnect, BackEdge) {
   auto node_b = std::make_shared<PortNode>();
   back_edge.addNode(node_a);
   back_edge.addNode(node_b);
-  ASSERT_TRUE(back_edge.connect(node_a, kFirstPort, node_b, kFirstPort))
+  ASSERT_TRUE(back_edge.connect(node_a->outputPort(kFirstPort), node_b->inputPort(kFirstPort)))
       << "回边测试的正向边应成功";
-  EXPECT_FALSE(back_edge.connect(node_b, kFirstPort, node_a, kFirstPort))
+  EXPECT_FALSE(back_edge.connect(node_b->outputPort(kFirstPort), node_a->inputPort(kFirstPort)))
       << "两节点连上后再连回边应拒绝";
 }
 
@@ -778,11 +1080,11 @@ TEST(GraphConnect, Triangle) {
   triangle.addNode(cycle_a);
   triangle.addNode(cycle_b);
   triangle.addNode(cycle_c);
-  ASSERT_TRUE(triangle.connect(cycle_a, kFirstPort, cycle_b, kFirstPort))
+  ASSERT_TRUE(triangle.connect(cycle_a->outputPort(kFirstPort), cycle_b->inputPort(kFirstPort)))
       << "三节点环的 A→B 应成功";
-  ASSERT_TRUE(triangle.connect(cycle_b, kFirstPort, cycle_c, kFirstPort))
+  ASSERT_TRUE(triangle.connect(cycle_b->outputPort(kFirstPort), cycle_c->inputPort(kFirstPort)))
       << "三节点环的 B→C 应成功";
-  EXPECT_FALSE(triangle.connect(cycle_c, kFirstPort, cycle_a, kFirstPort))
+  EXPECT_FALSE(triangle.connect(cycle_c->outputPort(kFirstPort), cycle_a->inputPort(kFirstPort)))
       << "三节点 A→B→C 后再连 C→A 应拒绝";
 }
 
@@ -792,9 +1094,11 @@ TEST(GraphConnect, TwoDataEdgesOneSchedule) {
   auto pair_to = std::make_shared<PortNode>();
   one_schedule.addNode(pair_from);
   one_schedule.addNode(pair_to);
-  ASSERT_TRUE(one_schedule.connect(pair_from, kFirstPort, pair_to, kFirstPort))
+  ASSERT_TRUE(one_schedule.connect(pair_from->outputPort(kFirstPort),
+                                   pair_to->inputPort(kFirstPort)))
       << "同一对节点的第一条端口对应成功";
-  ASSERT_TRUE(one_schedule.connect(pair_from, kSecondPort, pair_to, kSecondPort))
+  ASSERT_TRUE(one_schedule.connect(pair_from->outputPort(kSecondPort),
+                                   pair_to->inputPort(kSecondPort)))
       << "同一对节点的第二条端口对应成功";
   EXPECT_TRUE(hasConnection(pair_from->outgoing(), pair_to, kFirstPort, kFirstPort))
       << "第一条数据边应在";
@@ -811,11 +1115,11 @@ TEST(GraphDisconnect, OneEdgeKeepsTheOther) {
   auto to = std::make_shared<PortNode>();
   one_edge.addNode(from);
   one_edge.addNode(to);
-  ASSERT_TRUE(one_edge.connect(from, kFirstPort, to, kFirstPort))
+  ASSERT_TRUE(one_edge.connect(from->outputPort(kFirstPort), to->inputPort(kFirstPort)))
       << "待删的那条边应连上";
-  ASSERT_TRUE(one_edge.connect(from, kSecondPort, to, kSecondPort))
+  ASSERT_TRUE(one_edge.connect(from->outputPort(kSecondPort), to->inputPort(kSecondPort)))
       << "保留的那条边应连上";
-  EXPECT_TRUE(one_edge.disconnect(from, kFirstPort, to, kFirstPort))
+  EXPECT_TRUE(one_edge.disconnect(from->outputPort(kFirstPort), to->inputPort(kFirstPort)))
       << "指定的那条边应删掉";
   EXPECT_FALSE(hasConnection(from->outgoing(), to, kFirstPort, kFirstPort))
       << "删掉后上游不应再有这一对端口";
@@ -825,9 +1129,9 @@ TEST(GraphDisconnect, OneEdgeKeepsTheOther) {
       << "另一对端口的上游边应还在";
   EXPECT_TRUE(hasConnection(to->incoming(), from, kSecondPort, kSecondPort))
       << "另一对端口的下游边应还在";
-  EXPECT_FALSE(one_edge.disconnect(from, kFirstPort, to, kFirstPort))
+  EXPECT_FALSE(one_edge.disconnect(from->outputPort(kFirstPort), to->inputPort(kFirstPort)))
       << "已经没有的边应拒绝";
-  EXPECT_FALSE(one_edge.disconnect(nullptr, kFirstPort, to, kFirstPort))
+  EXPECT_FALSE(one_edge.disconnect(nullptr, to->inputPort(kFirstPort)))
       << "空上游应拒绝";
 }
 
@@ -837,9 +1141,9 @@ TEST(GraphDisconnect, OneInputKeepsOthers) {
   auto to = std::make_shared<PortNode>();
   one_input.addNode(from);
   one_input.addNode(to);
-  ASSERT_TRUE(one_input.connect(from, kFirstPort, to, kFirstPort))
+  ASSERT_TRUE(one_input.connect(from->outputPort(kFirstPort), to->inputPort(kFirstPort)))
       << "待删入边应连上";
-  ASSERT_TRUE(one_input.connect(from, kSecondPort, to, kSecondPort))
+  ASSERT_TRUE(one_input.connect(from->outputPort(kSecondPort), to->inputPort(kSecondPort)))
       << "保留的入边应连上";
   one_input.disconnectInputsTo(to, kFirstPort);
   EXPECT_FALSE(hasConnection(from->outgoing(), to, kFirstPort, kFirstPort))
@@ -860,11 +1164,12 @@ TEST(GraphDisconnect, PropertyClearsInput) {
   as_property.addNode(property_from);
   as_property.addNode(property_node);
   as_property.addNode(property_out);
-  ASSERT_TRUE(as_property.connect(property_from, kFirstPort, property_node,
-                                  kFirstPort))
+  ASSERT_TRUE(as_property.connect(property_from->outputPort(kFirstPort),
+                                  property_node->inputPort(kFirstPort)))
       << "改为属性前的入边应连上";
   ASSERT_TRUE(
-      as_property.connect(property_node, kFirstPort, property_out, kFirstPort))
+      as_property.connect(property_node->outputPort(kFirstPort),
+                          property_out->inputPort(kFirstPort)))
       << "改为属性前的出边应连上";
   property_node->setInPortData(kFirstPort,
                                std::make_shared<TestIntData>(kSyncedIntValue));
@@ -887,9 +1192,9 @@ TEST(GraphDisconnect, StopsDelivery) {
   auto receiver = std::make_shared<PortNode>();
   delivery.addNode(sender);
   delivery.addNode(receiver);
-  ASSERT_TRUE(delivery.connect(sender, kFirstPort, receiver, kFirstPort))
+  ASSERT_TRUE(delivery.connect(sender->outputPort(kFirstPort), receiver->inputPort(kFirstPort)))
       << "送达测试的第一条边应连上";
-  ASSERT_TRUE(delivery.connect(sender, kSecondPort, receiver, kSecondPort))
+  ASSERT_TRUE(delivery.connect(sender->outputPort(kSecondPort), receiver->inputPort(kSecondPort)))
       << "送达测试的第二条边应连上";
   delivery.disconnectInputsTo(receiver, kFirstPort);
   receiver->received_ports.clear();
@@ -906,10 +1211,11 @@ TEST(GraphDisconnect, DropScheduleEdges) {
   drop_one_schedule.addNode(pair_from);
   drop_one_schedule.addNode(pair_to);
   ASSERT_TRUE(
-      drop_one_schedule.connect(pair_from, kFirstPort, pair_to, kFirstPort))
+      drop_one_schedule.connect(pair_from->outputPort(kFirstPort), pair_to->inputPort(kFirstPort)))
       << "调度边测试的第一条数据边应连上";
   ASSERT_TRUE(
-      drop_one_schedule.connect(pair_from, kSecondPort, pair_to, kSecondPort))
+      drop_one_schedule.connect(pair_from->outputPort(kSecondPort),
+                                pair_to->inputPort(kSecondPort)))
       << "调度边测试的第二条数据边应连上";
   drop_one_schedule.disconnectInputsTo(pair_to, kFirstPort);
   EXPECT_FALSE(hasConnection(pair_from->outgoing(), pair_to, kFirstPort, kFirstPort))
@@ -931,11 +1237,11 @@ TEST(GraphDisconnect, DisconnectOneOfTwoKeepsOneSchedule) {
   auto to = std::make_shared<PortNode>();
   graph.addNode(from);
   graph.addNode(to);
-  ASSERT_TRUE(graph.connect(from, kFirstPort, to, kFirstPort))
+  ASSERT_TRUE(graph.connect(from->outputPort(kFirstPort), to->inputPort(kFirstPort)))
       << "第一条端口边应连上";
-  ASSERT_TRUE(graph.connect(from, kSecondPort, to, kSecondPort))
+  ASSERT_TRUE(graph.connect(from->outputPort(kSecondPort), to->inputPort(kSecondPort)))
       << "第二条端口边应连上";
-  EXPECT_TRUE(graph.disconnect(from, kFirstPort, to, kFirstPort))
+  EXPECT_TRUE(graph.disconnect(from->outputPort(kFirstPort), to->inputPort(kFirstPort)))
       << "disconnect 应删掉指定的那一条";
   EXPECT_FALSE(hasConnection(from->outgoing(), to, kFirstPort, kFirstPort))
       << "被删的数据边应消失";
@@ -951,9 +1257,9 @@ TEST(GraphDisconnect, DisconnectLastEdgeDropsSchedule) {
   auto to = std::make_shared<PortNode>();
   graph.addNode(from);
   graph.addNode(to);
-  ASSERT_TRUE(graph.connect(from, kFirstPort, to, kFirstPort))
+  ASSERT_TRUE(graph.connect(from->outputPort(kFirstPort), to->inputPort(kFirstPort)))
       << "唯一一条端口边应连上";
-  EXPECT_TRUE(graph.disconnect(from, kFirstPort, to, kFirstPort))
+  EXPECT_TRUE(graph.disconnect(from->outputPort(kFirstPort), to->inputPort(kFirstPort)))
       << "disconnect 应删掉这唯一一条";
   EXPECT_TRUE(from->outgoing().empty()) << "数据边应消失";
   EXPECT_TRUE(to->incoming().empty()) << "下游入边应消失";
@@ -967,11 +1273,11 @@ TEST(GraphDisconnect, DisconnectThenReconnectKeepsOneSchedule) {
   auto to = std::make_shared<PortNode>();
   graph.addNode(from);
   graph.addNode(to);
-  ASSERT_TRUE(graph.connect(from, kFirstPort, to, kFirstPort))
+  ASSERT_TRUE(graph.connect(from->outputPort(kFirstPort), to->inputPort(kFirstPort)))
       << "重连前的边应连上";
-  EXPECT_TRUE(graph.disconnect(from, kFirstPort, to, kFirstPort))
+  EXPECT_TRUE(graph.disconnect(from->outputPort(kFirstPort), to->inputPort(kFirstPort)))
       << "disconnect 应先删掉这条边";
-  EXPECT_TRUE(graph.connect(from, kFirstPort, to, kFirstPort))
+  EXPECT_TRUE(graph.connect(from->outputPort(kFirstPort), to->inputPort(kFirstPort)))
       << "删掉后再连上同一口应成功";
   EXPECT_TRUE(hasConnection(from->outgoing(), to, kFirstPort, kFirstPort))
       << "重连后的数据边应在";
@@ -987,11 +1293,11 @@ TEST(GraphDisconnect, DisconnectOneFanOutKeepsTheOther) {
   graph.addNode(from);
   graph.addNode(left);
   graph.addNode(right);
-  ASSERT_TRUE(graph.connect(from, kFirstPort, left, kFirstPort))
+  ASSERT_TRUE(graph.connect(from->outputPort(kFirstPort), left->inputPort(kFirstPort)))
       << "扇出到左节点应连上";
-  ASSERT_TRUE(graph.connect(from, kSecondPort, right, kFirstPort))
+  ASSERT_TRUE(graph.connect(from->outputPort(kSecondPort), right->inputPort(kFirstPort)))
       << "扇出到右节点应连上";
-  EXPECT_TRUE(graph.disconnect(from, kFirstPort, left, kFirstPort))
+  EXPECT_TRUE(graph.disconnect(from->outputPort(kFirstPort), left->inputPort(kFirstPort)))
       << "disconnect 应只删掉左边这一条";
   EXPECT_FALSE(hasConnection(from->outgoing(), left, kFirstPort, kFirstPort))
       << "左边的数据边应消失";
@@ -1007,10 +1313,12 @@ TEST(GraphDisconnect, ReconnectSamePort) {
   auto again_to = std::make_shared<PortNode>();
   reconnect.addNode(again_from);
   reconnect.addNode(again_to);
-  ASSERT_TRUE(reconnect.connect(again_from, kFirstPort, again_to, kFirstPort))
+  ASSERT_TRUE(reconnect.connect(again_from->outputPort(kFirstPort),
+                                again_to->inputPort(kFirstPort)))
       << "重连前的边应连上";
   reconnect.disconnectInputsTo(again_to, kFirstPort);
-  EXPECT_TRUE(reconnect.connect(again_from, kFirstPort, again_to, kFirstPort))
+  EXPECT_TRUE(reconnect.connect(again_from->outputPort(kFirstPort),
+                                again_to->inputPort(kFirstPort)))
       << "删掉后再连上同一口应成功";
   EXPECT_EQ(scheduleEdgeCount(reconnect), std::size_t{1})
       << "删掉后再连上同一口，调度边仍应为 1";
@@ -1034,9 +1342,9 @@ TEST(GraphRun, SumsTwoSources) {
   graph.addNode(left);
   graph.addNode(right);
   graph.addNode(add);
-  ASSERT_TRUE(graph.connect(left, kFirstPort, add, kFirstPort))
+  ASSERT_TRUE(graph.connect(left->outputPort(kFirstPort), add->inputPort(kFirstPort)))
       << "左整数源应连上";
-  ASSERT_TRUE(graph.connect(right, kFirstPort, add, kSecondPort))
+  ASSERT_TRUE(graph.connect(right->outputPort(kFirstPort), add->inputPort(kSecondPort)))
       << "右整数源应连上";
   tg::Controller controller;
   controller.run(graph);
@@ -1071,7 +1379,7 @@ TEST(GraphRun, SkipsDownstreamAfterThrow) {
   tg::Graph graph;
   auto boom = graph.createNode<ThrowingNode>("boom");
   auto sink = graph.createNode<ComputeRecorderNode>();
-  ASSERT_TRUE(graph.connect(boom, kFirstPort, sink, kFirstPort))
+  ASSERT_TRUE(graph.connect(boom->outputPort(kFirstPort), sink->inputPort(kFirstPort)))
       << "失败节点应能连到下游";
   tg::Controller controller;
   EXPECT_THROW(controller.run(graph), tg::NodeError)
@@ -1117,8 +1425,8 @@ TEST(GraphConnect, FanOutTwoNodes) {
   graph.addNode(from);
   graph.addNode(left);
   graph.addNode(right);
-  const bool to_left = graph.connect(from, kFirstPort, left, kFirstPort);
-  const bool to_right = graph.connect(from, kFirstPort, right, kFirstPort);
+  const bool to_left = graph.connect(from->outputPort(kFirstPort), left->inputPort(kFirstPort));
+  const bool to_right = graph.connect(from->outputPort(kFirstPort), right->inputPort(kFirstPort));
   EXPECT_TRUE(to_left) << "扇出到第一个节点应成功";
   EXPECT_TRUE(to_right) << "扇出到第二个节点应成功";
   std::size_t connected = 0;
@@ -1142,13 +1450,13 @@ TEST(GraphConnect, DiamondIsNotCycle) {
   graph.addNode(node_b);
   graph.addNode(node_c);
   graph.addNode(node_d);
-  EXPECT_TRUE(graph.connect(node_a, kFirstPort, node_b, kFirstPort))
+  EXPECT_TRUE(graph.connect(node_a->outputPort(kFirstPort), node_b->inputPort(kFirstPort)))
       << "菱形 A→B 应成功";
-  EXPECT_TRUE(graph.connect(node_a, kSecondPort, node_c, kFirstPort))
+  EXPECT_TRUE(graph.connect(node_a->outputPort(kSecondPort), node_c->inputPort(kFirstPort)))
       << "菱形 A→C 应成功";
-  EXPECT_TRUE(graph.connect(node_b, kFirstPort, node_d, kFirstPort))
+  EXPECT_TRUE(graph.connect(node_b->outputPort(kFirstPort), node_d->inputPort(kFirstPort)))
       << "菱形 B→D 应成功";
-  EXPECT_TRUE(graph.connect(node_c, kFirstPort, node_d, kSecondPort))
+  EXPECT_TRUE(graph.connect(node_c->outputPort(kFirstPort), node_d->inputPort(kSecondPort)))
       << "菱形 C→D 应成功";
 }
 
@@ -1162,13 +1470,13 @@ TEST(GraphConnect, FourNodeCycle) {
   graph.addNode(node_b);
   graph.addNode(node_c);
   graph.addNode(node_d);
-  ASSERT_TRUE(graph.connect(node_a, kFirstPort, node_b, kFirstPort))
+  ASSERT_TRUE(graph.connect(node_a->outputPort(kFirstPort), node_b->inputPort(kFirstPort)))
       << "四节点环的 A→B 应成功";
-  ASSERT_TRUE(graph.connect(node_b, kFirstPort, node_c, kFirstPort))
+  ASSERT_TRUE(graph.connect(node_b->outputPort(kFirstPort), node_c->inputPort(kFirstPort)))
       << "四节点环的 B→C 应成功";
-  ASSERT_TRUE(graph.connect(node_c, kFirstPort, node_d, kFirstPort))
+  ASSERT_TRUE(graph.connect(node_c->outputPort(kFirstPort), node_d->inputPort(kFirstPort)))
       << "四节点环的 C→D 应成功";
-  EXPECT_FALSE(graph.connect(node_d, kFirstPort, node_a, kFirstPort))
+  EXPECT_FALSE(graph.connect(node_d->outputPort(kFirstPort), node_a->inputPort(kFirstPort)))
       << "四节点 A→B→C→D 后再连 D→A 应拒绝";
 }
 
@@ -1178,7 +1486,7 @@ TEST(GraphDisconnect, PropertyDropsSchedule) {
   auto to = std::make_shared<PortNode>();
   graph.addNode(from);
   graph.addNode(to);
-  ASSERT_TRUE(graph.connect(from, kFirstPort, to, kFirstPort))
+  ASSERT_TRUE(graph.connect(from->outputPort(kFirstPort), to->inputPort(kFirstPort)))
       << "改为属性前的唯一入边应连上";
   ASSERT_EQ(scheduleEdgeCount(graph), std::size_t{1})
       << "改为属性前应有一条调度边";
@@ -1195,7 +1503,7 @@ TEST(NodeSet, SetPropertyDisconnects) {
   auto add = std::make_shared<IntAddNode>();
   graph.addNode(source);
   graph.addNode(add);
-  ASSERT_TRUE(graph.connect(source, kFirstPort, add, kFirstPort))
+  ASSERT_TRUE(graph.connect(source->outputPort(kFirstPort), add->inputPort(kFirstPort)))
       << "setProperty 前的入边应连上";
   ASSERT_EQ(scheduleEdgeCount(graph), std::size_t{1})
       << "setProperty 前应有一条调度边";
@@ -1216,7 +1524,7 @@ TEST(NodeSet, SetPropertyDisconnects) {
       << "setProperty 后该口应以属性露面";
   EXPECT_TRUE(propertyIsInt(add->inputProperty(kFirstPort), kSyncedIntValue))
       << "绑定属性值应为写入的字面量";
-  EXPECT_FALSE(graph.connect(source, kFirstPort, add, kFirstPort))
+  EXPECT_FALSE(graph.connect(source->outputPort(kFirstPort), add->inputPort(kFirstPort)))
       << "属性露面后再 connect 应拒绝";
 }
 
@@ -1251,5 +1559,188 @@ TEST(NodeProp, DeclaresAndAssigns) {
   EXPECT_EQ(node->file_path.get(), kScenePath);
   EXPECT_EQ(std::get<std::string>(node->getProperties()[0]->value), kScenePath)
       << "get() 应与属性表那份值一致";
+}
+
+namespace {
+
+// 输入不允许改成属性露面的节点，用来验证拒绝时不断边。
+class LockedInputNode : public tg::Node {
+ public:
+  LockedInputNode() { setTypeId("LockedInputNode"); }
+
+  unsigned int nFixedPorts(tg::PortType port_type) const override {
+    constexpr unsigned int kInputCount = 1;
+    return port_type == tg::PortType::In ? kInputCount : 0;
+  }
+
+  tg::NodeDataType fixedDataType(tg::PortType port_type,
+                                 unsigned int) const override {
+    if (port_type == tg::PortType::In) {
+      return TestIntData{}.type();
+    }
+    return {};
+  }
+
+  const char* fixedPortId(tg::PortType port_type,
+                          unsigned int) const override {
+    return port_type == tg::PortType::In ? "locked" : "";
+  }
+
+  const char* fixedPortCaption(tg::PortType port_type,
+                               unsigned int index) const override {
+    return fixedPortId(port_type, index);
+  }
+
+  bool allowsPropertyPresentation(unsigned int) const override { return false; }
+
+  void onSetInPortData(unsigned int, std::shared_ptr<tg::NodeData>) override {}
+
+  std::shared_ptr<tg::NodeData> getOutPortData(unsigned int) override {
+    return nullptr;
+  }
+};
+
+}  // namespace
+
+TEST(NodeSet, AllowsPropertyPresentationRejects) {
+  tg::Graph graph;
+  auto source = std::make_shared<IntSourceNode>(kLeftInt);
+  auto locked = std::make_shared<LockedInputNode>();
+  graph.addNode(source);
+  graph.addNode(locked);
+  ASSERT_TRUE(graph.connect(source->outputPort(kFirstPort), locked->inputPort(kFirstPort)))
+      << "拒绝测试的入边应先连上";
+
+  EXPECT_FALSE(graph.setInputPresentation(locked, kFirstPort,
+                                          tg::InputPresentation::Property))
+      << "allowsPropertyPresentation=false 时应拒绝改属性";
+  EXPECT_TRUE(hasConnection(locked->incoming(), source, kFirstPort, kFirstPort))
+      << "被拒时入边应仍在，不能被提前拆掉";
+  EXPECT_EQ(locked->inputPresentation(kFirstPort), tg::InputPresentation::Port)
+      << "被拒后露面方式应保持端口";
+  EXPECT_FALSE(
+      locked->setInputPresentation(kFirstPort, tg::InputPresentation::Property))
+      << "直接调 Node::setInputPresentation 也应拒绝";
+}
+
+TEST(NodeSet, DefaultInputPropertyValueByType) {
+  auto int_node = std::make_shared<IntSinkNode>();
+  const tg::PropertyValue int_default =
+      int_node->defaultInputPropertyValue(kFirstPort);
+  ASSERT_TRUE(std::holds_alternative<int>(int_default)) << "IntData 默认 int";
+  EXPECT_EQ(std::get<int>(int_default), 0);
+
+  auto double_node = std::make_shared<PortNode>("DoubleData", "Double");
+  const tg::PropertyValue double_default =
+      double_node->defaultInputPropertyValue(kFirstPort);
+  ASSERT_TRUE(std::holds_alternative<double>(double_default))
+      << "DoubleData 默认 double";
+  EXPECT_DOUBLE_EQ(std::get<double>(double_default), 0.0);
+
+  auto bool_node = std::make_shared<PortNode>("BoolData", "Bool");
+  const tg::PropertyValue bool_default =
+      bool_node->defaultInputPropertyValue(kFirstPort);
+  ASSERT_TRUE(std::holds_alternative<bool>(bool_default)) << "BoolData 默认 bool";
+  EXPECT_FALSE(std::get<bool>(bool_default));
+
+  auto string_node = std::make_shared<PortNode>("StringData", "String");
+  const tg::PropertyValue string_default =
+      string_node->defaultInputPropertyValue(kFirstPort);
+  ASSERT_TRUE(std::holds_alternative<std::string>(string_default))
+      << "其余类型默认空串";
+  EXPECT_TRUE(std::get<std::string>(string_default).empty());
+}
+
+namespace {
+
+// 输入端口类型随 int 属性切换，用来测 Node/Graph 的端口类型刷新。
+class SwitchInputNode : public tg::Node {
+ public:
+  SwitchInputNode() {
+    setTypeId("SwitchInputNode");
+    _kind = addProperty("kind", 0);
+  }
+
+  unsigned int nFixedPorts(tg::PortType port_type) const override {
+    constexpr unsigned int kInputCount = 1;
+    return port_type == tg::PortType::In ? kInputCount : 0;
+  }
+
+  tg::NodeDataType fixedDataType(tg::PortType port_type,
+                                 unsigned int) const override {
+    if (port_type != tg::PortType::In) {
+      return {};
+    }
+    tg::NodeDataType type;
+    type.id = KindId();
+    type.name = KindId();
+    return type;
+  }
+
+  const char* fixedPortId(tg::PortType port_type,
+                          unsigned int) const override {
+    return port_type == tg::PortType::In ? "value" : "";
+  }
+
+  const char* fixedPortCaption(tg::PortType port_type,
+                               unsigned int index) const override {
+    return fixedPortId(port_type, index);
+  }
+
+  void onSetInPortData(unsigned int, std::shared_ptr<tg::NodeData>) override {}
+
+  std::shared_ptr<tg::NodeData> getOutPortData(unsigned int) override {
+    return nullptr;
+  }
+
+ private:
+  std::string KindId() const {
+    return std::get<int>(_kind->value) == 0 ? "TypeA" : "TypeB";
+  }
+
+  std::shared_ptr<Property> _kind;
+};
+
+}  // namespace
+
+TEST(GraphPortTypes, RefreshesAndDropsIncompatibleEdges) {
+  tg::Graph graph;
+  auto source = std::make_shared<PortNode>("TypeA", "TypeA");
+  auto switch_node = std::make_shared<SwitchInputNode>();
+  graph.addNode(source);
+  graph.addNode(switch_node);
+  ASSERT_TRUE(graph.connect(source->outputPort(kFirstPort), switch_node->inputPort(kFirstPort)))
+      << "TypeA 应能连上";
+  ASSERT_EQ(switch_node->inputPort(kFirstPort)->data_type.id, "TypeA");
+
+  switch_node->setProperty(0, 1);
+  EXPECT_EQ(switch_node->inputPort(kFirstPort)->data_type.id, "TypeB")
+      << "setProperty 后端口类型应原地刷新";
+  EXPECT_TRUE(
+      hasConnection(switch_node->incoming(), source, kFirstPort, kFirstPort))
+      << "Node::setProperty 只刷新类型，不断边";
+
+  EXPECT_TRUE(graph.refreshPortTypes(switch_node));
+  EXPECT_FALSE(
+      hasConnection(switch_node->incoming(), source, kFirstPort, kFirstPort))
+      << "类型改为 TypeB 后不兼容的边应被断开";
+}
+
+TEST(GraphPortTypes, ResetsPropertyPresentationOnTypeChange) {
+  tg::Graph graph;
+  auto node = std::make_shared<SwitchInputNode>();
+  graph.addNode(node);
+  ASSERT_TRUE(graph.setInputPresentation(
+      node, kFirstPort, tg::InputPresentation::Property));
+  auto property = node->inputProperty(kFirstPort);
+  ASSERT_NE(property, nullptr);
+  property->value = std::string("x");
+  ASSERT_FALSE(std::get<std::string>(property->value).empty());
+
+  node->getProperties()[0]->value = 1;  // 直接改，模拟 UI 的草稿值
+  EXPECT_TRUE(graph.refreshPortTypes(node));
+  EXPECT_TRUE(
+      std::get<std::string>(node->inputProperty(kFirstPort)->value).empty())
+      << "类型变化后 Property 露面的输入应重置默认";
 }
 
