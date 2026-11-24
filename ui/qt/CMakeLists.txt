@@ -54,7 +54,7 @@ set_target_properties(${component} PROPERTIES
 
 target_include_directories(${component} PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
-    $<INSTALL_INTERFACE:include/taskgraph>
+    $<INSTALL_INTERFACE:include/taskgraph/Ui>
     )
 
 target_link_libraries(${component}

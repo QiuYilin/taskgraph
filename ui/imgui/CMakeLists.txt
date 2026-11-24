@@ -3,6 +3,7 @@ set(HPP_HEADER_FILES
     ThemeStyle.hpp
     UiBase.hpp
     Ui.hpp
+    UiWidgets.hpp
     WorkbenchIcons.hpp
     CanvasViewLock.hpp
     PortTypeVisual.hpp
@@ -19,7 +20,7 @@ add_library(${project_name}::${component} ALIAS ${component})
 
 target_include_directories(${component} INTERFACE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
-    $<INSTALL_INTERFACE:include/taskgraph>
+    $<INSTALL_INTERFACE:include/taskgraph/Ui>
     )
 
 target_link_libraries(${component} INTERFACE

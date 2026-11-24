@@ -69,7 +69,7 @@ cmake --build --preset imgui-debug
 Use `--preset qt` / `--build --preset qt-debug` for the Qt workbench. Elsewhere, configure directly:
 
 ```
-cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=<vcpkg>/scripts/buildsystems/vcpkg.cmake -DTASKGRAPH_UI=imgui
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=<vcpkg>/scripts/buildsystems/vcpkg.cmake -DTASKGRAPH_UI=imgui
 cmake --build build --config Release
 ```
 
@@ -80,6 +80,17 @@ cmake --build build --config Release
 | `BUILD_TESTING` | `ON` / `OFF` | `ON` | Build the tests that match the backend. |
 
 Executables land in `bin/<config>/` under the build directory (`out/build/<preset>/bin/<config>/` when using the presets). On Windows the Qt example runs `windeployqt` after linking, so Qt DLLs and the platform plugin sit next to the executable.
+
+## Install (find_package)
+
+`cmake --install <build> --prefix <prefix>` installs the package; consume it with:
+
+```
+find_package(taskgraph CONFIG REQUIRED COMPONENTS Core Ui)
+target_link_libraries(app PRIVATE taskgraph::Ui)
+```
+
+Installed headers are flat: `#include <Ui.hpp>`, `#include <WorkbenchParts.hpp>`, `#include <ThemeStyle.hpp>` (Core stays `#include <taskgraph/...>`). Do not add `Ui` / `UiModel` subdirectories to the include path; `taskgraph::Ui` exports them. `tests/install/` is a minimal consumer that CI builds against the installed package.
 
 # Tests
 
@@ -124,7 +135,7 @@ int main() {
 }
 ```
 
-0.3.0 adds `double` property values and `PropertyHints` (`editor`, `min`/`max`/`step`/`decimals`, enum `choices`, `is_project_path`); `registerNodeType<NodeT>(caption, category)` groups the palette and node menu by category; and `Node::refreshPortTypes()` lets a node change its port types from a property (incompatible edges are dropped). Project files are version 3 and still load v1/v2.
+0.3.0 adds `double` property values and `PropertyHints` (`editor`, `min`/`max`/`step`/`decimals`, enum `choices`, `is_project_path`); `registerNodeType<NodeT>(caption, category)` groups the palette and node menu by category; and `Node::refreshPortTypes()` lets a node change its port types from a property (incompatible edges are dropped). Project files are version 3 and still load v1/v2. The CMake install package works with `find_package(taskgraph COMPONENTS Core Ui)`: `taskgraph::Ui` exports the flat Ui/UiModel header roots, and CI builds a minimal consumer against the installed package.
 
 ## core + ui
 

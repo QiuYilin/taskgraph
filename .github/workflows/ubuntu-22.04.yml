@@ -44,9 +44,14 @@ jobs:
         fetch-depth: 0
     - name: configure cmake
       run: |
-        cmake -S ${{ github.workspace }} -B ${{ github.workspace }}/build -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=${{ matrix.config.vcpkg_triplet }}
+        cmake -S ${{ github.workspace }} -B ${{ github.workspace }}/build -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=${{ matrix.config.vcpkg_triplet }}
     - name: cmake build
       run: cmake --build ${{github.workspace}}/build --config Release --parallel
     - name: ctest
       working-directory: ${{ github.workspace }}/build
       run: ctest --output-on-failure --build-config Release
+    - name: install and consume
+      run: |
+        cmake --install "${{ github.workspace }}/build" --config Release --prefix "${{ github.workspace }}/install"
+        cmake -S "${{ github.workspace }}/tests/install" -B "${{ github.workspace }}/install-consumer" -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=${{ matrix.config.vcpkg_triplet }} -Dtaskgraph_DIR="${{ github.workspace }}/install/share/taskgraph"
+        cmake --build "${{ github.workspace }}/install-consumer" --config Release
