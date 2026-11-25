@@ -78,6 +78,7 @@ cmake --build build --config Release
 | `TASKGRAPH_UI` | `imgui`、`qt`、`none` | `imgui` | 工作台后端；`none` 只构建 core。 |
 | `BUILD_EXAMPLES` | `ON` / `OFF` | `ON` | 构建 `simple-core` 和对应的 `simple-ui` 或 `simple-qt`。 |
 | `BUILD_TESTING` | `ON` / `OFF` | `ON` | 构建与后端匹配的测试。 |
+| `TASKGRAPH_BUILD_DOCS` | `ON` / `OFF` | `OFF` | 增加 `doc` 目标；`ON` 时必须有 Doxygen，找不到会直接配置失败。 |
 
 可执行文件在构建目录的 `bin/<config>/`（用预设时是 `out/build/<preset>/bin/<config>/`）。Windows 上 Qt 示例链接后会跑 `windeployqt`，Qt DLL 和平台插件就在 exe 旁。
 
@@ -145,7 +146,7 @@ int main() {
 
 ### ImGui 版
 
-默认后端：带活动栏、Explorer/Search、imgui-node-editor 画布、属性表、Output 面板和 Dark Modern / Light Modern 主题的停靠工作台。依赖很轻量：imgui、imgui-node-editor 和 GLFW/OpenGL，不像 Qt 版那样要拉一整套 qtbase。
+默认后端：带活动栏、Explorer/Search、imgui-node-editor 画布、属性表、Output 面板和 Dark Modern / Light Modern 主题的停靠工作台。依赖很轻量：imgui、imgui-node-editor 和 GLFW/OpenGL，不像 Qt 版那样要拉一整套 qtbase。它们也都是 MIT/zlib 这类宽松许可证，没有 Qt 的 LGPL/GPL 义务或商业授权。
 
 ```
 #include "taskgraph/taskgraph.hpp"
@@ -189,4 +190,4 @@ int main(int argc, char** argv) {
 
 ### 为什么写两套 UI
 
-一部分原因是为了说明 core 能被任意 UI 框架使用：`taskgraph::Core` 不依赖任何 UI，两个前端都只是同一份模型上的观察者。imgui 版用 imgui-node-editor；立即模式很适合让 AI 随时完善 UI 代码：每一帧都从当前状态重建，改动集中在一处，改完立刻能看见。Qt 版基于 QtNodes，最新版支持 MVD，画布只是适配器，观察的仍是主侧栏、页签和属性表共用的工程/图模型；按 MVD 分层写下来，AI 实现 UI 的速度非常快。
+一部分原因是为了说明 core 能被任意 UI 框架使用：`taskgraph::Core` 不依赖任何 UI，两个前端都只是同一份模型上的观察者。imgui 版用 imgui-node-editor；立即模式很适合让 AI 随时完善 UI 代码：每一帧都从当前状态重建，改动集中在一处，改完立刻能看见。Qt 版基于 QtNodes，最新版支持 MVD；按 MVD 分层写下来，AI 实现 UI 的速度非常快。复用上，ImGui 前端用规格、原语和适配器（例如 `DetachedWindowSpec` 配合 `BeginDetachedWindow` / `EndDetachedWindow`），Qt 前端用面向对象的 MVD（model / view / delegate）。

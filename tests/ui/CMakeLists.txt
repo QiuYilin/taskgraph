@@ -20,6 +20,10 @@ add_executable(session_test session_test.cpp)
 target_link_libraries(session_test PRIVATE taskgraph::Core taskgraph::Ui)
 taskgraph_add_ui_gtest(session_test)
 
+add_executable(monitor_container_test monitor_container_test.cpp)
+target_link_libraries(monitor_container_test PRIVATE taskgraph::Ui)
+taskgraph_add_ui_gtest(monitor_container_test)
+
 add_executable(theme_test theme_test.cpp)
 target_link_libraries(theme_test PRIVATE taskgraph::Ui)
 taskgraph_add_ui_gtest(theme_test)

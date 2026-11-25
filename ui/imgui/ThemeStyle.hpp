@@ -50,15 +50,15 @@ inline constexpr int kPanelStyleVarCount = 1;
 // 面板内容紧贴页签条，只留一点呼吸空间。
 inline constexpr float kPanelContentTopPaddingEpx = 2.0f;
 
-// Output 顶部控件按 VS Code 面板工具栏密度压缩；数值是有效像素。
+// 工具栏按 VS Code 面板工具栏密度压缩；Output / Monitor 共用。数值是有效像素。
 inline constexpr float kOutputToolbarHeightEpx = 22.0f;
 inline constexpr float kOutputToolbarPaddingXEpx = 4.0f;
 inline constexpr float kOutputToolbarGapEpx = 4.0f;
 inline constexpr float kOutputFilterWidthEpx = 200.0f;
 inline constexpr float kOutputFilterMinWidthEpx = 120.0f;
 inline constexpr float kOutputCheckboxSizeEpx = 16.0f;
-inline constexpr int kOutputToolbarStyleVarCount = 2;
-inline constexpr int kOutputToolbarStyleColorCount = 3;
+inline constexpr int kToolbarStyleVarCount = 2;
+inline constexpr int kToolbarStyleColorCount = 3;
 
 namespace theme_detail {
 
@@ -282,8 +282,8 @@ static void PopPropertiesContentStyle() {
   ImGui::PopStyleVar(kPropertiesContentStyleVarCount);
 }
 
-// Output 顶部控件：紧凑单行工具栏，只在该作用域内生效。
-static void PushOutputToolbarStyle() {
+// 单行工具栏：统一控件高度与间距，Output / Monitor 共用。
+static void PushToolbarStyle() {
   const float ui_scale = ImGui::GetStyle().FontScaleMain;
   const float toolbar_padding_y =
       (kOutputToolbarHeightEpx - kBodyFontSizeEpx) / kFramePaddingSideCount *
@@ -302,9 +302,9 @@ static void PushOutputToolbarStyle() {
                         ToImVec4(tokens.input_active_background));
 }
 
-static void PopOutputToolbarStyle() {
-  ImGui::PopStyleColor(kOutputToolbarStyleColorCount);
-  ImGui::PopStyleVar(kOutputToolbarStyleVarCount);
+static void PopToolbarStyle() {
+  ImGui::PopStyleColor(kToolbarStyleColorCount);
+  ImGui::PopStyleVar(kToolbarStyleVarCount);
 }
 
 // 状态栏内边距与无边框。

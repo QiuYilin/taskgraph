@@ -3,13 +3,18 @@
 #include "ExplorerProjectActions.hpp"
 #include "LinkVariable.hpp"
 #include "LogView.hpp"
+#include "MonitorContainer.hpp"
+#include "MonitorWindows.hpp"
 #include "NativePathDialog.hpp"
 #include "PortTypeVisual.hpp"
+#include "TabStrip.hpp"
 #include "ThemeStyle.hpp"
 #include "UiBase.hpp"
 #include "UiSession.hpp"
 #include "UiWidgets.hpp"
 #include "Undo.hpp"
+#include "ViewWindows.hpp"
+#include "WindowChrome.hpp"
 #include "WorkbenchEdits.hpp"
 #include "WorkbenchFocus.hpp"
 #include "WorkbenchParts.hpp"
@@ -23,6 +28,7 @@
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -59,40 +65,24 @@ constexpr float kLogCategoriesPopupWidthEpx = 140.0f;
 constexpr float kLogLevelColumnWidthEpx = 56.0f;
 constexpr float kLogCategoryColumnWidthEpx = 96.0f;
 constexpr float kLogContextColumnWidthEpx = 180.0f;
-constexpr std::size_t kLogFilterMinCapacity = 64;
-constexpr std::size_t kLogTextTerminatorSize = 1;
 constexpr const char* kLogDetailLabel = "Detail";
 constexpr const char* kLogCategoriesLabel = "Categories";
 constexpr const char* kLogCategoriesPopupId = "##LogCategories";
+constexpr const char* kOutputOverflowPopupId = "##OutputOverflow";
 constexpr const char* kLogClearLabel = "Clear";
 constexpr const char* kLogAutoScrollLabel = "Auto-scroll";
 constexpr const char* kLogFilterHint = "Filter context or message";
 constexpr const char* kLogCustomPresetLabel = "Custom";
-constexpr int kDockTitleButtonCount = 2;
-constexpr float kDockTitleButtonCenterRatio = 0.5f;
 constexpr const char* kOutputMaximizeTooltip = "Maximize Panel Size";
 constexpr const char* kOutputRestoreTooltip = "Restore Panel Size";
 constexpr const char* kOutputCloseTooltip = "Close Panel";
+constexpr const char* kMonitorCommandId = "view.toggleMonitor";
+constexpr const char* kMonitorCommandLabel = "Monitor";
 constexpr const char* kPropertiesMaximizeTooltip =
     "Maximize Secondary Side Bar";
 constexpr const char* kPropertiesRestoreTooltip =
     "Restore Secondary Side Bar";
 constexpr const char* kPropertiesCloseTooltip = "Close Secondary Side Bar";
-constexpr float kViewWindowDefaultWidthEpx = 720.0f;
-constexpr float kViewWindowDefaultHeightEpx = 540.0f;
-constexpr float kViewWindowMarginEpx = 24.0f;
-constexpr float kMonitorSourceActionWidthEpx = 180.0f;
-constexpr float kMonitorMinContentHeightEpx = 80.0f;
-constexpr const char* kMonitorSourceLabel = "Source";
-constexpr const char* kMonitorFollowLabel = "Follow Selection";
-constexpr const char* kMonitorSourcePopupId = "##MonitorSourcePicker";
-constexpr const char* kMonitorSourceFilterHint = "Filter outputs";
-constexpr const char* kMonitorNoSourceMessage = "Run the graph to compute an output.";
-constexpr const char* kMonitorNoSelectionMessage = "No node selected.";
-constexpr const char* kMonitorSelectedNoMatchMessage =
-    "Selected node has no matching output.";
-constexpr const char* kMonitorPinnedNoMatchMessage =
-    "Pinned node has no matching output.";
 constexpr const char* kNoProjectOpenedLabel = "NO PROJECT OPENED";
 constexpr const char* kWelcomeStartHeading = "Start";
 constexpr const char* kWelcomeRecentHeading = "Recent";
@@ -128,65 +118,6 @@ static void DisallowDockingOver(ImGuiID node_id) {
     return;
   }
   node->SetLocalFlags(node->LocalFlags | ImGuiDockNodeFlags_NoDockingOverMe);
-}
-
-// 算出标题栏或状态栏里一个文字项的宽度，含左右内边距。
-static float BarActionWidth(const char* label) {
-  return ImGui::CalcTextSize(label).x +
-         ImGui::GetStyle().FramePadding.x * kFramePaddingSideCount;
-}
-
-// 在标题栏或状态栏里画一个可点的文字项，返回这一帧是否按下。
-static bool DrawBarAction(const char* label) {
-  return ImGui::Selectable(label, false, ImGuiSelectableFlags_None,
-                           ImVec2(BarActionWidth(label), 0.0f));
-}
-
-// 统一紧凑复选框：不依赖 ImGui checkbox 的全局 FrameBg 样式。
-static bool DrawThemedCheckbox(const char* id, const char* label, bool* value,
-                               float ui_scale) {
-  const float box_size = kOutputCheckboxSizeEpx * ui_scale;
-  const float label_gap = kOutputCheckboxLabelGapEpx * ui_scale;
-  const bool has_label = label[0] != '\0';
-  const float text_width = has_label ? ImGui::CalcTextSize(label).x : 0.0f;
-  const float gap = has_label ? label_gap : 0.0f;
-  const float text_height = ImGui::GetTextLineHeight();
-  const float row_height = (std::max)(box_size, ImGui::GetFrameHeight());
-  const ImVec2 pos = ImGui::GetCursorScreenPos();
-  const bool pressed = ImGui::InvisibleButton(
-      id, ImVec2(box_size + gap + text_width, row_height));
-  if (pressed) {
-    *value = !*value;
-  }
-  const bool hovered = ImGui::IsItemHovered();
-  const auto& tokens = theme_detail::CurrentTokens();
-  ImDrawList* draw = ImGui::GetWindowDrawList();
-  const ImVec2 box_min(pos.x, pos.y + (row_height - box_size) * 0.5f);
-  const ImVec2 box_max(box_min.x + box_size, box_min.y + box_size);
-  const ImU32 background = ImGui::GetColorU32(ToImVec4(
-      hovered ? tokens.input_active_background : tokens.input_background));
-  const ImU32 border = ImGui::GetColorU32(ToImVec4(tokens.input_border));
-  const ImGuiStyle& style = ImGui::GetStyle();
-  draw->AddRectFilled(box_min, box_max, background, style.FrameRounding);
-  draw->AddRect(box_min, box_max, border, style.FrameRounding, 0,
-                kOutputCheckboxBorderEpx * ui_scale);
-  if (*value) {
-    const ImU32 mark = ImGui::GetColorU32(ToImVec4(tokens.focus_border));
-    const ImVec2 start(box_min.x + box_size * kOutputCheckboxCheckStartX,
-                       box_min.y + box_size * kOutputCheckboxCheckStartY);
-    const ImVec2 middle(box_min.x + box_size * kOutputCheckboxCheckMidX,
-                        box_min.y + box_size * kOutputCheckboxCheckMidY);
-    const ImVec2 end(box_min.x + box_size * kOutputCheckboxCheckEndX,
-                     box_min.y + box_size * kOutputCheckboxCheckEndY);
-    const float thickness = kOutputCheckboxLineThicknessEpx * ui_scale;
-    draw->AddLine(start, middle, mark, thickness);
-    draw->AddLine(middle, end, mark, thickness);
-  }
-  const ImVec2 text_pos(pos.x + box_size + gap,
-                        pos.y + (row_height - text_height) * 0.5f);
-  draw->AddText(ImGui::GetFont(), ImGui::GetFontSize(), text_pos,
-                ImGui::GetColorU32(ImGuiCol_Text), label);
-  return pressed;
 }
 
 // 端口类型下拉的展开状态：记录当前展开的是哪个端口。
@@ -447,133 +378,6 @@ static bool DrawPortRow(const tg::Node::Port& port, bool input,
   return changed;
 }
 
-enum class CaptionGlyph { Minimize, Maximize, Restore, Close };
-
-// Windows 标题栏关闭按钮悬停色 #E81123。
-constexpr ImU32 kCloseCaptionHover = IM_COL32(232, 17, 35, 255);
-constexpr float kCaptionGlyphHalfEpx = 5.0f;
-constexpr float kCaptionRestoreOffsetEpx = 2.0f;
-
-// 画窗口标题栏右侧的一个按钮，按下时返回 true。
-static bool DrawCaptionButton(const char* id, CaptionGlyph glyph,
-                              const ImVec2& size) {
-  const bool pressed = ImGui::InvisibleButton(id, size);
-  const ImVec2 min = ImGui::GetItemRectMin();
-  const ImVec2 max = ImGui::GetItemRectMax();
-  ImDrawList* draw = ImGui::GetWindowDrawList();
-  // 悬停时铺底：关闭用系统红色，其余用控件悬停色。
-  if (ImGui::IsItemHovered()) {
-    const ImU32 hover = glyph == CaptionGlyph::Close
-                            ? kCloseCaptionHover
-                            : ImGui::GetColorU32(ImGuiCol_ButtonHovered);
-    draw->AddRectFilled(min, max, hover);
-  }
-  constexpr float kHalfSpan = 0.5f;
-  const ImU32 glyph_color = ImGui::GetColorU32(ImGuiCol_Text);
-  const ImVec2 center((min.x + max.x) * kHalfSpan, (min.y + max.y) * kHalfSpan);
-  const float half = kCaptionGlyphHalfEpx * ImGui::GetStyle().FontScaleMain;
-  const float offset = kCaptionRestoreOffsetEpx * ImGui::GetStyle().FontScaleMain;
-  // 最小化画一条横线。
-  if (glyph == CaptionGlyph::Minimize) {
-    draw->AddLine(ImVec2(center.x - half, center.y),
-                  ImVec2(center.x + half, center.y), glyph_color);
-  }
-  // 最大化画一个方框。
-  if (glyph == CaptionGlyph::Maximize) {
-    draw->AddRect(ImVec2(center.x - half, center.y - half),
-                  ImVec2(center.x + half, center.y + half), glyph_color);
-  }
-  // 还原画两个错开的方框。
-  if (glyph == CaptionGlyph::Restore) {
-    draw->AddRect(ImVec2(center.x - half + offset, center.y - half - offset),
-                  ImVec2(center.x + half + offset, center.y + half - offset),
-                  glyph_color);
-    draw->AddRect(ImVec2(center.x - half - offset, center.y - half + offset),
-                  ImVec2(center.x + half - offset, center.y + half + offset),
-                  glyph_color);
-  }
-  // 关闭画一个叉。
-  if (glyph == CaptionGlyph::Close) {
-    draw->AddLine(ImVec2(center.x - half, center.y - half),
-                  ImVec2(center.x + half, center.y + half), glyph_color);
-    draw->AddLine(ImVec2(center.x + half, center.y - half),
-                  ImVec2(center.x - half, center.y + half), glyph_color);
-  }
-  return pressed;
-}
-
-// 关掉已经停靠的窗口上的标签。
-static void HideDockTab(const char* window_name) {
-  ImGuiWindow* window = ImGui::FindWindowByName(window_name);
-  // 窗口还没出现，或这一格已经没有标签。
-  if (window == nullptr || window->DockNode == nullptr ||
-      (window->DockNode->LocalFlags & ImGuiDockNodeFlags_NoTabBar) != 0) {
-    return;
-  }
-  window->DockNode->SetLocalFlags(window->DockNode->LocalFlags |
-                                  ImGuiDockNodeFlags_NoTabBar);
-}
-
-// 显示已停靠窗口的标签：去掉 NoTabBar / HiddenTabBar，并关掉「隐藏标签栏」菜单钮。
-static void ShowDockTab(const char* window_name) {
-  ImGuiWindow* window = ImGui::FindWindowByName(window_name);
-  if (window == nullptr || window->DockNode == nullptr) {
-    return;
-  }
-  ImGuiDockNodeFlags flags = window->DockNode->LocalFlags;
-  flags &= ~(ImGuiDockNodeFlags_NoTabBar | ImGuiDockNodeFlags_HiddenTabBar);
-  flags |= ImGuiDockNodeFlags_NoWindowMenuButton;
-  window->DockNode->SetLocalFlags(flags);
-}
-
-struct DockTitleActionPress {
-  bool toggle_maximize = false;
-  bool close = false;
-};
-
-// 在停靠页签栏右侧画最大化/还原和关闭；只给当前选中的页签画一次。
-static DockTitleActionPress DrawDockTitleActions(ImGuiDockNode* node,
-                                                 bool maximized,
-                                                 const char* max_tooltip,
-                                                 const char* restore_tooltip,
-                                                 const char* close_tooltip) {
-  DockTitleActionPress press;
-  // 窗口还没停靠，或当前页签不是这一格选中的页签。
-  if (node == nullptr || node->TabBar == nullptr ||
-      node->SelectedTabId != ImGui::GetCurrentWindow()->TabId) {
-    return press;
-  }
-  if (!ImGui::DockNodeBeginAmendTabBar(node)) {
-    return press;
-  }
-  const ImGuiStyle& style = ImGui::GetStyle();
-  const ImRect bar = node->TabBar->BarRect;
-  const float button_size = ImGui::GetFrameHeight();
-  const float buttons_width =
-      button_size * static_cast<float>(kDockTitleButtonCount) +
-      style.ItemSpacing.x * static_cast<float>(kDockTitleButtonCount);
-  ImGui::SetCursorScreenPos(
-      ImVec2(bar.Max.x - buttons_width,
-             bar.Min.y + (bar.GetHeight() - button_size) *
-                              kDockTitleButtonCenterRatio));
-  press.toggle_maximize = DrawCaptionButton(
-      "##dock-max", maximized ? CaptionGlyph::Restore : CaptionGlyph::Maximize,
-      ImVec2(button_size, button_size));
-  const bool max_hovered = ImGui::IsItemHovered();
-  ImGui::SameLine();
-  press.close = DrawCaptionButton("##dock-close", CaptionGlyph::Close,
-                                  ImVec2(button_size, button_size));
-  const bool close_hovered = ImGui::IsItemHovered();
-  ImGui::DockNodeEndAmendTabBar();
-  if (max_hovered) {
-    ImGui::SetTooltip("%s", maximized ? restore_tooltip : max_tooltip);
-  }
-  if (close_hovered) {
-    ImGui::SetTooltip("%s", close_tooltip);
-  }
-  return press;
-}
-
 // 窗口在其父拆分里的实际比例；拆分轴不符或没有兄弟时返回 0。
 static float DockSplitRatioOfWindow(const char* window_name, ImGuiAxis axis) {
   const ImGuiWindow* window = ImGui::FindWindowByName(window_name);
@@ -713,25 +517,6 @@ static ExplorerRowAction ShowExplorerRow(const char* id, const char* label,
   }
   return ExplorerRowAction::None;
 }
-
-struct MonitorSourceEntry {
-  std::string label;
-  std::shared_ptr<tg::Node> node;
-  unsigned int port = 0;
-  std::shared_ptr<tg::NodeData> data;
-};
-
-struct MonitorWindowState {
-  bool follow = true;
-  std::weak_ptr<tg::Node> pinned_node;
-  unsigned int pinned_port = 0;
-  bool maximized = false;
-  ImVec2 restore_pos{};
-  ImVec2 restore_size{};
-  bool restore_next_frame = false;
-  std::string source_filter;
-  bool focus_source_filter = false;
-};
 
 /** \brief 撤销命令落到 ImGui 前端：core 写图，再同步画布的落位与选中。
  *
@@ -1071,6 +856,11 @@ class Ui : public UiBase<Ui> {
     _workbench_layout_dirty = true;
   }
 
+  // 页签栏和浮动标题栏共用：在布局最大化和还原之间切换。
+  void ToggleMaximizedPanel(MaximizedView target) {
+    SetMaximizedView(ToggleMaximizedView(_maximized_view, target));
+  }
+
   void SetStatusBarVisible(bool visible) {
     _parts.status_bar_visible = visible;
   }
@@ -1131,11 +921,8 @@ class Ui : public UiBase<Ui> {
     if (view.id.empty()) {
       view.id = view.title;
     }
-    const auto saved = _session.view_windows.find(view.id);
-    view.open = saved != _session.view_windows.end()
-                     ? saved->second
-                     : view.open_on_first_run;
     const std::string id = view.id;
+    // 兼容旧入口：命令仍存在，但 View 菜单只列一个 Monitor 容器。
     AddCommand({view.command_id(), view.title, "View", "", {},
                 [this, id] { return IsMonitorOpen(id); },
                 [this, id] { ToggleMonitorView(id); }});
@@ -1149,21 +936,11 @@ class Ui : public UiBase<Ui> {
   }
 
   void ToggleMonitorView(std::string_view id) {
-    for (MonitorView& view : _parts.monitor_views) {
-      if (view.id == id) {
-        view.open = !view.open;
-        return;
-      }
-    }
+    _monitor.FocusOrCreate(id, _parts.monitor_views);
   }
 
   bool IsMonitorOpen(std::string_view id) const {
-    for (const MonitorView& view : _parts.monitor_views) {
-      if (view.id == id) {
-        return view.open;
-      }
-    }
-    return false;
+    return _monitor.IsOpen(id);
   }
 
   bool IsViewWindowOpen(std::string_view id) const {
@@ -1238,6 +1015,9 @@ class Ui : public UiBase<Ui> {
     AddCommand({"view.toggleOutput", "Output", "View", "", {},
                 [this] { return _parts.panel_visible; },
                 [this] { SetPanelVisible(!_parts.panel_visible); }});
+    AddCommand({kMonitorCommandId, kMonitorCommandLabel, "View", "", {},
+                [this] { return _monitor.open(); },
+                [this] { _monitor.ToggleOpen(); }});
     AddCommand({"view.toggleStatusBar", "Status Bar", "View", "", {},
                 [this] { return _parts.status_bar_visible; },
                 [this] { SetStatusBarVisible(!_parts.status_bar_visible); }});
@@ -1283,6 +1063,8 @@ class Ui : public UiBase<Ui> {
     _session = UiSession::load();
     ApplyLogSessionConfig();
     ApplyViewWindowSessionState();
+    _monitor.Restore(_parts.monitor_views, _session);
+    _monitor_windows.instances.clear();
     // session 里记了主题就恢复；未知 id 保持 UiBase 已应用的默认主题。
     if (!_session.theme_id.empty()) {
       if (const Theme* theme = ::FindTheme(_session.theme_id)) {
@@ -1470,12 +1252,6 @@ class Ui : public UiBase<Ui> {
         view.open = saved->second;
       }
     }
-    for (MonitorView& view : _parts.monitor_views) {
-      const auto saved = _session.view_windows.find(view.id);
-      if (saved != _session.view_windows.end()) {
-        view.open = saved->second;
-      }
-    }
   }
 
   // 启动时应用 session；未设置或非法时回退固定 Summary。
@@ -1520,18 +1296,23 @@ class Ui : public UiBase<Ui> {
                      });
     for (const PanelView* view : views) {
       const std::string window_name = view->window_name();
+      const bool is_output = view->id == kOutputPanelId;
       ShowDockTab(window_name.c_str());
       PushPanelStyle();
-      if (ImGui::Begin(window_name.c_str())) {
+      const bool content_visible = ImGui::Begin(window_name.c_str(), nullptr);
+      const bool docked = ImGui::IsWindowDocked();
+      const bool focused = ImGui::IsWindowFocused();
+      const ImVec2 window_pos = ImGui::GetWindowPos();
+      const ImVec2 window_size = ImGui::GetWindowSize();
+      if (content_visible) {
         // Output 页签栏右侧：最大化/还原与关闭。
-        if (view->id == kOutputPanelId) {
+        if (is_output) {
           const DockTitleActionPress press = DrawDockTitleActions(
               ImGui::GetWindowDockNode(),
               _maximized_view == MaximizedView::Output, kOutputMaximizeTooltip,
               kOutputRestoreTooltip, kOutputCloseTooltip);
           if (press.toggle_maximize) {
-            SetMaximizedView(ToggleMaximizedView(_maximized_view,
-                                                 MaximizedView::Output));
+            ToggleMaximizedPanel(MaximizedView::Output);
           }
           if (press.close) {
             SetPanelVisible(false);
@@ -1545,366 +1326,18 @@ class Ui : public UiBase<Ui> {
       }
       ImGui::End();
       PopPanelStyle();
-    }
-  }
-
-  // 独立视图窗口：默认浮动，拖到边缘可停靠；位置和大小由 imgui.ini 记忆。
-  void ShowViewWindows() {
-    const ImGuiViewport* viewport = ImGui::GetMainViewport();
-    const float ui_scale = ImGui::GetStyle().FontScaleMain;
-    const float margin = kViewWindowMarginEpx * ui_scale;
-    const float max_width =
-        (std::max)(viewport->WorkSize.x - margin * kViewWindowMarginCount,
-                   1.0f);
-    const float max_height =
-        (std::max)(viewport->WorkSize.y - margin * kViewWindowMarginCount,
-                   1.0f);
-    const float width =
-        (std::min)(kViewWindowDefaultWidthEpx * ui_scale, max_width);
-    const float height =
-        (std::min)(kViewWindowDefaultHeightEpx * ui_scale, max_height);
-    for (ViewWindow& view : _parts.view_windows) {
-      if (!view.open) {
-        continue;
-      }
-      const std::string window_name = view.window_name();
-      ImGui::SetNextWindowSize(ImVec2(width, height), ImGuiCond_FirstUseEver);
-      ImGui::SetNextWindowPos(
-          ImVec2(viewport->WorkPos.x +
-                     (viewport->WorkSize.x - width) * kViewWindowCenterRatio,
-                 viewport->WorkPos.y +
-                     (viewport->WorkSize.y - height) * kViewWindowCenterRatio),
-          ImGuiCond_FirstUseEver);
-      if (ImGui::Begin(window_name.c_str(), &view.open)) {
-        if (view.draw) {
-          view.draw();
+      // 浮动 Output 和 monitor 一样：自绘最大化/还原 + 关闭。
+      if (is_output && !docked) {
+        const FloatingWindowCaptionResult press = FloatingWindowCaptionButtons(
+            "panel-output", _maximized_view == MaximizedView::Output,
+            window_pos, window_size, focused, kOutputMaximizeTooltip,
+            kOutputRestoreTooltip, kOutputCloseTooltip);
+        if (press.toggle_maximize) {
+          ToggleMaximizedPanel(MaximizedView::Output);
         }
-      }
-      ImGui::End();
-    }
-  }
-
-  std::shared_ptr<tg::Node> FindNodeShared(tg::Node* target) const {
-    if (target == nullptr) {
-      return nullptr;
-    }
-    for (const auto& graph : _controller.getGraphs()) {
-      for (const auto& node : graph->getNodes()) {
-        if (node.get() == target) {
-          return node;
+        if (press.close) {
+          SetPanelVisible(false);
         }
-      }
-    }
-    return nullptr;
-  }
-
-  std::vector<MonitorSourceEntry> CollectMonitorSources(
-      const MonitorView& view) const {
-    std::vector<MonitorSourceEntry> sources;
-    for (const auto& graph : _controller.getGraphs()) {
-      for (const auto& node : graph->getNodes()) {
-        const unsigned int count = node->nFixedPorts(tg::PortType::Out);
-        for (unsigned int index = 0; index < count; ++index) {
-          std::shared_ptr<tg::NodeData> data = node->getOutPortData(index);
-          // 没有算出的输出不进入来源列表。
-          if (data == nullptr) {
-            continue;
-          }
-          if (view.accepts && !view.accepts(*data)) {
-            continue;
-          }
-          const char* caption = node->fixedPortCaption(tg::PortType::Out, index);
-          const std::string port =
-              caption != nullptr && *caption != '\0'
-                  ? std::string(caption)
-                  : "out[" + std::to_string(index) + "]";
-          MonitorSourceEntry entry;
-          entry.label =
-              MonitorSourceLabel(graph->getName(), node->getName(), port);
-          entry.node = node;
-          entry.port = index;
-          entry.data = std::move(data);
-          sources.push_back(std::move(entry));
-        }
-      }
-    }
-    return sources;
-  }
-
-  MonitorSourceEntry ResolveMonitorSource(
-      const MonitorView& view, MonitorWindowState& state,
-      const std::vector<MonitorSourceEntry>& sources, const char** message) {
-    *message = nullptr;
-    const std::shared_ptr<tg::Node> selected = FindNodeShared(SelectedNode());
-    if (state.follow) {
-      if (selected == nullptr) {
-        *message = sources.empty() ? kMonitorNoSourceMessage
-                                   : kMonitorNoSelectionMessage;
-        return {};
-      }
-      for (const MonitorSourceEntry& source : sources) {
-        if (source.node == selected) {
-          return source;
-        }
-      }
-      *message = kMonitorSelectedNoMatchMessage;
-      return {};
-    }
-    const std::shared_ptr<tg::Node> pinned = state.pinned_node.lock();
-    if (pinned == nullptr) {
-      state.pinned_node.reset();
-      *message = kMonitorPinnedNoMatchMessage;
-      return {};
-    }
-    for (const MonitorSourceEntry& source : sources) {
-      if (source.node == pinned && source.port == state.pinned_port) {
-        return source;
-      }
-    }
-    *message = kMonitorPinnedNoMatchMessage;
-    return {};
-  }
-
-  // 画 Source / Follow / Maximize 三个标题动作；返回值只用于调试调用方无义。
-  void ShowMonitorActions(MonitorView& view, MonitorWindowState& state,
-                          const std::vector<MonitorSourceEntry>& sources,
-                          const MonitorSourceEntry& resolved, bool docked,
-                          float source_width, float ui_scale) {
-    const std::string source_text =
-        resolved.label.empty() ? std::string(kMonitorSourceLabel)
-                               : "Source: " + resolved.label;
-    const std::string popup_id = "##MonitorSource_" + view.id;
-    const float follow_width = BarActionWidth(kMonitorFollowLabel);
-    const float max_width = ImGui::GetFrameHeight();
-    const bool max_requested =
-        ImGui::Selectable(source_text.c_str(), false,
-                          ImGuiSelectableFlags_None,
-                          ImVec2(source_width, 0.0f));
-    // 标题栏空间不足时 Source 会截断，悬停仍给完整来源名。
-    if (ImGui::IsItemHovered()) {
-      ImGui::SetTooltip("%s", source_text.c_str());
-    }
-    if (max_requested) {
-      state.focus_source_filter = true;
-      ImGui::OpenPopup(popup_id.c_str());
-    }
-    ImGui::SameLine();
-    if (ImGui::Selectable(kMonitorFollowLabel, state.follow,
-                          ImGuiSelectableFlags_None,
-                          ImVec2(follow_width, 0.0f))) {
-      const MonitorFollowDecision follow =
-          DecideMonitorFollowToggle(state.follow, !resolved.label.empty());
-      if (follow.pin_current) {
-        state.pinned_node = resolved.node;
-        state.pinned_port = resolved.port;
-      }
-      if (follow.clear_pin) {
-        state.pinned_node.reset();
-      }
-      state.follow = follow.follow;
-    }
-    ImGui::SameLine();
-    const bool maximize_available = MonitorMaximizeAvailable(docked);
-    ImGui::BeginDisabled(!maximize_available);
-    if (ImGui::Selectable(state.maximized ? "Restore" : "Maximize", false,
-                          ImGuiSelectableFlags_None,
-                          ImVec2(max_width, 0.0f))) {
-      if (maximize_available) {
-        state.maximized = !state.maximized;
-        if (state.maximized) {
-          state.restore_pos = ImGui::GetWindowPos();
-          state.restore_size = ImGui::GetWindowSize();
-        } else {
-          state.restore_next_frame = true;
-        }
-      }
-    }
-    ImGui::EndDisabled();
-    if (!maximize_available &&
-        ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
-      ImGui::SetTooltip("Undock the monitor before maximizing.");
-    }
-
-    ImGui::SetNextWindowSizeConstraints(
-        ImVec2(kPickNodeKindMinWidthEpx * ui_scale, 0.0f),
-        ImVec2(FLT_MAX, FLT_MAX));
-    PushQuickPickStyle();
-    if (ImGui::BeginPopup(popup_id.c_str())) {
-      if (state.source_filter.capacity() < kLogFilterMinCapacity) {
-        state.source_filter.reserve(kLogFilterMinCapacity);
-      }
-      const std::size_t buffer_size =
-          state.source_filter.capacity() + kLogTextTerminatorSize;
-      ImGui::SetNextItemWidth(-FLT_MIN);
-      if (state.focus_source_filter) {
-        ImGui::SetKeyboardFocusHere();
-        state.focus_source_filter = false;
-      }
-      ImGui::InputTextWithHint("##MonitorSourceFilter", kMonitorSourceFilterHint,
-                               state.source_filter.data(), buffer_size,
-                               ImGuiInputTextFlags_CallbackResize,
-                               ResizePropertyText, &state.source_filter);
-      bool has_visible = false;
-      for (const MonitorSourceEntry& source : sources) {
-        if (!MonitorSourceMatchesFilter(source.label, state.source_filter)) {
-          continue;
-        }
-        has_visible = true;
-        if (ImGui::Selectable(source.label.c_str(), false)) {
-          state.follow = false;
-          state.pinned_node = source.node;
-          state.pinned_port = source.port;
-          ImGui::CloseCurrentPopup();
-        }
-      }
-      if (!has_visible) {
-        ImGui::TextDisabled("%s", kMonitorNoSourceMessage);
-      }
-      ImGui::EndPopup();
-    }
-    PopQuickPickStyle();
-  }
-
-  void ShowMonitorContent(MonitorView& view, MonitorWindowState& state,
-                          const std::vector<MonitorSourceEntry>& sources,
-                          float ui_scale) {
-    const char* message = nullptr;
-    const MonitorSourceEntry source =
-        ResolveMonitorSource(view, state, sources, &message);
-    if (source.data == nullptr) {
-      ImGui::TextDisabled("%s", message != nullptr ? message
-                                                   : kMonitorNoSourceMessage);
-      return;
-    }
-    std::string status;
-    if (view.status) {
-      status = view.status(source.data.get());
-    }
-    const float min_content_height = kMonitorMinContentHeightEpx * ui_scale;
-    ImVec2 avail = ImGui::GetContentRegionAvail();
-    float status_height = status.empty() ? 0.0f
-                                         : ImGui::GetTextLineHeightWithSpacing();
-    // 高度不足时省掉状态行，content 仍拿到完整可用高度。
-    if (avail.y - status_height < min_content_height) {
-      status.clear();
-      status_height = 0.0f;
-    }
-    const float content_height = (std::max)(avail.y - status_height, 0.0f);
-    if (view.draw) {
-      view.draw(*source.data, avail.x, content_height);
-    }
-    if (!status.empty()) {
-      ImGui::TextDisabled("%s", status.c_str());
-    }
-  }
-
-  // 监视器窗口：Source / Follow / Maximize 在浮动标题栏右侧；停靠时放在内容首行。
-  void ShowMonitors(const WorkbenchChrome& chrome) {
-    const ImGuiViewport* viewport = ImGui::GetMainViewport();
-    const float ui_scale = ImGui::GetStyle().FontScaleMain;
-    const float margin = kViewWindowMarginEpx * ui_scale;
-    const float default_width =
-        (std::min)(kViewWindowDefaultWidthEpx * ui_scale,
-                   (std::max)(viewport->WorkSize.x - margin * kViewWindowMarginCount,
-                              1.0f));
-    const float default_height =
-        (std::min)(kViewWindowDefaultHeightEpx * ui_scale,
-                   (std::max)(viewport->WorkSize.y - margin * kViewWindowMarginCount,
-                              1.0f));
-    for (MonitorView& view : _parts.monitor_views) {
-      if (!view.open) {
-        continue;
-      }
-      MonitorWindowState& state = _monitor_states[view.id];
-      const std::vector<MonitorSourceEntry> sources =
-          CollectMonitorSources(view);
-      const std::string window_name = view.window_name();
-      const ImGuiWindowFlags flags =
-          ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse;
-      if (state.maximized && !state.restore_next_frame) {
-        ImGui::SetNextWindowPos(ToImVec2(chrome.dock_pos));
-        ImGui::SetNextWindowSize(ToImVec2(chrome.dock_size));
-      } else if (state.restore_next_frame) {
-        ImGui::SetNextWindowPos(state.restore_pos, ImGuiCond_Always);
-        ImGui::SetNextWindowSize(state.restore_size, ImGuiCond_Always);
-        state.restore_next_frame = false;
-      } else {
-        ImGui::SetNextWindowPos(
-            ImVec2(viewport->WorkPos.x +
-                       (viewport->WorkSize.x - default_width) *
-                           kViewWindowCenterRatio,
-                   viewport->WorkPos.y +
-                       (viewport->WorkSize.y - default_height) *
-                           kViewWindowCenterRatio),
-            ImGuiCond_FirstUseEver);
-        ImGui::SetNextWindowSize(ImVec2(default_width, default_height),
-                                 ImGuiCond_FirstUseEver);
-      }
-      bool docked = false;
-      ImVec2 window_pos;
-      ImVec2 window_size;
-      // 首次打开保持浮动，不自动并进 Output/其它停靠页签。
-      ImGui::SetNextWindowDockID(0, ImGuiCond_FirstUseEver);
-      if (ImGui::Begin(window_name.c_str(), &view.open, flags)) {
-        docked = ImGui::IsWindowDocked();
-        if (docked) {
-          state.maximized = false;
-        }
-        window_pos = ImGui::GetWindowPos();
-        window_size = ImGui::GetWindowSize();
-        const char* message = nullptr;
-        const MonitorSourceEntry resolved =
-            ResolveMonitorSource(view, state, sources, &message);
-        if (docked) {
-          const float source_width = kMonitorSourceActionWidthEpx * ui_scale;
-          ShowMonitorActions(view, state, sources, resolved, true, source_width,
-                             ui_scale);
-        }
-        ShowMonitorContent(view, state, sources, ui_scale);
-      }
-      ImGui::End();
-      // 浮动窗口：标题栏动作用独立透明窗口叠在右侧，避免和默认关闭/拖动冲突。
-      if (view.open && !docked) {
-        const float titlebar_height = ImGui::GetFrameHeight();
-        const float follow_width = BarActionWidth(kMonitorFollowLabel);
-        const float max_width = titlebar_height;
-        const float spacing = ImGui::GetStyle().ItemSpacing.x;
-        const float close_width = titlebar_height;
-        float source_width = kMonitorSourceActionWidthEpx * ui_scale;
-        const float available =
-            window_size.x - close_width - spacing * 3.0f - follow_width -
-            max_width;
-        source_width = (std::min)(source_width,
-                                  (std::max)(available, 40.0f * ui_scale));
-        const float actions_width =
-            source_width + follow_width + max_width + spacing * 3.0f;
-        ImGui::SetNextWindowPos(
-            ImVec2(window_pos.x + window_size.x - close_width - actions_width,
-                   window_pos.y));
-        ImGui::SetNextWindowSize(ImVec2(actions_width, titlebar_height));
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
-        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,
-                            ImVec2(spacing, 0.0f));
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
-        ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
-        const std::string overlay_name = "##MonitorActions_" + view.id;
-        ImGui::Begin(overlay_name.c_str(), nullptr,
-                     ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
-                         ImGuiWindowFlags_NoMove |
-                         ImGuiWindowFlags_NoScrollbar |
-                         ImGuiWindowFlags_NoScrollWithMouse |
-                         ImGuiWindowFlags_NoSavedSettings |
-                         ImGuiWindowFlags_NoDocking |
-                         ImGuiWindowFlags_NoNav |
-                         ImGuiWindowFlags_NoFocusOnAppearing |
-                         ImGuiWindowFlags_NoBackground);
-        const char* message = nullptr;
-        const MonitorSourceEntry resolved =
-            ResolveMonitorSource(view, state, sources, &message);
-        ShowMonitorActions(view, state, sources, resolved, false, source_width,
-                           ui_scale);
-        ImGui::End();
-        ImGui::PopStyleVar(4);
       }
     }
   }
@@ -1928,84 +1361,182 @@ class Ui : public UiBase<Ui> {
     return ToImVec4(tokens.editor_foreground);
   }
 
+  // 清空 Output 日志，工具栏按钮和溢出菜单共用。
+  void ClearOutputLog() {
+    tg::clearLogRecords();
+    _log_records.clear();
+    _log_cursor = 0;
+  }
+
+  // 分类复选框，Categories 弹窗和溢出子菜单共用。
+  void ShowLogCategoryChecks() {
+    const tg::LogConfig config = tg::GetLogConfig();
+    for (const tg::LogCategory category : kLogCategories) {
+      bool enabled =
+          (config.categories & static_cast<std::uint32_t>(category)) != 0;
+      if (Checkbox(LogCategoryLabel(category), LogCategoryLabel(category),
+                   &enabled, kCheckboxMetrics)) {
+        tg::LogConfig next = config;
+        if (enabled) {
+          next.categories |= static_cast<std::uint32_t>(category);
+        } else {
+          next.categories &= ~static_cast<std::uint32_t>(category);
+        }
+        ApplyLogConfig(next);
+      }
+    }
+  }
+
   // Output 视图内容：日志行；窗口和页签由 ShowPanels 管。
   void ShowOutputContent() {
     const float ui_scale = ImGui::GetStyle().FontScaleMain;
     const std::size_t previous_cursor = _log_cursor;
     _log_cursor = tg::copyLogRecordsSince(_log_cursor, _log_records);
 
-    PushOutputToolbarStyle();
+    PushToolbarStyle();
     const tg::LogConfig config = tg::GetLogConfig();
     const std::optional<LogDetailPreset> preset =
         LogDetailPresetForConfig(config);
     const char* preset_label =
         preset.has_value() ? LogDetailPresetLabel(*preset)
                            : kLogCustomPresetLabel;
-    ImGui::AlignTextToFramePadding();
-    ImGui::TextUnformatted(kLogDetailLabel);
-    ImGui::SameLine();
-    ImGui::SetNextItemWidth(kLogDetailComboWidthEpx * ui_scale);
-    const ThemedComboState combo = BeginThemedCombo("##LogDetail", preset_label);
-    if (combo.open) {
-      for (const LogDetailPreset candidate :
-           {LogDetailPreset::Off, LogDetailPreset::Errors,
-            LogDetailPreset::Timing, LogDetailPreset::Summary,
-            LogDetailPreset::Detailed, LogDetailPreset::Everything}) {
-        const bool selected = preset.has_value() && *preset == candidate;
-        if (ImGui::Selectable(LogDetailPresetLabel(candidate), selected)) {
-          ApplyLogConfig(LogConfigForDetailPreset(candidate));
-        }
-      }
-    }
-    EndThemedCombo(combo);
-    ImGui::SameLine();
-    if (DrawBarAction(kLogCategoriesLabel)) {
-      ImGui::OpenPopup(kLogCategoriesPopupId);
-    }
-    ImGui::SetNextWindowSize(ImVec2(kLogCategoriesPopupWidthEpx * ui_scale,
-                                    0.0f),
-                             ImGuiCond_Appearing);
-    if (ImGui::BeginPopup(kLogCategoriesPopupId)) {
-      for (const tg::LogCategory category : kLogCategories) {
-        bool enabled =
-            (config.categories & static_cast<std::uint32_t>(category)) != 0;
-        if (DrawThemedCheckbox(LogCategoryLabel(category),
-                               LogCategoryLabel(category), &enabled,
-                               ui_scale)) {
-          tg::LogConfig next = config;
-          if (enabled) {
-            next.categories |= static_cast<std::uint32_t>(category);
-          } else {
-            next.categories &= ~static_cast<std::uint32_t>(category);
-          }
-          ApplyLogConfig(next);
-        }
-      }
-      ImGui::EndPopup();
-    }
-    ImGui::SameLine();
-    if (DrawBarAction(kLogClearLabel)) {
-      tg::clearLogRecords();
-      _log_records.clear();
-      _log_cursor = 0;
-    }
-    ImGui::SameLine();
-    if (DrawThemedCheckbox(kLogAutoScrollLabel, kLogAutoScrollLabel,
-                           &_log_auto_scroll, ui_scale)) {
-      _session.log_auto_scroll = _log_auto_scroll;
-    }
     const std::size_t dropped = tg::droppedLogRecordCount();
-    // 有丢弃时明确显示，避免并行日志洪水静默缺行。
+    const std::string dropped_label =
+        dropped > 0 ? "Dropped " + std::to_string(dropped) : std::string();
+
+    enum class OutputToolbarItem {
+      DetailLabel,
+      DetailCombo,
+      Categories,
+      Clear,
+      AutoScroll,
+      Dropped,
+    };
+    struct OutputToolbarEntry {
+      OutputToolbarItem item;
+      ToolbarItemSpec spec;
+    };
+    std::vector<OutputToolbarEntry> entries;
+    OutputToolbarEntry detail_label_entry{OutputToolbarItem::DetailLabel, {}};
+    detail_label_entry.spec.full_width =
+        ImGui::CalcTextSize(kLogDetailLabel).x;
+    detail_label_entry.spec.priority = 100;
+    detail_label_entry.spec.can_overflow = false;
+    entries.push_back(detail_label_entry);
+    OutputToolbarEntry detail_combo_entry{OutputToolbarItem::DetailCombo, {}};
+    detail_combo_entry.spec.full_width = kLogDetailComboWidthEpx * ui_scale;
+    detail_combo_entry.spec.priority = 100;
+    detail_combo_entry.spec.can_overflow = false;
+    entries.push_back(detail_combo_entry);
+    OutputToolbarEntry categories_entry{OutputToolbarItem::Categories, {}};
+    categories_entry.spec.full_width = ButtonWidth(kLogCategoriesLabel);
+    categories_entry.spec.priority = 20;
+    entries.push_back(categories_entry);
+    OutputToolbarEntry clear_entry{OutputToolbarItem::Clear, {}};
+    clear_entry.spec.full_width = ButtonWidth(kLogClearLabel);
+    clear_entry.spec.priority = 30;
+    entries.push_back(clear_entry);
+    OutputToolbarEntry auto_scroll_entry{OutputToolbarItem::AutoScroll, {}};
+    auto_scroll_entry.spec.mode = ToolbarItemMode::Compact;
+    auto_scroll_entry.spec.full_width =
+        CheckboxWidth(kLogAutoScrollLabel, kCheckboxMetrics);
+    auto_scroll_entry.spec.compact_width = CheckboxWidth("", kCheckboxMetrics);
+    auto_scroll_entry.spec.priority = 50;
+    entries.push_back(auto_scroll_entry);
     if (dropped > 0) {
-      ImGui::SameLine();
-      ImGui::TextDisabled("Dropped %zu", dropped);
+      OutputToolbarEntry dropped_entry{OutputToolbarItem::Dropped, {}};
+      dropped_entry.spec.full_width =
+          ImGui::CalcTextSize(dropped_label.c_str()).x;
+      dropped_entry.spec.priority = 10;
+      entries.push_back(dropped_entry);
+    }
+    std::vector<ToolbarItemSpec> specs;
+    specs.reserve(entries.size());
+    for (const OutputToolbarEntry& entry : entries) {
+      specs.push_back(entry.spec);
+    }
+    const ToolbarLayout layout =
+        LayoutToolbarRow(ImGui::GetContentRegionAvail().x,
+                         ImGui::GetStyle().ItemSpacing.x, specs);
+    bool categories_visible = false;
+    bool first_visible = true;
+    for (std::size_t i = 0; i < entries.size(); ++i) {
+      if (!layout.items[i].visible) {
+        continue;
+      }
+      if (!first_visible) {
+        ImGui::SameLine();
+      }
+      first_visible = false;
+      const ToolbarItemLayout& item = layout.items[i];
+      switch (entries[i].item) {
+        case OutputToolbarItem::DetailLabel:
+          ImGui::AlignTextToFramePadding();
+          ImGui::TextUnformatted(kLogDetailLabel);
+          break;
+        case OutputToolbarItem::DetailCombo: {
+          ImGui::SetNextItemWidth(item.width);
+          const ThemedComboState combo =
+              BeginThemedCombo("##LogDetail", preset_label);
+          if (combo.open) {
+            for (const LogDetailPreset candidate :
+                 {LogDetailPreset::Off, LogDetailPreset::Errors,
+                  LogDetailPreset::Timing, LogDetailPreset::Summary,
+                  LogDetailPreset::Detailed, LogDetailPreset::Everything}) {
+              const bool selected = preset.has_value() && *preset == candidate;
+              if (ImGui::Selectable(LogDetailPresetLabel(candidate), selected)) {
+                ApplyLogConfig(LogConfigForDetailPreset(candidate));
+              }
+            }
+          }
+          EndThemedCombo(combo);
+          break;
+        }
+        case OutputToolbarItem::Categories:
+          categories_visible = true;
+          if (TextAction(kLogCategoriesLabel,
+                         WidgetMetrics{0.0f, 0.0f, false})) {
+            ImGui::OpenPopup(kLogCategoriesPopupId);
+          }
+          break;
+        case OutputToolbarItem::Clear:
+          if (TextAction(kLogClearLabel, WidgetMetrics{0.0f, 0.0f, false})) {
+            ClearOutputLog();
+          }
+          break;
+        case OutputToolbarItem::AutoScroll: {
+          const bool compact = item.compact;
+          if (Checkbox(kLogAutoScrollLabel,
+                       compact ? "" : kLogAutoScrollLabel, &_log_auto_scroll,
+                       kCheckboxMetrics)) {
+            _session.log_auto_scroll = _log_auto_scroll;
+          }
+          // 紧凑时只留方框，悬停补完整标签。
+          if (compact && ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("%s", kLogAutoScrollLabel);
+          }
+          break;
+        }
+        case OutputToolbarItem::Dropped:
+          ImGui::TextDisabled("%s", dropped_label.c_str());
+          break;
+      }
+    }
+    if (layout.show_overflow) {
+      if (!first_visible) {
+        ImGui::SameLine();
+      }
+      if (TextAction(kToolbarOverflowLabel, WidgetMetrics{0.0f, 0.0f, false},
+                     false, kToolbarOverflowTooltip)) {
+        ImGui::OpenPopup(kOutputOverflowPopupId);
+      }
     }
 
-    if (_log_filter.capacity() < kLogFilterMinCapacity) {
-      _log_filter.reserve(kLogFilterMinCapacity);
+    if (_log_filter.capacity() < kFilterMinCapacity) {
+      _log_filter.reserve(kFilterMinCapacity);
     }
     const std::size_t filter_buffer_size =
-        _log_filter.capacity() + kLogTextTerminatorSize;
+        _log_filter.capacity() + kTextTerminatorSize;
     const float filter_preferred = kOutputFilterWidthEpx * ui_scale;
     const float filter_min = kOutputFilterMinWidthEpx * ui_scale;
     const float content_right =
@@ -2028,7 +1559,49 @@ class Ui : public UiBase<Ui> {
                              _log_filter.data(), filter_buffer_size,
                              ImGuiInputTextFlags_CallbackResize,
                              ResizePropertyText, &_log_filter);
-    PopOutputToolbarStyle();
+    PopToolbarStyle();
+
+    if (categories_visible) {
+      ImGui::SetNextWindowSize(ImVec2(kLogCategoriesPopupWidthEpx * ui_scale,
+                                      0.0f),
+                               ImGuiCond_Appearing);
+      if (ImGui::BeginPopup(kLogCategoriesPopupId)) {
+        ShowLogCategoryChecks();
+        ImGui::EndPopup();
+      }
+    }
+    if (ImGui::BeginPopup(kOutputOverflowPopupId)) {
+      for (std::size_t i = 0; i < entries.size(); ++i) {
+        if (!layout.items[i].overflow) {
+          continue;
+        }
+        switch (entries[i].item) {
+          case OutputToolbarItem::Categories:
+            if (ImGui::BeginMenu(kLogCategoriesLabel)) {
+              ShowLogCategoryChecks();
+              ImGui::EndMenu();
+            }
+            break;
+          case OutputToolbarItem::Clear:
+            if (ImGui::MenuItem(kLogClearLabel)) {
+              ClearOutputLog();
+            }
+            break;
+          case OutputToolbarItem::AutoScroll:
+            if (ImGui::MenuItem(kLogAutoScrollLabel, nullptr,
+                                &_log_auto_scroll)) {
+              _session.log_auto_scroll = _log_auto_scroll;
+            }
+            break;
+          case OutputToolbarItem::Dropped:
+            ImGui::MenuItem(dropped_label.c_str(), nullptr, false, false);
+            break;
+          default:
+            break;
+        }
+      }
+      ImGui::EndPopup();
+    }
 
     // Begin / End：日志表格。Message 列自动换行，纵向滚动。
     ImGui::BeginChild("OutputLog", ImVec2(0.0f, 0.0f), ImGuiChildFlags_None);
@@ -2790,9 +2363,16 @@ class Ui : public UiBase<Ui> {
     // 最大化 Output 时属性表让位。
     if (_parts.secondary_sidebar_visible &&
         _maximized_view != MaximizedView::Output) {
-      ShowDockTab("Properties");
+      constexpr const char* kPropertiesWindowName = "Properties";
+      ShowDockTab(kPropertiesWindowName);
       PushPropertiesPanelStyle();
-      if (ImGui::Begin("Properties")) {
+      const bool content_visible =
+          ImGui::Begin(kPropertiesWindowName, nullptr);
+      const bool docked = ImGui::IsWindowDocked();
+      const bool focused = ImGui::IsWindowFocused();
+      const ImVec2 window_pos = ImGui::GetWindowPos();
+      const ImVec2 window_size = ImGui::GetWindowSize();
+      if (content_visible) {
         // 页签栏右侧：最大化/还原与关闭。
         const DockTitleActionPress title_press = DrawDockTitleActions(
             ImGui::GetWindowDockNode(),
@@ -2800,8 +2380,7 @@ class Ui : public UiBase<Ui> {
             kPropertiesMaximizeTooltip, kPropertiesRestoreTooltip,
             kPropertiesCloseTooltip);
         if (title_press.toggle_maximize) {
-          SetMaximizedView(ToggleMaximizedView(_maximized_view,
-                                               MaximizedView::Properties));
+          ToggleMaximizedPanel(MaximizedView::Properties);
         }
         if (title_press.close) {
           SetSecondarySideBarVisible(false);
@@ -3139,8 +2718,7 @@ class Ui : public UiBase<Ui> {
                 }
               } else if (auto* flag = std::get_if<bool>(&property->value)) {
                 const tg::PropertyValue before = property->value;
-                if (DrawThemedCheckbox("##value", "", flag,
-                                       ImGui::GetStyle().FontScaleMain)) {
+                if (Checkbox("##value", "", flag, kCheckboxMetrics)) {
                   record_property_edit(property_index, before);
                 }
               }
@@ -3179,6 +2757,19 @@ class Ui : public UiBase<Ui> {
       }
       ImGui::End();
       PopPropertiesPanelStyle();
+      // 浮动 Properties 和 monitor 一样：自绘最大化/还原 + 关闭。
+      if (!docked) {
+        const FloatingWindowCaptionResult press = FloatingWindowCaptionButtons(
+            "panel-properties", _maximized_view == MaximizedView::Properties,
+            window_pos, window_size, focused, kPropertiesMaximizeTooltip,
+            kPropertiesRestoreTooltip, kPropertiesCloseTooltip);
+        if (press.toggle_maximize) {
+          ToggleMaximizedPanel(MaximizedView::Properties);
+        }
+        if (press.close) {
+          SetSecondarySideBarVisible(false);
+        }
+      }
     }
 
     // 主侧栏有焦点、且不在改文本时：F2 改名，Delete/Backspace 删除，
@@ -3235,9 +2826,14 @@ class Ui : public UiBase<Ui> {
       ShowPanels();
     }
     // Begin / End：独立视图窗口，不占面板停靠格。
-    ShowViewWindows();
-    // Begin / End：节点输出监视窗口；浮动时标题栏叠动作，停靠时动作放内容首行。
-    ShowMonitors(chrome);
+    ShowViewWindows(_parts.view_windows, _view_window_states, chrome);
+    // Begin / End：Monitor 容器，页签内容和新建请求在帧末处理。
+    const MonitorContainerActions monitor_actions = ShowMonitorContainer(
+        _monitor_windows,
+        {_controller, _parts.monitor_views, _monitor, SelectedNode(),
+         MonitorFirstUseArea(chrome)},
+        chrome);
+    ApplyMonitorContainerActions(monitor_actions);
 
     // Begin / End：状态栏。通栏贴底，不进停靠。左=工程名 + Run + 当前图，右=选中节点。
     if (chrome.status_size.y > 0.0f) {
@@ -3261,7 +2857,7 @@ class Ui : public UiBase<Ui> {
       // Begin / End：没有图时禁用 Run，列表为空没有任务可跑。
       ImGui::BeginDisabled(!_parts.commands.Enabled("graph.run"));
       // 点状态栏上的 Run 才跑当前图。
-      if (DrawBarAction("Run")) {
+      if (TextAction("Run", WidgetMetrics{0.0f, 0.0f, false})) {
         ExecuteCommand("graph.run");
       }
       ImGui::EndDisabled();
@@ -3269,7 +2865,8 @@ class Ui : public UiBase<Ui> {
       if (!graphs.empty()) {
         ImGui::SameLine();
         // 点图名才弹出列表，用来改状态栏上的当前图。
-        if (DrawBarAction(graphs[_focus.selected_graph_index()]->getName().c_str())) {
+        if (TextAction(graphs[_focus.selected_graph_index()]->getName().c_str(),
+                   WidgetMetrics{0.0f, 0.0f, false})) {
           ImGui::OpenPopup("PickStatusGraph");
         }
         // Begin / End：状态栏上的图列表。点中一张就切到它。
@@ -3358,9 +2955,8 @@ class Ui : public UiBase<Ui> {
         ImGuiWindowFlags_NoNavFocus | ImGuiWindowFlags_NoBringToFrontOnFocus;
     // Begin / End：窗口标题栏。左 File→View→Run→Help，中命令中心，右窗口按钮。
     ImGui::Begin("Window Title Bar", nullptr, title_flags);
-    ImGui::AlignTextToFramePadding();
     // 标题栏菜单栏从左到右：File、View、Run、Help。不要活动栏，不要第二条工具栏。
-    if (DrawBarAction("File")) {
+    if (TextAction("File", WidgetMetrics{0.0f, 0.0f, false})) {
       ImGui::OpenPopup("##TitleFileMenu");
     }
     if (ImGui::BeginPopup("##TitleFileMenu")) {
@@ -3411,7 +3007,7 @@ class Ui : public UiBase<Ui> {
     }
     ImGui::SameLine(0.0f, kBetweenControlsEpx * ui_scale);
     // 点菜单名 Edit 打开菜单。
-    if (DrawBarAction("Edit")) {
+    if (TextAction("Edit", WidgetMetrics{0.0f, 0.0f, false})) {
       ImGui::OpenPopup("##TitleEditMenu");
     }
     // Begin / End：Edit 菜单。撤销/重做走全局栈（图 + 节点统一排序），其余作用于选中节点。
@@ -3455,7 +3051,7 @@ class Ui : public UiBase<Ui> {
     }
     ImGui::SameLine(0.0f, kBetweenControlsEpx * ui_scale);
     // 点菜单名 View 打开菜单。
-    if (DrawBarAction("View")) {
+    if (TextAction("View", WidgetMetrics{0.0f, 0.0f, false})) {
       ImGui::OpenPopup("##TitleViewMenu");
     }
     // Begin / End：View 菜单。对照 VS Code：Appearance、侧栏视图、区域可见性、显示开关。
@@ -3497,12 +3093,8 @@ class Ui : public UiBase<Ui> {
       }
       if (!_parts.monitor_views.empty()) {
         ImGui::Separator();
-        for (const MonitorView& view : _parts.monitor_views) {
-          const std::string command_id = view.command_id();
-          if (ImGui::MenuItem(view.title.c_str(), nullptr, view.open,
-                              _parts.commands.Enabled(command_id))) {
-            ExecuteCommand(command_id);
-          }
+        if (ImGui::MenuItem(kMonitorCommandLabel, nullptr, _monitor.open())) {
+          ExecuteCommand(kMonitorCommandId);
         }
       }
       ImGui::Separator();
@@ -3521,7 +3113,7 @@ class Ui : public UiBase<Ui> {
     }
     ImGui::SameLine(0.0f, kBetweenControlsEpx * ui_scale);
     // 点菜单名 Run 打开菜单。
-    if (DrawBarAction("Run")) {
+    if (TextAction("Run", WidgetMetrics{0.0f, 0.0f, false})) {
       ImGui::OpenPopup("##TitleRunMenu");
     }
     // Begin / End：Run 菜单。选 Run Graph 才跑当前图。
@@ -3534,7 +3126,7 @@ class Ui : public UiBase<Ui> {
       ImGui::EndPopup();
     }
     ImGui::SameLine(0.0f, kBetweenControlsEpx * ui_scale);
-    if (DrawBarAction("Help")) {
+    if (TextAction("Help", WidgetMetrics{0.0f, 0.0f, false})) {
       ImGui::OpenPopup("##TitleHelpMenu");
     }
     if (ImGui::BeginPopup("##TitleHelpMenu")) {
@@ -4996,6 +4588,35 @@ class Ui : public UiBase<Ui> {
   static void KeyCallback(GLFWwindow*, int, int, int, int) {}
 
  private:
+  // Monitor 首次浮动区域：编辑区页签下方，右侧让开 Properties，底部让开 Output。
+  ScreenRect MonitorFirstUseArea(const WorkbenchChrome& chrome) const {
+    if (_maximized_view == MaximizedView::None) {
+      const ImGuiWindow* canvas = ImGui::FindWindowByName("Canvas");
+      if (canvas != nullptr) {
+        const float tab_height =
+            kEditorTabHeightEpx * ImGui::GetStyle().FontScaleMain;
+        const float body_height = canvas->Size.y - tab_height;
+        // 只剩余页签高度时不拿这个矩形。
+        if (canvas->Size.x > 0.0f && body_height > 0.0f) {
+          return ScreenRect{
+              Vec2{canvas->Pos.x, canvas->Pos.y + tab_height},
+              Vec2{canvas->Size.x, body_height}};
+        }
+      }
+    }
+    return ScreenRect{chrome.dock_pos, chrome.dock_size};
+  }
+
+  void ApplyMonitorContainerActions(const MonitorContainerActions& actions) {
+    if (!actions.close_instance.empty() &&
+        _monitor.Close(actions.close_instance)) {
+      _monitor_windows.instances.erase(actions.close_instance);
+    }
+    if (!actions.create_kind.empty()) {
+      _monitor.Create(actions.create_kind, _parts.monitor_views);
+    }
+  }
+
   // 记下目标图并打开种类 Quick Pick。选中种类后才进入落点。
   void RequestOpenPickNodeKind(int graph_index) {
     _focus.RequestPickNodeKind(graph_index);
@@ -5512,137 +5133,85 @@ class Ui : public UiBase<Ui> {
     draw_centered_line(kCreateGraphHint, create_graph_size, true);
   }
 
-  // 画编辑区页签条：整块自绘，标题和关闭在同一底上。
+  // 编辑区页签条：只提供 item 和右侧动作，绘制交给共用 TabStrip。
   void DrawEditorTabs() {
     // 没有打开的页签就不画页签条。
     if (_focus.open_editors().empty()) {
       return;
     }
-    constexpr float kHalfSpan = 0.5f;
     const float ui_scale = ImGui::GetStyle().FontScaleMain;
     const float tab_height = kEditorTabHeightEpx * ui_scale;
     const float pad_x = kEditorTabHorizontalPaddingEpx * ui_scale;
-    const float close_size = kEditorTabCloseSizeEpx * ui_scale;
-    const float label_close_gap = kEditorTabLabelCloseGapEpx * ui_scale;
-    const float close_glyph_half = kEditorTabCloseGlyphHalfEpx * ui_scale;
     const ImVec2 bar_min = ImGui::GetCursorScreenPos();
     const float bar_width = ImGui::GetContentRegionAvail().x;
-    ImDrawList* draw = ImGui::GetWindowDrawList();
-    const EditorTabPalette tab_palette = MakeEditorTabPalette();
-    const bool tab_bar_focused = ImGui::IsWindowFocused();
-    draw->AddRectFilled(bar_min,
-                        ImVec2(bar_min.x + bar_width, bar_min.y + tab_height),
-                        tab_palette.tab_bar_bg);
-    int close_index = -1;
-    float tab_x = bar_min.x;
+
+    std::vector<TabStripItem> items;
+    std::vector<int> editor_indices;
+    int active_item = -1;
     for (int editor_index = 0;
-         editor_index < static_cast<int>(_focus.open_editors().size()); ++editor_index) {
+         editor_index < static_cast<int>(_focus.open_editors().size());
+         ++editor_index) {
       const EditorTab& tab = _focus.open_editors()[editor_index];
       const bool is_graph = tab.kind == EditorTab::Kind::Graph;
       if (is_graph && tab.graph == nullptr) {
         continue;
       }
-      const char* name = kWelcomeTabLabel;
+      TabStripItem item;
+      item.id = "editor." + std::to_string(editor_index);
       if (tab.kind == EditorTab::Kind::KeyboardShortcuts) {
-        name = kKeyboardShortcutsTabLabel;
+        item.title = kKeyboardShortcutsTabLabel;
       } else if (is_graph) {
-        name = tab.graph->getName().c_str();
+        item.title = tab.graph->getName();
+      } else {
+        item.title = kWelcomeTabLabel;
       }
-      const ImVec2 label_size = ImGui::CalcTextSize(name);
-      const float tab_width =
-          pad_x + label_size.x + label_close_gap + close_size + pad_x;
-      ImGui::PushID(is_graph ? tab.graph.get() : nullptr);
-      ImGui::PushID(editor_index);
-      ImGui::SetCursorScreenPos(ImVec2(tab_x, bar_min.y));
-      ImGui::InvisibleButton("##EditorTab", ImVec2(tab_width, tab_height));
-      const bool tab_hovered = ImGui::IsItemHovered();
-      const bool tab_clicked = ImGui::IsItemClicked(ImGuiMouseButton_Left);
-      const ImVec2 tab_min = ImGui::GetItemRectMin();
-      const ImVec2 tab_max = ImGui::GetItemRectMax();
-      const float close_left = tab_max.x - pad_x - close_size;
-      const float close_top =
-          tab_min.y + (tab_height - close_size) * kHalfSpan;
-      const ImVec2 close_min(close_left, close_top);
-      const ImVec2 close_max(close_left + close_size, close_top + close_size);
-      const ImVec2 mouse = ImGui::GetIO().MousePos;
-      const bool close_hovered =
-          tab_hovered && mouse.x >= close_min.x && mouse.x < close_max.x &&
-          mouse.y >= close_min.y && mouse.y < close_max.y;
-      const bool is_active = editor_index == _focus.active_editor();
-      ImU32 tab_bg = tab_palette.inactive_bg;
-      // 活动页用编辑区底色，悬停用高亮，其余用页签栏色。
-      if (is_active) {
-        tab_bg = tab_palette.active_bg;
-      } else if (tab_hovered) {
-        tab_bg = tab_palette.hover_bg;
+      if (editor_index == _focus.active_editor()) {
+        active_item = static_cast<int>(items.size());
       }
-      draw->AddRectFilled(tab_min, tab_max, tab_bg);
-      // 活动页顶部 1px 焦点线；窗口未聚焦时用 unfocused 色。
-      if (is_active) {
-        const float top_line = kEditorTabSeparatorThicknessEpx * ui_scale;
-        draw->AddRectFilled(
-            tab_min, ImVec2(tab_max.x, tab_min.y + top_line),
-            tab_bar_focused ? tab_palette.active_top_border
-                            : tab_palette.unfocused_active_top_border);
-      }
-      // 非活动页右侧画一条细线，隔开相邻页签。
-      if (!is_active) {
-        const float separator = kEditorTabSeparatorThicknessEpx * ui_scale;
-        draw->AddLine(ImVec2(tab_max.x - separator, tab_min.y),
-                      ImVec2(tab_max.x - separator, tab_max.y),
-                      tab_palette.border);
-      }
-      const ImVec2 text_pos(
-          tab_min.x + pad_x,
-          tab_min.y + (tab_height - label_size.y) * kHalfSpan);
-      const ImU32 tab_text =
-          is_active ? tab_palette.active_text : tab_palette.inactive_text;
-      draw->AddText(text_pos, tab_text, name);
-      // 关闭钮只在悬停时铺底，嵌在页签里。
-      if (close_hovered) {
-        draw->AddRectFilled(close_min, close_max, tab_palette.close_hover_bg);
-      }
-      const ImVec2 close_center(
-          (close_min.x + close_max.x) * kHalfSpan,
-          (close_min.y + close_max.y) * kHalfSpan);
-      draw->AddLine(
-          ImVec2(close_center.x - close_glyph_half,
-                 close_center.y - close_glyph_half),
-          ImVec2(close_center.x + close_glyph_half,
-                 close_center.y + close_glyph_half),
-          tab_text);
-      draw->AddLine(
-          ImVec2(close_center.x + close_glyph_half,
-                 close_center.y - close_glyph_half),
-          ImVec2(close_center.x - close_glyph_half,
-                 close_center.y + close_glyph_half),
-          tab_text);
-      // 点在关闭区就叉掉，否则激活这一页。
-      if (tab_clicked) {
-        if (close_hovered) {
-          close_index = editor_index;
-        } else {
-          _focus.active_editor() = editor_index;
-          if (is_graph) {
-            SyncSelectedItemToGraph(tab.graph);
-          }
-        }
-      }
-      ImGui::PopID();
-      ImGui::PopID();
-      tab_x += tab_width;
+      items.push_back(std::move(item));
+      editor_indices.push_back(editor_index);
     }
-    // 编辑区工具栏：仅 Graph 页签；与页签条同高、文字垂直居中（对照 Editor Actions）。
+
     const bool graph_editor_active =
         _focus.active_editor() >= 0 &&
         _focus.active_editor() <
             static_cast<int>(_focus.open_editors().size()) &&
         _focus.open_editors()[_focus.active_editor()].kind ==
             EditorTab::Kind::Graph;
-    if (graph_editor_active) {
+    const float action_width =
+        ImGui::CalcTextSize(kShowTypeNamesActionLabel).x +
+        pad_x * kFramePaddingSideCount;
+    TabStripOptions options;
+    options.overflow = TabStripOverflow::Clip;
+    options.right_reserved_width =
+        graph_editor_active ? action_width + pad_x : 0.0f;
+    const TabStripResult result =
+        DrawTabStrip("##EditorTabs", items, active_item,
+                     ImGui::IsWindowFocused(), bar_width, options, nullptr);
+
+    // 页签点击和关闭都映射回原 editor 下标。
+    if (result.clicked >= 0 &&
+        result.clicked < static_cast<int>(editor_indices.size())) {
+      const int editor_index = editor_indices[result.clicked];
+      _focus.active_editor() = editor_index;
+      const EditorTab& tab = _focus.open_editors()[editor_index];
+      if (tab.kind == EditorTab::Kind::Graph && tab.graph != nullptr) {
+        SyncSelectedItemToGraph(tab.graph);
+      }
+    }
+
+    // 编辑区右侧动作：仅 Graph 页签；与页签条同高、文字垂直居中。
+    const bool action_visible =
+        _focus.active_editor() >= 0 &&
+        _focus.active_editor() <
+            static_cast<int>(_focus.open_editors().size()) &&
+        _focus.open_editors()[_focus.active_editor()].kind ==
+            EditorTab::Kind::Graph;
+    if (action_visible) {
+      const EditorTabPalette tab_palette = MakeEditorTabPalette();
+      ImDrawList* draw = ImGui::GetWindowDrawList();
       const ImVec2 action_label_size =
           ImGui::CalcTextSize(kShowTypeNamesActionLabel);
-      const float action_width = action_label_size.x + pad_x * kFramePaddingSideCount;
       const float action_x = bar_min.x + bar_width - pad_x - action_width;
       ImGui::SetCursorScreenPos(ImVec2(action_x, bar_min.y));
       ImGui::InvisibleButton("##ShowTypeNames",
@@ -5659,19 +5228,16 @@ class Ui : public UiBase<Ui> {
       }
       const ImVec2 action_text_pos(
           action_min.x + pad_x,
-          action_min.y + (tab_height - action_label_size.y) * kHalfSpan);
+          action_min.y + (tab_height - action_label_size.y) * kTabStripCenterRatio);
       draw->AddText(action_text_pos, tab_palette.active_text,
                     kShowTypeNamesActionLabel);
     }
-    // 占位后把光标钉回页签条底边，避免再吃一层 ItemSpacing 与画布留缝。
-    ImGui::SetCursorScreenPos(
-        ImVec2(bar_min.x, bar_min.y + tab_height));
-    ImGui::Dummy(ImVec2(bar_width, 0.0f));
-    ImGui::SetCursorScreenPos(
-        ImVec2(bar_min.x, bar_min.y + tab_height));
+    // TabStrip 已把光标放到页签栏下一行；右侧动作画完后恢复。
+    ImGui::SetCursorScreenPos(ImVec2(bar_min.x, bar_min.y + tab_height));
     // 点过叉再关，避免边扫边改页签列表。
-    if (close_index >= 0) {
-      CloseEditorAt(close_index);
+    if (result.closed >= 0 &&
+        result.closed < static_cast<int>(editor_indices.size())) {
+      CloseEditorAt(editor_indices[result.closed]);
     }
   }
 
@@ -5778,9 +5344,7 @@ class Ui : public UiBase<Ui> {
     for (const ViewWindow& view : _parts.view_windows) {
       _session.view_windows[view.id] = view.open;
     }
-    for (const MonitorView& view : _parts.monitor_views) {
-      _session.view_windows[view.id] = view.open;
-    }
+    _monitor.Save(_parts.monitor_views, _session);
     _session.log_auto_scroll = _log_auto_scroll;
     if (_controller.hasProjectRoot()) {
       _session.last_root = _controller.projectRoot().generic_string();
@@ -6265,6 +5829,7 @@ class Ui : public UiBase<Ui> {
   std::string _search_filter;
   UiSession _session;
   WorkbenchParts _parts;
+  MonitorContainer _monitor;
   bool _workbench_layout_dirty = false;
   MaximizedView _maximized_view = MaximizedView::None;
   float _primary_sidebar_ratio = 0.0f;
@@ -6274,7 +5839,8 @@ class Ui : public UiBase<Ui> {
   std::size_t _log_cursor = 0;
   std::string _log_filter;
   bool _log_auto_scroll = true;
-  std::unordered_map<std::string, MonitorWindowState> _monitor_states;
+  MonitorWindowsState _monitor_windows;
+  ViewWindowStateMap _view_window_states;
   bool _dragging_window = false;
   bool _resizing_window = false;
   bool _resize_left = false;

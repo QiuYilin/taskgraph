@@ -62,6 +62,11 @@ void SessionTest::sessionSaveLoadRoundtrip() {
   written.open_graph_names = {"Graph", "Graph 2"};
   written.view_windows["point-cloud"] = true;
   written.view_windows["inspector"] = false;
+  written.monitor_tabs["custom"] = {
+      MonitorTabRecord{"monitor.custom.1", "Custom Monitor"}};
+  written.monitor_tabs["empty-kind"] = {};
+  written.monitor_active_tab = "monitor.custom.1";
+  written.monitor_container_open = true;
   written.log_level = static_cast<int>(tg::LogLevel::Debug);
   written.log_categories =
       static_cast<tg::LogCategoryMask>(tg::LogCategory::App) |
@@ -84,6 +89,15 @@ void SessionTest::sessionSaveLoadRoundtrip() {
   QCOMPARE(static_cast<int>(loaded.view_windows.size()), 2);
   QVERIFY(loaded.view_windows.at("point-cloud"));
   QVERIFY(!loaded.view_windows.at("inspector"));
+  QCOMPARE(static_cast<int>(loaded.monitor_tabs.count("custom")), 1);
+  QCOMPARE(static_cast<int>(loaded.monitor_tabs.at("custom").size()), 1);
+  QVERIFY(loaded.monitor_tabs.at("custom")[0].id == "monitor.custom.1");
+  QVERIFY(loaded.monitor_tabs.at("custom")[0].title == "Custom Monitor");
+  QCOMPARE(static_cast<int>(loaded.monitor_tabs.count("empty-kind")), 1);
+  QVERIFY(loaded.monitor_tabs.at("empty-kind").empty());
+  QVERIFY(loaded.monitor_active_tab == "monitor.custom.1");
+  QVERIFY(loaded.monitor_container_open_known);
+  QVERIFY(loaded.monitor_container_open);
   QCOMPARE(loaded.log_level, static_cast<int>(tg::LogLevel::Debug));
   QCOMPARE(loaded.log_categories,
            static_cast<tg::LogCategoryMask>(tg::LogCategory::App) |

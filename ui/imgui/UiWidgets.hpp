@@ -36,6 +36,9 @@ inline constexpr float kOutputCheckboxLineThicknessEpx = 2.0f;
 // 浮动工具窗口：离视口边留两倍边距，默认位置居中。
 inline constexpr float kViewWindowMarginCount = 2.0f;
 inline constexpr float kViewWindowCenterRatio = 0.5f;
+inline constexpr float kViewWindowDefaultWidthEpx = 720.0f;
+inline constexpr float kViewWindowDefaultHeightEpx = 540.0f;
+inline constexpr float kViewWindowMarginEpx = 24.0f;
 // VS Code 按钮（.monaco-button）：2epx 圆角、1epx 描边。
 inline constexpr float kButtonCornerRadiusEpx = 2.0f;
 inline constexpr float kButtonBorderSizeEpx = 1.0f;
@@ -49,6 +52,9 @@ struct WidgetMetrics {
   bool fill_width = false;
 };
 
+inline constexpr WidgetMetrics kCheckboxMetrics{kCheckboxSizeRatio, 0.0f,
+                                                false};
+
 // Push/Pop 成对绑定，析构时必定 Pop，避免中途返回漏掉颜色。
 class ScopedStyle {
  public:
@@ -61,18 +67,33 @@ class ScopedStyle {
   void (*_pop)();
 };
 
-// 文字动作：标题栏、菜单、Output 工具栏和 Monitor 标题动作共用。
+// 文字动作：标题栏、菜单、Output/Monitor 工具栏共用；占满当前 FrameHeight 并垂直居中。
 inline bool TextAction(const char* label, const WidgetMetrics& metrics,
                        bool active = false, const char* tooltip = nullptr) {
   const float ui_scale = ImGui::GetStyle().FontScaleMain;
+  const bool fixed_width = metrics.width_epx > 0.0f;
   const float width =
-      metrics.width_epx > 0.0f
+      fixed_width
           ? metrics.width_epx * ui_scale
           : ImGui::CalcTextSize(label).x +
                 ImGui::GetStyle().FramePadding.x * kFramePaddingSideCount;
-  const bool pressed =
-      ImGui::Selectable(label, active, ImGuiSelectableFlags_None,
-                        ImVec2(width, 0.0f));
+  const float height = ImGui::GetFrameHeight();
+  ImGui::PushStyleColor(
+      ImGuiCol_Button,
+      active ? ImGui::GetStyleColorVec4(ImGuiCol_Header)
+             : ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
+  ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
+                        ImGui::GetStyleColorVec4(ImGuiCol_HeaderHovered));
+  ImGui::PushStyleColor(ImGuiCol_ButtonActive,
+                        ImGui::GetStyleColorVec4(ImGuiCol_HeaderActive));
+  ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding,
+                      ImGui::GetStyle().SelectableRounding);
+  ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.0f);
+  ImGui::PushStyleVar(ImGuiStyleVar_ButtonTextAlign,
+                      ImVec2(fixed_width ? 0.0f : 0.5f, 0.5f));
+  const bool pressed = ImGui::Button(label, ImVec2(width, height));
+  ImGui::PopStyleVar(3);
+  ImGui::PopStyleColor(3);
   // 固定宽度会截断文字，悬停补完整内容。
   if (tooltip != nullptr && ImGui::IsItemHovered()) {
     ImGui::SetTooltip("%s", tooltip);
@@ -127,6 +148,15 @@ inline bool Button(const char* label, ButtonKind kind = ButtonKind::Secondary,
 }
 
 // 统一紧凑复选框：Output、Properties bool、Categories popup 共用。
+inline float CheckboxWidth(const char* label, const WidgetMetrics& metrics) {
+  const float ui_scale = ImGui::GetStyle().FontScaleMain;
+  const float box_size = metrics.height_ratio * kBodyFontSizeEpx * ui_scale;
+  const bool has_label = label[0] != '\0';
+  const float text_width = has_label ? ImGui::CalcTextSize(label).x : 0.0f;
+  const float gap = has_label ? kOutputCheckboxLabelGapEpx * ui_scale : 0.0f;
+  return box_size + gap + text_width;
+}
+
 inline bool Checkbox(const char* id, const char* label, bool* value,
                      const WidgetMetrics& metrics) {
   const float ui_scale = ImGui::GetStyle().FontScaleMain;
@@ -139,7 +169,7 @@ inline bool Checkbox(const char* id, const char* label, bool* value,
   const float row_height = (std::max)(box_size, ImGui::GetFrameHeight());
   const ImVec2 pos = ImGui::GetCursorScreenPos();
   const bool pressed = ImGui::InvisibleButton(
-      id, ImVec2(box_size + gap + text_width, row_height));
+      id, ImVec2(CheckboxWidth(label, metrics), row_height));
   if (pressed) {
     *value = !*value;
   }
@@ -172,6 +202,167 @@ inline bool Checkbox(const char* id, const char* label, bool* value,
   draw->AddText(ImGui::GetFont(), ImGui::GetFontSize(), text_pos,
                 ImGui::GetColorU32(ImGuiCol_Text), label);
   return pressed;
+}
+
+// 工具栏降级：可伸缩项先缩短，可紧凑项再收标签，最后低优先级项进 “...” 菜单。
+inline constexpr const char* kToolbarOverflowLabel = "...";
+inline constexpr const char* kToolbarOverflowTooltip = "More";
+
+enum class ToolbarItemMode { Full, Truncate, Compact };
+
+struct ToolbarItemSpec {
+  ToolbarItemMode mode = ToolbarItemMode::Full;
+  float full_width = 0.0f;
+  float compact_width = 0.0f;
+  float min_width = 0.0f;
+  float max_width = 0.0f;
+  int priority = 0;
+  bool can_overflow = true;
+};
+
+struct ToolbarItemLayout {
+  bool visible = true;
+  bool compact = false;
+  bool overflow = false;
+  float width = 0.0f;
+};
+
+struct ToolbarLayout {
+  std::vector<ToolbarItemLayout> items;
+  bool show_overflow = false;
+  float overflow_width = 0.0f;
+};
+
+inline float ToolbarOverflowWidth() {
+  return ImGui::CalcTextSize(kToolbarOverflowLabel).x +
+         ImGui::GetStyle().FramePadding.x * kFramePaddingSideCount;
+}
+
+inline ToolbarLayout LayoutToolbarRow(
+    float available_width, float gap,
+    const std::vector<ToolbarItemSpec>& specs) {
+  ToolbarLayout layout;
+  layout.items.resize(specs.size());
+  layout.overflow_width = ToolbarOverflowWidth();
+  for (std::size_t i = 0; i < specs.size(); ++i) {
+    layout.items[i].width =
+        specs[i].mode == ToolbarItemMode::Truncate ? specs[i].max_width
+                                                   : specs[i].full_width;
+  }
+  auto total_width = [&]() {
+    float total = 0.0f;
+    std::size_t count = 0;
+    for (const ToolbarItemLayout& item : layout.items) {
+      if (!item.visible) {
+        continue;
+      }
+      total += item.width;
+      ++count;
+    }
+    if (count > 1) {
+      total += gap * static_cast<float>(count - 1);
+    }
+    if (layout.show_overflow) {
+      total += layout.overflow_width + (count > 0 ? gap : 0.0f);
+    }
+    return total;
+  };
+  available_width = (std::max)(available_width, 0.0f);
+
+  // 1) 可伸缩项按最低优先级缩到 min。
+  while (total_width() > available_width) {
+    std::size_t best = specs.size();
+    for (std::size_t i = 0; i < specs.size(); ++i) {
+      const ToolbarItemLayout& item = layout.items[i];
+      if (!item.visible || specs[i].mode != ToolbarItemMode::Truncate ||
+          item.width <= specs[i].min_width) {
+        continue;
+      }
+      if (best == specs.size() || specs[i].priority < specs[best].priority) {
+        best = i;
+      }
+    }
+    if (best == specs.size()) {
+      break;
+    }
+    const float deficit = total_width() - available_width;
+    const float next =
+        (std::max)(specs[best].min_width, layout.items[best].width - deficit);
+    if (next >= layout.items[best].width) {
+      break;
+    }
+    layout.items[best].width = next;
+  }
+
+  // 2) 可紧凑项按最低优先级去掉标签。
+  while (total_width() > available_width) {
+    std::size_t best = specs.size();
+    for (std::size_t i = 0; i < specs.size(); ++i) {
+      const ToolbarItemLayout& item = layout.items[i];
+      if (!item.visible || item.compact ||
+          specs[i].mode != ToolbarItemMode::Compact ||
+          specs[i].compact_width >= item.width) {
+        continue;
+      }
+      if (best == specs.size() || specs[i].priority < specs[best].priority) {
+        best = i;
+      }
+    }
+    if (best == specs.size()) {
+      break;
+    }
+    layout.items[best].compact = true;
+    layout.items[best].width = specs[best].compact_width;
+  }
+
+  // 3) 低优先级项收进 “...”；按钮比项还宽时第一条不划算，跳过。
+  while (total_width() > available_width) {
+    std::size_t best = specs.size();
+    for (std::size_t i = 0; i < specs.size(); ++i) {
+      const ToolbarItemLayout& item = layout.items[i];
+      if (!item.visible || !specs[i].can_overflow) {
+        continue;
+      }
+      if (!layout.show_overflow &&
+          item.width <= layout.overflow_width) {
+        continue;
+      }
+      if (best == specs.size() || specs[i].priority < specs[best].priority) {
+        best = i;
+      }
+    }
+    if (best == specs.size()) {
+      break;
+    }
+    layout.items[best].visible = false;
+    layout.items[best].overflow = true;
+    layout.show_overflow = true;
+  }
+
+  // 4) 极端窄时允许可伸缩项低于 min，避免负宽和重叠。
+  while (total_width() > available_width) {
+    std::size_t best = specs.size();
+    for (std::size_t i = 0; i < specs.size(); ++i) {
+      const ToolbarItemLayout& item = layout.items[i];
+      if (!item.visible || specs[i].mode != ToolbarItemMode::Truncate ||
+          item.width <= 1.0f) {
+        continue;
+      }
+      if (best == specs.size() || specs[i].priority < specs[best].priority) {
+        best = i;
+      }
+    }
+    if (best == specs.size()) {
+      break;
+    }
+    const float deficit = total_width() - available_width;
+    const float next = (std::max)(1.0f, layout.items[best].width - deficit);
+    if (next >= layout.items[best].width) {
+      break;
+    }
+    layout.items[best].width = next;
+  }
+  return layout;
 }
 
 // 全工作台统一下拉框：去掉 ImGui 默认灰色箭头块，只画小 chevron。
@@ -228,10 +419,13 @@ inline int ResizePropertyText(ImGuiInputTextCallbackData* data) {
 }
 
 // 过滤输入：统一 buffer 扩展、focus 和高度比例。
+inline constexpr std::size_t kFilterMinCapacity = 64;
+inline constexpr std::size_t kTextTerminatorSize = 1;
+
 struct FilterInputState {
   std::string* buffer = nullptr;
   bool* focus_needed = nullptr;
-  std::size_t min_capacity = 64;
+  std::size_t min_capacity = kFilterMinCapacity;
 };
 
 inline bool FilterInput(const char* id, const char* hint,
@@ -242,7 +436,8 @@ inline bool FilterInput(const char* id, const char* hint,
   if (state.buffer->capacity() < state.min_capacity) {
     state.buffer->reserve(state.min_capacity);
   }
-  const std::size_t buffer_size = state.buffer->capacity() + 1;
+  const std::size_t buffer_size =
+      state.buffer->capacity() + kTextTerminatorSize;
   const ImGuiStyle& style = ImGui::GetStyle();
   const float ui_scale = style.FontScaleMain;
   const float target_height =
@@ -300,108 +495,3 @@ inline void ShowQuickPick(const QuickPickSpec& spec) {
   ImGui::EndPopup();
 }
 
-struct ToolWindowSpec {
-  float default_width_epx = 0.0f;
-  float default_height_epx = 0.0f;
-  float margin_epx = 0.0f;
-  ImGuiWindowFlags extra_flags = 0;
-  bool float_first_use = true;
-  std::optional<ImVec2> override_pos;
-  std::optional<ImVec2> override_size;
-};
-
-inline bool BeginToolWindow(const char* name, bool* open,
-                            const ToolWindowSpec& spec) {
-  const ImGuiViewport* viewport = ImGui::GetMainViewport();
-  const float ui_scale = ImGui::GetStyle().FontScaleMain;
-  const float margin = spec.margin_epx * ui_scale;
-  const float width =
-      (std::min)(spec.default_width_epx * ui_scale,
-                 (std::max)(viewport->WorkSize.x - margin * kViewWindowMarginCount,
-                            1.0f));
-  const float height =
-      (std::min)(spec.default_height_epx * ui_scale,
-                 (std::max)(viewport->WorkSize.y - margin * kViewWindowMarginCount,
-                            1.0f));
-  if (spec.float_first_use) {
-    ImGui::SetNextWindowDockID(0, ImGuiCond_FirstUseEver);
-  }
-  if (spec.override_pos.has_value()) {
-    ImGui::SetNextWindowPos(*spec.override_pos, ImGuiCond_Always);
-  } else {
-    ImGui::SetNextWindowPos(
-        ImVec2(viewport->WorkPos.x +
-                   (viewport->WorkSize.x - width) * kViewWindowCenterRatio,
-               viewport->WorkPos.y +
-                   (viewport->WorkSize.y - height) * kViewWindowCenterRatio),
-        ImGuiCond_FirstUseEver);
-  }
-  if (spec.override_size.has_value()) {
-    ImGui::SetNextWindowSize(*spec.override_size, ImGuiCond_Always);
-  } else {
-    ImGui::SetNextWindowSize(ImVec2(width, height), ImGuiCond_FirstUseEver);
-  }
-  return ImGui::Begin(name, open, spec.extra_flags);
-}
-
-struct WindowAction {
-  const char* label = nullptr;
-  bool active = false;
-  bool enabled = true;
-  float width_epx = 0.0f;
-  const char* tooltip = nullptr;
-  std::function<void()> on_press;
-};
-
-// 浮动窗口标题栏右侧动作；停靠窗口由调用方在内容首行复用 TextAction。
-inline void DrawWindowTitleActions(const char* id, const ImVec2& window_pos,
-                                   const ImVec2& window_size,
-                                   float titlebar_height,
-                                   std::vector<WindowAction> actions,
-                                   float ui_scale) {
-  const float spacing = ImGui::GetStyle().ItemSpacing.x;
-  const float close_width = titlebar_height;
-  float actions_width = 0.0f;
-  for (WindowAction& action : actions) {
-    const float item_width =
-        action.width_epx > 0.0f
-            ? action.width_epx * ui_scale
-            : ImGui::CalcTextSize(action.label).x +
-                  ImGui::GetStyle().FramePadding.x * kFramePaddingSideCount;
-    action.width_epx = item_width / ui_scale;
-    actions_width += item_width + spacing;
-  }
-  const float total_width = actions_width - spacing;
-  ImGui::SetNextWindowPos(
-      ImVec2(window_pos.x + window_size.x - close_width - total_width,
-             window_pos.y));
-  ImGui::SetNextWindowSize(ImVec2(total_width, titlebar_height));
-  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
-  ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(spacing, 0.0f));
-  ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
-  ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
-  const std::string overlay_name = std::string("##WindowActions_") + id;
-  ImGui::Begin(overlay_name.c_str(), nullptr,
-               ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
-                   ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar |
-                   ImGuiWindowFlags_NoScrollWithMouse |
-                   ImGuiWindowFlags_NoSavedSettings |
-                   ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoNav |
-                   ImGuiWindowFlags_NoFocusOnAppearing |
-                   ImGuiWindowFlags_NoBackground);
-  for (WindowAction& action : actions) {
-    ImGui::BeginDisabled(!action.enabled);
-    if (TextAction(action.label,
-                   WidgetMetrics{kOutputControlHeightRatio, action.width_epx,
-                                 false},
-                   action.active, action.tooltip)) {
-      if (action.on_press) {
-        action.on_press();
-      }
-    }
-    ImGui::EndDisabled();
-    ImGui::SameLine();
-  }
-  ImGui::End();
-  ImGui::PopStyleVar(4);
-}

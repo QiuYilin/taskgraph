@@ -286,6 +286,43 @@ TEST(WorkbenchParts, DefaultsShowAllRegions) {
   EXPECT_TRUE(parts.status_bar_visible) << "status bar visible by default";
 }
 
+TEST(WorkbenchParts, MonitorInstanceIdentity) {
+  EXPECT_EQ(MonitorInstanceTitle("Point Cloud", 1), "Point Cloud")
+      << "first tab keeps the kind title";
+  EXPECT_EQ(MonitorInstanceTitle("Point Cloud", 2), "Point Cloud 2")
+      << "second tab gets an ordinal";
+  EXPECT_EQ(MonitorInstanceId("pcl.point-cloud", 3),
+            "monitor.pcl.point-cloud.3")
+      << "instance id keeps kind id and ordinal";
+}
+
+TEST(WorkbenchChrome, TopRightFloatingRect) {
+  const ScreenRect area{Vec2(100.0f, 50.0f), Vec2(800.0f, 600.0f)};
+  const ScreenRect rect =
+      TopRightFloatingRect(area, Vec2(400.0f, 300.0f), 24.0f);
+  EXPECT_FLOAT_EQ(rect.pos.x, 476.0f) << "right edge inset by margin";
+  EXPECT_FLOAT_EQ(rect.pos.y, 74.0f) << "top edge inset by margin";
+  EXPECT_FLOAT_EQ(rect.size.x, 400.0f) << "requested width fits";
+  EXPECT_FLOAT_EQ(rect.size.y, 300.0f) << "requested height fits";
+}
+
+TEST(WorkbenchChrome, TopRightFloatingRectClampsToArea) {
+  const ScreenRect area{Vec2(0.0f, 0.0f), Vec2(400.0f, 300.0f)};
+  const ScreenRect rect =
+      TopRightFloatingRect(area, Vec2(2000.0f, 2000.0f), 20.0f);
+  EXPECT_FLOAT_EQ(rect.size.x, 360.0f) << "width clamped to usable area";
+  EXPECT_FLOAT_EQ(rect.size.y, 260.0f) << "height clamped to usable area";
+  EXPECT_FLOAT_EQ(rect.pos.x, 20.0f) << "clamped rect starts at left inset";
+  EXPECT_FLOAT_EQ(rect.pos.y, 20.0f) << "clamped rect starts at top inset";
+}
+
+TEST(WorkbenchChrome, TopRightFloatingRectRejectsEmpty) {
+  const ScreenRect empty =
+      TopRightFloatingRect(ScreenRect{}, Vec2(400.0f, 300.0f), 24.0f);
+  EXPECT_FLOAT_EQ(empty.size.x, 0.0f) << "empty area gives no rect";
+  EXPECT_FLOAT_EQ(empty.size.y, 0.0f) << "empty area gives no rect";
+}
+
 namespace {
 
 // 与 examples/simple-ui/demo-project/graphs/graph-000.json 一致。

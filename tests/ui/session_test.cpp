@@ -44,6 +44,11 @@ TEST(Session, SessionSaveLoadRoundtrip) {
   written.open_graph_names = {"Graph", "Graph 2"};
   written.view_windows["point-cloud"] = true;
   written.view_windows["inspector"] = false;
+  written.monitor_tabs["custom"] = {
+      MonitorTabRecord{"monitor.custom.1", "Custom Monitor"}};
+  written.monitor_tabs["empty-kind"] = {};
+  written.monitor_active_tab = "monitor.custom.1";
+  written.monitor_container_open = true;
   written.log_level = static_cast<int>(tg::LogLevel::Debug);
   written.log_categories =
       static_cast<tg::LogCategoryMask>(tg::LogCategory::App) |
@@ -69,6 +74,24 @@ TEST(Session, SessionSaveLoadRoundtrip) {
   ASSERT_EQ(loaded.view_windows.count("inspector"), std::size_t{1})
       << "closed view roundtrips";
   EXPECT_FALSE(loaded.view_windows.at("inspector")) << "closed view stays closed";
+  ASSERT_EQ(loaded.monitor_tabs.count("custom"), std::size_t{1})
+      << "monitor tab kind roundtrips";
+  ASSERT_EQ(loaded.monitor_tabs.at("custom").size(), std::size_t{1})
+      << "monitor tab record roundtrips";
+  EXPECT_EQ(loaded.monitor_tabs.at("custom")[0].id, "monitor.custom.1")
+      << "monitor tab id roundtrips";
+  EXPECT_EQ(loaded.monitor_tabs.at("custom")[0].title, "Custom Monitor")
+      << "monitor tab title roundtrips";
+  ASSERT_EQ(loaded.monitor_tabs.count("empty-kind"), std::size_t{1})
+      << "empty monitor kind roundtrips";
+  EXPECT_TRUE(loaded.monitor_tabs.at("empty-kind").empty())
+      << "empty tab list is preserved";
+  EXPECT_EQ(loaded.monitor_active_tab, "monitor.custom.1")
+      << "active monitor tab roundtrips";
+  EXPECT_TRUE(loaded.monitor_container_open_known)
+      << "container open key is recognized";
+  EXPECT_TRUE(loaded.monitor_container_open)
+      << "monitor container open roundtrips";
   EXPECT_EQ(loaded.log_level, static_cast<int>(tg::LogLevel::Debug))
       << "log_level roundtrips";
   EXPECT_EQ(loaded.log_categories,
