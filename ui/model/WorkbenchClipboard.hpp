@@ -16,19 +16,18 @@
 #include "taskgraph/Node.hpp"
 #include "taskgraph/ProjectFormat.hpp"
 
-// 原位复制相对选区左上角的右下偏移（画布像素）。
-inline constexpr float kDuplicateOffset = 32.0f;
-
 #if defined(__APPLE__)
+inline constexpr const char* kEditorUndoShortcut = "Cmd+Z";
+inline constexpr const char* kEditorRedoShortcut = "Cmd+Shift+Z";
 inline constexpr const char* kEditorCutShortcut = "Cmd+X";
 inline constexpr const char* kEditorCopyShortcut = "Cmd+C";
 inline constexpr const char* kEditorPasteShortcut = "Cmd+V";
-inline constexpr const char* kEditorDuplicateShortcut = "Cmd+D";
 #else
+inline constexpr const char* kEditorUndoShortcut = "Ctrl+Z";
+inline constexpr const char* kEditorRedoShortcut = "Ctrl+Y";
 inline constexpr const char* kEditorCutShortcut = "Ctrl+X";
 inline constexpr const char* kEditorCopyShortcut = "Ctrl+C";
 inline constexpr const char* kEditorPasteShortcut = "Ctrl+V";
-inline constexpr const char* kEditorDuplicateShortcut = "Ctrl+D";
 #endif
 inline constexpr const char* kEditorDeleteShortcut = "Del";
 inline constexpr const char* kEditorRenameShortcut = "F2";
@@ -58,10 +57,11 @@ struct ShortcutRow {
 // 当前全部快捷键。只读，不改绑定。
 inline const ShortcutRow* EditorShortcutCatalog(std::size_t& count) {
   static const ShortcutRow kRows[] = {
+      {"Undo", kEditorUndoShortcut, kWhenEditorFocused},
+      {"Redo", kEditorRedoShortcut, kWhenEditorFocused},
       {"Cut", kEditorCutShortcut, kWhenEditorFocused},
       {"Copy", kEditorCopyShortcut, kWhenEditorFocused},
       {"Paste", kEditorPasteShortcut, kWhenEditorFocused},
-      {"Duplicate", kEditorDuplicateShortcut, kWhenEditorFocused},
       {"New Node", kEditorNewNodeShortcut, kWhenEditorFocused},
       {"Frame", kEditorFrameShortcut, kWhenEditorFocused},
       {"Frame with Margin", kEditorFrameMarginShortcut, kWhenEditorFocused},
@@ -165,9 +165,9 @@ inline ShortcutOwner ShortcutOwnerOf(const char* command) {
   if (command == nullptr) {
     return ShortcutOwner::None;
   }
-  if (std::strcmp(command, "Cut") == 0 || std::strcmp(command, "Copy") == 0 ||
+  if (std::strcmp(command, "Undo") == 0 || std::strcmp(command, "Redo") == 0 ||
+      std::strcmp(command, "Cut") == 0 || std::strcmp(command, "Copy") == 0 ||
       std::strcmp(command, "Paste") == 0 ||
-      std::strcmp(command, "Duplicate") == 0 ||
       std::strcmp(command, "New Node") == 0 ||
       std::strcmp(command, "Rename") == 0 ||
       std::strcmp(command, "Delete Node or Graph") == 0 ||
@@ -207,6 +207,9 @@ struct ExplorerShortcutInput {
   bool editing_text = false;
   bool rename_pressed = false;
   bool delete_pressed = false;
+  bool cut_pressed = false;
+  bool copy_pressed = false;
+  bool paste_pressed = false;
   bool has_selected_node = false;
   bool has_graph = false;
 };
@@ -217,14 +220,20 @@ enum class ExplorerShortcutAction {
   RenameGraph,
   DeleteNode,
   DeleteGraph,
+  CutNode,
+  CutGraph,
+  CopyNode,
+  CopyGraph,
+  PasteGraph,
 };
 
-// 有选中节点就改名或删节点，否则改当前图名或删当前图。
+// 有选中节点就改/删/复制节点，否则改/删/复制图；粘贴贴图。
 inline ExplorerShortcutAction DecideExplorerShortcut(
     const ExplorerShortcutInput& input) {
   ShortcutContext context;
   context.explorer_focused = input.explorer_focused;
   context.editing_text = input.editing_text;
+  const bool explorer_active = input.explorer_focused && !input.editing_text;
   if (input.rename_pressed && ShortcutCommandApplies("Rename", context)) {
     if (input.has_selected_node) {
       return ExplorerShortcutAction::RenameNode;
@@ -242,10 +251,32 @@ inline ExplorerShortcutAction DecideExplorerShortcut(
       return ExplorerShortcutAction::DeleteGraph;
     }
   }
+  // 剪贴板键在主侧栏也生效；与菜单一致，节点与图按选中项区分。
+  if (explorer_active) {
+    if (input.copy_pressed) {
+      if (input.has_selected_node) {
+        return ExplorerShortcutAction::CopyNode;
+      }
+      if (input.has_graph) {
+        return ExplorerShortcutAction::CopyGraph;
+      }
+    }
+    if (input.cut_pressed) {
+      if (input.has_selected_node) {
+        return ExplorerShortcutAction::CutNode;
+      }
+      if (input.has_graph) {
+        return ExplorerShortcutAction::CutGraph;
+      }
+    }
+    if (input.paste_pressed) {
+      return ExplorerShortcutAction::PasteGraph;
+    }
+  }
   return ExplorerShortcutAction::None;
 }
 
-// 编辑区有焦点且不在落点时，剪切、复制、粘贴、原位复制和空格才处理。
+// 编辑区有焦点且不在落点时，剪切、复制、粘贴和空格才处理。
 inline bool EditorShortcutsHonored(bool placement_armed) {
   ShortcutContext context;
   context.editor_focused = true;
@@ -253,7 +284,6 @@ inline bool EditorShortcutsHonored(bool placement_armed) {
   return ShortcutCommandApplies("Cut", context) &&
          ShortcutCommandApplies("Copy", context) &&
          ShortcutCommandApplies("Paste", context) &&
-         ShortcutCommandApplies("Duplicate", context) &&
          ShortcutCommandApplies("New Node", context);
 }
 
@@ -331,6 +361,39 @@ struct NodeClipboard {
   bool empty() const { return nodes.empty(); }
 };
 
+// 图剪贴板：一整张图（图名 + 全部节点/边/坐标）。粘贴目标是一张新图。
+struct GraphClipboard {
+  std::string name;
+  NodeClipboard content;
+  bool valid = false;   // 是否真捕获过一张图；空图也是有效图。
+  bool was_cut = false; // 剪切（真）还是复制（假）：剪切粘贴复用原名，复制粘贴加 _copy。
+
+  bool empty() const { return !valid; }
+};
+
+// 图粘贴名：<源名>_copy；撞名再加序号 <源名>_copy2、<源名>_copy3…
+inline std::string CopiedGraphName(
+    const std::vector<std::shared_ptr<tg::Graph>>& graphs,
+    const std::string& source_name) {
+  const std::string base =
+      (source_name.empty() ? std::string(kDefaultGraphName) : source_name) +
+      "_copy";
+  for (std::size_t index = 0;; ++index) {
+    const std::string candidate =
+        index == 0 ? base : base + std::to_string(index + 1);
+    bool taken = false;
+    for (const auto& graph : graphs) {
+      if (graph != nullptr && graph->getName() == candidate) {
+        taken = true;
+        break;
+      }
+    }
+    if (!taken) {
+      return candidate;
+    }
+  }
+}
+
 // 参与复制的节点及其当前画布坐标。
 struct ClipboardSample {
   std::shared_ptr<tg::Node> node;
@@ -338,7 +401,7 @@ struct ClipboardSample {
   float y = 0.0f;
 };
 
-enum class NodeClipboardCommand { Copy, Cut, Paste, Duplicate };
+enum class NodeClipboardCommand { Copy, Cut, Paste };
 
 struct NodeClipboardResult {
   bool wrote_clipboard = false;
@@ -364,10 +427,52 @@ inline tg::NodePose ClipboardOrigin(const NodeClipboard& clipboard) {
   return {min_x, min_y};
 }
 
-// 原位复制的落点：选区左上角再往右下偏移。
-inline tg::NodePose DuplicateAnchor(const NodeClipboard& clipboard) {
+// 粘贴前定名字并平移坐标：原名空闲就保留，否则用 <原名>_copy（再撞加序号）。
+inline NodeClipboard PrepareClipboardForPaste(const NodeClipboard& clipboard,
+                                              const tg::Graph& target,
+                                              tg::NodePose anchor) {
+  NodeClipboard prepared = clipboard;
   const tg::NodePose origin = ClipboardOrigin(clipboard);
-  return {origin.x + kDuplicateOffset, origin.y + kDuplicateOffset};
+  std::vector<std::string> taken;
+  taken.reserve(prepared.nodes.size());
+  for (ClipboardNode& node : prepared.nodes) {
+    node.x += anchor.x - origin.x;
+    node.y += anchor.y - origin.y;
+    const auto name_taken = [&target, &taken](const std::string& name) {
+      if (name.empty() || target.isNodeNameTaken(name, nullptr)) {
+        return true;
+      }
+      for (const std::string& used : taken) {
+        if (used == name) {
+          return true;
+        }
+      }
+      return false;
+    };
+    if (!name_taken(node.name)) {
+      taken.push_back(node.name);
+      continue;
+    }
+    // 撞名：<原名>_copy，再撞 <原名>_copy2…；空名用 type id 起底。
+    const std::string stem = node.name.empty()
+                                 ? (node.type_id.empty() ? "Node" : node.type_id)
+                                 : node.name;
+    const std::string copy_base = stem + "_copy";
+    if (!name_taken(copy_base)) {
+      node.name = copy_base;
+      taken.push_back(copy_base);
+      continue;
+    }
+    for (unsigned int suffix = 2;; ++suffix) {
+      const std::string candidate = copy_base + std::to_string(suffix);
+      if (!name_taken(candidate)) {
+        node.name = candidate;
+        taken.push_back(candidate);
+        break;
+      }
+    }
+  }
+  return prepared;
 }
 
 // 把样本收成快照。没有节点时返回空剪贴板，调用方不得覆盖已有内容。
@@ -449,10 +554,12 @@ inline std::vector<std::shared_ptr<tg::Node>> PasteNodeClipboard(
   if (clipboard.nodes.empty()) {
     return created;
   }
-  const tg::NodePose origin = ClipboardOrigin(clipboard);
-  std::vector<std::shared_ptr<tg::Node>> pasted(clipboard.nodes.size());
-  for (std::size_t index = 0; index < clipboard.nodes.size(); ++index) {
-    const ClipboardNode& stored = clipboard.nodes[index];
+  // 先定唯一名（撞名用 <原名>_copy）并按 anchor 平移，之后按名字/坐标直接落图。
+  const NodeClipboard prepared =
+      PrepareClipboardForPaste(clipboard, graph, anchor);
+  std::vector<std::shared_ptr<tg::Node>> pasted(prepared.nodes.size());
+  for (std::size_t index = 0; index < prepared.nodes.size(); ++index) {
+    const ClipboardNode& stored = prepared.nodes[index];
     std::shared_ptr<tg::Node> node = controller.createNode(stored.type_id);
     if (node == nullptr) {
       continue;
@@ -472,13 +579,11 @@ inline std::vector<std::shared_ptr<tg::Node>> PasteNodeClipboard(
         bound->value = input.value;
       }
     }
-    const tg::NodePose pose{anchor.x + (stored.x - origin.x),
-                            anchor.y + (stored.y - origin.y)};
-    poses[node.get()] = pose;
+    poses[node.get()] = tg::NodePose{stored.x, stored.y};
     pasted[index] = node;
     created.push_back(node);
   }
-  for (const ClipboardEdge& edge : clipboard.edges) {
+  for (const ClipboardEdge& edge : prepared.edges) {
     if (edge.from >= pasted.size() || edge.to >= pasted.size()) {
       continue;
     }
@@ -487,7 +592,8 @@ inline std::vector<std::shared_ptr<tg::Node>> PasteNodeClipboard(
     if (from == nullptr || to == nullptr) {
       continue;
     }
-    graph.connect(from, edge.port_out, to, edge.port_in);
+    graph.connect(from->outputPort(edge.port_out),
+                  to->inputPort(edge.port_in));
   }
   if (!created.empty()) {
     controller.markDirty();
@@ -495,7 +601,7 @@ inline std::vector<std::shared_ptr<tg::Node>> PasteNodeClipboard(
   return created;
 }
 
-// 复制写入剪贴板；剪切再删节点；粘贴用剪贴板；原位复制不改剪贴板。
+// 复制写入剪贴板；剪切再删节点；粘贴用剪贴板。
 inline NodeClipboardResult ApplyNodeClipboard(
     NodeClipboardCommand command, NodeClipboard& clipboard,
     const std::vector<ClipboardSample>& samples, tg::Controller& controller,
@@ -526,10 +632,6 @@ inline NodeClipboardResult ApplyNodeClipboard(
       result.removed.push_back(sample.node);
     }
     controller.markDirty();
-  }
-  if (command == NodeClipboardCommand::Duplicate) {
-    result.created = PasteNodeClipboard(controller, graph, captured,
-                                        DuplicateAnchor(captured), poses);
   }
   return result;
 }

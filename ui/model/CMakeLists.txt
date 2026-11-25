@@ -5,8 +5,10 @@ set(HPP_HEADER_FILES
     WorkbenchParts.hpp
     WorkbenchFocus.hpp
     WorkbenchEdits.hpp
-    EditorClipboard.hpp
+    WorkbenchClipboard.hpp
+    Undo.hpp
     UiSession.hpp
+    LogView.hpp
     LinkVariable.hpp
     ExplorerProjectActions.hpp
     NativePathDialog.hpp
@@ -60,7 +62,7 @@ add_library(${project_name}::${component} ALIAS ${component})
 target_include_directories(${component} INTERFACE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}>
-    $<INSTALL_INTERFACE:include/taskgraph>
+    $<INSTALL_INTERFACE:include/taskgraph/UiModel>
     )
 # vcpkg 把该头放在其安装目录下；这个绝对路径不进导出的安装接口。
 foreach(include_dir IN LISTS PORTABLE_FILE_DIALOGS_INCLUDE_DIRS)

@@ -1,5 +1,6 @@
 #include "taskgraph/Controller.hpp"
 
+#include <chrono>
 #include <exception>
 #include <optional>
 
@@ -8,8 +9,46 @@
 
 namespace tg {
 void Controller::run(tg::Graph& graph) {
-  logInfo("{}", graph._taskflow.dump());
-  _executor.run(graph._taskflow).get();
+  const bool log_graph = logEnabled(LogLevel::Info, LogCategory::Graph);
+  const bool log_timing = logEnabled(LogLevel::Info, LogCategory::Timing);
+  const bool log_dump = logEnabled(LogLevel::Debug, LogCategory::Graph);
+  if (log_graph) {
+    TG_LOG_INFO(LogCategory::Graph, "graph '{}': start ({} nodes)",
+                graph.getName(), graph.getNodes().size());
+  }
+  if (log_dump) {
+    try {
+      TG_LOG_DEBUG(LogCategory::Graph, "graph '{}': {}", graph.getName(),
+                   graph.dump());
+    } catch (...) {
+      // dump 失败只丢日志，不影响运行。
+    }
+  }
+  // 总耗时始终测一次；是否写 Timing 日志由配置决定。
+  _last_run_ms.reset();
+  const auto start = std::chrono::steady_clock::now();
+  try {
+    _executor.run(graph._taskflow).get();
+  } catch (const std::exception& error) {
+    TG_LOG_ERROR(LogCategory::Graph, "graph '{}': failed: {}",
+                 graph.getName(), error.what());
+    throw;
+  } catch (...) {
+    TG_LOG_ERROR(LogCategory::Graph, "graph '{}': failed: unknown exception",
+                 graph.getName());
+    throw;
+  }
+  const auto elapsed = std::chrono::steady_clock::now() - start;
+  const double milliseconds =
+      std::chrono::duration<double, std::milli>(elapsed).count();
+  _last_run_ms = milliseconds;
+  if (log_timing) {
+    TG_LOG_INFO(LogCategory::Timing, "graph '{}': took {:.3f} ms",
+                graph.getName(), milliseconds);
+  }
+  if (log_graph) {
+    TG_LOG_INFO(LogCategory::Graph, "graph '{}': end", graph.getName());
+  }
 }
 
 std::optional<std::string> Controller::tryRun(tg::Graph& graph) {
@@ -17,12 +56,10 @@ std::optional<std::string> Controller::tryRun(tg::Graph& graph) {
     run(graph);
     return std::nullopt;
   } catch (const std::exception& error) {
-    logError("{}", error.what());
     return error.what();
   } catch (...) {
     constexpr const char* kNonStandardError =
         "graph run failed with a non-standard exception";
-    logError("{}", kNonStandardError);
     return kNonStandardError;
   }
 }
@@ -48,9 +85,9 @@ const std::vector<std::shared_ptr<Graph>>& Controller::getGraphs() const {
 }
 
 void Controller::registerNodeType(std::string type_id, NodeFactory factory,
-                                  std::string caption) {
+                                  std::string caption, std::string category) {
   _node_registry.add(std::move(type_id), std::move(factory),
-                     std::move(caption));
+                     std::move(caption), std::move(category));
 }
 
 bool Controller::hasNodeType(const std::string& type_id) const {

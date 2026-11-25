@@ -4,11 +4,13 @@
 #include <QModelIndex>
 #include <QVariant>
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
 
 #include "GraphModel.hpp"
+#include "Undo.hpp"
 
 /** \brief 工程级领域模型，也是主侧栏那棵树的最高层 QAbstractItemModel。
  *
@@ -20,6 +22,17 @@ class ProjectModel : public QAbstractItemModel {
   Q_OBJECT
  public:
   explicit ProjectModel(tg::Controller& controller, QObject* parent = nullptr);
+
+  /** \brief 节点改名命令的入栈出口；没有对应画布时返回 false，调用方直接改。 */
+  using UndoPush =
+      std::function<bool(GraphModel*, std::unique_ptr<ui::Command>)>;
+  void SetUndoPush(UndoPush push) { _undo_push = std::move(push); }
+
+  /** \brief 工程级命令（图改名等）的入栈出口。 */
+  using ProjectUndoPush = std::function<bool(std::unique_ptr<ui::Command>)>;
+  void SetProjectUndoPush(ProjectUndoPush push) {
+    _project_undo_push = std::move(push);
+  }
 
   QModelIndex index(int row, int column,
                     const QModelIndex& parent = QModelIndex()) const override;
@@ -76,4 +89,6 @@ class ProjectModel : public QAbstractItemModel {
   tg::Controller& _controller;
   std::vector<std::shared_ptr<GraphModel>> _graph_models;
   std::unique_ptr<Item> _project_item;
+  UndoPush _undo_push;
+  ProjectUndoPush _project_undo_push;
 };

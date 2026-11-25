@@ -12,6 +12,7 @@
 
 #include "taskgraph/Controller.hpp"
 #include "taskgraph/Graph.hpp"
+#include "taskgraph/Log.hpp"
 
 namespace {
 
@@ -41,6 +42,7 @@ class SessionTest : public QObject {
 
  private slots:
   void sessionSaveLoadRoundtrip();
+  void logDefaults();
   void sessionMruCapAndRemove();
   void startupRestoreValidProject();
   void startupMissingProjectClearsRecent();
@@ -58,6 +60,13 @@ void SessionTest::sessionSaveLoadRoundtrip() {
   written.touchRecent(std::filesystem::path("C:/projects/alpha"));
   written.touchRecent(std::filesystem::path("C:/projects/beta"));
   written.open_graph_names = {"Graph", "Graph 2"};
+  written.view_windows["point-cloud"] = true;
+  written.view_windows["inspector"] = false;
+  written.log_level = static_cast<int>(tg::LogLevel::Debug);
+  written.log_categories =
+      static_cast<tg::LogCategoryMask>(tg::LogCategory::App) |
+      static_cast<tg::LogCategoryMask>(tg::LogCategory::Data);
+  written.log_auto_scroll = false;
   written.last_browse_dir = "C:/browse/cache";
   written.theme_id = "light-modern";
   QVERIFY(written.save());
@@ -72,9 +81,24 @@ void SessionTest::sessionSaveLoadRoundtrip() {
   QVERIFY(loaded.open_graph_names[0] == "Graph");
   QVERIFY(loaded.last_browse_dir == "C:/browse/cache");
   QVERIFY(loaded.theme_id == "light-modern");
+  QCOMPARE(static_cast<int>(loaded.view_windows.size()), 2);
+  QVERIFY(loaded.view_windows.at("point-cloud"));
+  QVERIFY(!loaded.view_windows.at("inspector"));
+  QCOMPARE(loaded.log_level, static_cast<int>(tg::LogLevel::Debug));
+  QCOMPARE(loaded.log_categories,
+           static_cast<tg::LogCategoryMask>(tg::LogCategory::App) |
+               static_cast<tg::LogCategoryMask>(tg::LogCategory::Data));
+  QVERIFY(!loaded.log_auto_scroll);
 
   std::error_code error;
   std::filesystem::remove_all(config, error);
+}
+
+void SessionTest::logDefaults() {
+  const UiSession session;
+  QCOMPARE(session.log_level, -1);
+  QCOMPARE(session.log_categories, 0xFFFFFFFFu);
+  QVERIFY(session.log_auto_scroll);
 }
 
 void SessionTest::sessionMruCapAndRemove() {

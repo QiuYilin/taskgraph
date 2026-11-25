@@ -41,3 +41,8 @@ jobs:
     - name: ctest
       working-directory: ${{ github.workspace }}/build
       run: ctest --output-on-failure --build-config Release
+    - name: install and consume
+      run: |
+        cmake --install "${{ github.workspace }}/build" --config Release --prefix "${{ github.workspace }}/install"
+        cmake -S "${{ github.workspace }}/tests/install" -B "${{ github.workspace }}/install-consumer" -G "Visual Studio 18 2026" -A x64 -T host=x64 -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="${{ github.workspace }}/vcpkg/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=${{ matrix.config.vcpkg_triplet }} -Dtaskgraph_DIR="${{ github.workspace }}/install/share/taskgraph"
+        cmake --build "${{ github.workspace }}/install-consumer" --config Release

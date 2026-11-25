@@ -2,6 +2,7 @@
 #include "IntNodeData.hpp"
 #include "taskgraph/Node.hpp"
 
+/** \brief 整数源节点：属性 value 作为 IntData 输出。 */
 class IntNode : public tg::Node {
  public:
   static constexpr const char* kTypeId = "IntNode";

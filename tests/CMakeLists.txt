@@ -2,6 +2,7 @@
 # graph_test：图的节点与连线。
 # nodedata_test：节点数据类型。
 # project_test：工程读写。
+# log_test：日志级别、类别、记录与内存上限。
 
 find_package(GTest CONFIG REQUIRED)
 include(GoogleTest)
@@ -23,3 +24,11 @@ taskgraph_add_gtest(nodedata_test)
 add_executable(project_test core/project_test.cpp)
 target_link_libraries(project_test PRIVATE taskgraph::Core)
 taskgraph_add_gtest(project_test)
+
+add_executable(log_test core/log_test.cpp)
+target_link_libraries(log_test PRIVATE taskgraph::Core)
+taskgraph_add_gtest(log_test)
+
+add_executable(log_memory_test core/log_memory_test.cpp)
+target_link_libraries(log_memory_test PRIVATE taskgraph::Core)
+taskgraph_add_gtest(log_memory_test)

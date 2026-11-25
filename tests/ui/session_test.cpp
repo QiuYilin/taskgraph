@@ -3,6 +3,7 @@
 
 #include "taskgraph/Controller.hpp"
 #include "taskgraph/Graph.hpp"
+#include "taskgraph/Log.hpp"
 #include "UiSession.hpp"
 
 #include <gtest/gtest.h>
@@ -41,6 +42,13 @@ TEST(Session, SessionSaveLoadRoundtrip) {
   written.touchRecent(std::filesystem::path("C:/projects/alpha"));
   written.touchRecent(std::filesystem::path("C:/projects/beta"));
   written.open_graph_names = {"Graph", "Graph 2"};
+  written.view_windows["point-cloud"] = true;
+  written.view_windows["inspector"] = false;
+  written.log_level = static_cast<int>(tg::LogLevel::Debug);
+  written.log_categories =
+      static_cast<tg::LogCategoryMask>(tg::LogCategory::App) |
+      static_cast<tg::LogCategoryMask>(tg::LogCategory::Data);
+  written.log_auto_scroll = false;
   written.last_browse_dir = "C:/browse/cache";
   written.theme_id = "light-modern";
   EXPECT_TRUE(written.save()) << "save session";
@@ -55,9 +63,29 @@ TEST(Session, SessionSaveLoadRoundtrip) {
   EXPECT_EQ(loaded.open_graph_names[0], "Graph") << "first open graph name";
   EXPECT_EQ(loaded.last_browse_dir, "C:/browse/cache") << "last_browse_dir roundtrips";
   EXPECT_EQ(loaded.theme_id, "light-modern") << "theme_id roundtrips";
+  ASSERT_EQ(loaded.view_windows.count("point-cloud"), std::size_t{1})
+      << "open view roundtrips";
+  EXPECT_TRUE(loaded.view_windows.at("point-cloud")) << "open view stays open";
+  ASSERT_EQ(loaded.view_windows.count("inspector"), std::size_t{1})
+      << "closed view roundtrips";
+  EXPECT_FALSE(loaded.view_windows.at("inspector")) << "closed view stays closed";
+  EXPECT_EQ(loaded.log_level, static_cast<int>(tg::LogLevel::Debug))
+      << "log_level roundtrips";
+  EXPECT_EQ(loaded.log_categories,
+            static_cast<tg::LogCategoryMask>(tg::LogCategory::App) |
+                static_cast<tg::LogCategoryMask>(tg::LogCategory::Data))
+      << "log_categories roundtrips";
+  EXPECT_FALSE(loaded.log_auto_scroll) << "log_auto_scroll roundtrips";
 
   std::error_code error;
   std::filesystem::remove_all(config, error);
+}
+
+TEST(Session, LogDefaults) {
+  const UiSession session;
+  EXPECT_EQ(session.log_level, -1) << "未设置级别";
+  EXPECT_EQ(session.log_categories, 0xFFFFFFFFu) << "未设置类别";
+  EXPECT_TRUE(session.log_auto_scroll) << "默认自动滚动";
 }
 
 TEST(Session, SessionMruCapAndRemove) {

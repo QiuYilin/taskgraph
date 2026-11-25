@@ -25,6 +25,8 @@ taskgraph 目前满足 ANF 和无环项图：一张图是一阶、单赋值、�
 
 同一时间只构建一个工作台，由 `TASKGRAPH_UI` 选择。
 
+core 日志的级别、类别、节点自动日志和多线程约定见 [docs/logging.md](docs/logging.md)。
+
 # 依赖
 
 C++17。推荐用 [vcpkg](https://github.com/microsoft/vcpkg)。Taskflow 须为 **3.11.0**（最后一个可按 C++17 编译的版本），请用个人注册表 [QiuYilin/vcpkg-registry](https://github.com/QiuYilin/vcpkg-registry)。
@@ -67,7 +69,7 @@ cmake --build --preset imgui-debug
 Qt 工作台换成 `--preset qt` / `--build --preset qt-debug`。其它平台直接配置：
 
 ```
-cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=<vcpkg>/scripts/buildsystems/vcpkg.cmake -DTASKGRAPH_UI=imgui
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=<vcpkg>/scripts/buildsystems/vcpkg.cmake -DTASKGRAPH_UI=imgui
 cmake --build build --config Release
 ```
 
@@ -78,6 +80,17 @@ cmake --build build --config Release
 | `BUILD_TESTING` | `ON` / `OFF` | `ON` | 构建与后端匹配的测试。 |
 
 可执行文件在构建目录的 `bin/<config>/`（用预设时是 `out/build/<preset>/bin/<config>/`）。Windows 上 Qt 示例链接后会跑 `windeployqt`，Qt DLL 和平台插件就在 exe 旁。
+
+## 安装（find_package）
+
+`cmake --install <build> --prefix <prefix>` 安装到前缀后，按已安装的包消费：
+
+```
+find_package(taskgraph CONFIG REQUIRED COMPONENTS Core Ui)
+target_link_libraries(app PRIVATE taskgraph::Ui)
+```
+
+安装后的头是平铺的：`#include <Ui.hpp>`、`#include <WorkbenchParts.hpp>`、`#include <ThemeStyle.hpp>`（Core 仍是 `#include <taskgraph/...>`）。不要把 `Ui` / `UiModel` 子目录手动加到 include 路径，`taskgraph::Ui` 会导出它们。`tests/install/` 是 CI 用来验证安装包的最小消费工程。
 
 # 测试
 
@@ -122,6 +135,8 @@ int main() {
 }
 ```
 
+0.3.0 起：属性值支持 `double`，可用 `PropertyHints`（`editor`、`min`/`max`/`step`/`decimals`、枚举 `choices`、`is_project_path`）；`registerNodeType<NodeT>(caption, category)` 让 palette 与节点菜单按类别分组；`Node::refreshPortTypes()` 让节点按属性切换端口类型（不兼容的边自动断开）。工程文件版本升到 3，仍可载入 v1/v2。CMake 安装包可按 `find_package(taskgraph COMPONENTS Core Ui)` 消费：`taskgraph::Ui` 导出平铺的 Ui/UiModel 头目录，CI 会构建一个只消费安装包的最小工程。
+
 ## core + ui
 
 仍用同一个 `tg::Controller`：在 **core** 上登记种类并打开工程，再套上 `Ui` 调用 `Run()`，得到 VS Code 风格工作台。两个后端共用同一份 core 和模型；两边的交互细节都在 [`docs/ui.md`](docs/ui.md)。
@@ -130,7 +145,7 @@ int main() {
 
 ### ImGui 版
 
-默认后端：带活动栏、Explorer/Search、imgui-node-editor 画布、属性表、Output 面板和 Dark Modern / Light Modern 主题的停靠工作台。
+默认后端：带活动栏、Explorer/Search、imgui-node-editor 画布、属性表、Output 面板和 Dark Modern / Light Modern 主题的停靠工作台。依赖很轻量：imgui、imgui-node-editor 和 GLFW/OpenGL，不像 Qt 版那样要拉一整套 qtbase。
 
 ```
 #include "taskgraph/taskgraph.hpp"
@@ -150,7 +165,7 @@ int main() {
 
 ### Qt 版
 
-`TASKGRAPH_UI=qt`。`QMainWindow` 配 Qt-Advanced-Docking-System 停靠和 QtNodes 画布；`QApplication` 和事件循环由程序自己持有。
+`TASKGRAPH_UI=qt`。`QMainWindow` 配 Qt-Advanced-Docking-System 停靠和 QtNodes 画布；`QApplication` 和事件循环由程序自己持有。Qt 前端目前不在 CI 覆盖范围内（CI 只构建并测试 ImGui 后端），仅做本地验证，Qt 侧可能存在问题。
 
 ```
 #include "taskgraph/taskgraph.hpp"

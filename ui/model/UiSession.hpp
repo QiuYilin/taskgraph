@@ -1,9 +1,11 @@
 #pragma once
 
 #include <algorithm>
+#include <cstdint>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -17,6 +19,10 @@ struct UiSession {
   static constexpr const char* kJsonKeyRecentRoots = "recent_roots";
   static constexpr const char* kJsonKeyLastRoot = "last_root";
   static constexpr const char* kJsonKeyOpenGraphNames = "open_graph_names";
+  static constexpr const char* kJsonKeyViewWindows = "view_windows";
+  static constexpr const char* kJsonKeyLogLevel = "log_level";
+  static constexpr const char* kJsonKeyLogCategories = "log_categories";
+  static constexpr const char* kJsonKeyLogAutoScroll = "log_auto_scroll";
   static constexpr const char* kJsonKeyLastBrowseDir = "last_browse_dir";
   static constexpr const char* kJsonKeyThemeId = "theme_id";
   static constexpr const char* kEnvAppData = "APPDATA";
@@ -29,6 +35,14 @@ struct UiSession {
   std::vector<std::string> recent_roots;
   std::string last_root;
   std::vector<std::string> open_graph_names;
+  /** \brief 独立视图窗口的开关状态；没有记录表示从未开关过。 */
+  std::map<std::string, bool> view_windows;
+  /** \brief Output 日志级别；-1 表示未设置，使用固定 Summary。 */
+  int log_level = -1;
+  /** \brief Output 日志类别位；0xFFFFFFFF 表示未设置。 */
+  std::uint32_t log_categories = 0xFFFFFFFFu;
+  /** \brief Output 是否自动滚到末尾。 */
+  bool log_auto_scroll = true;
   /** \brief 上次 Browse 落点目录（工程选目录或属性选文件的父目录）。 */
   std::string last_browse_dir;
   /** \brief 当前 VS Code 主题 id；空表示使用默认主题。 */
@@ -111,6 +125,30 @@ struct UiSession {
         }
       }
     }
+    if (document.contains(kJsonKeyViewWindows) &&
+        document.at(kJsonKeyViewWindows).is_object()) {
+      for (auto entry = document.at(kJsonKeyViewWindows).begin();
+           entry != document.at(kJsonKeyViewWindows).end(); ++entry) {
+        if (entry.value().is_boolean()) {
+          session.view_windows[entry.key()] = entry.value().get<bool>();
+        }
+      }
+    }
+    if (document.contains(kJsonKeyLogLevel) &&
+        document.at(kJsonKeyLogLevel).is_number_integer()) {
+      session.log_level = document.at(kJsonKeyLogLevel).get<int>();
+    }
+    if (document.contains(kJsonKeyLogCategories) &&
+        (document.at(kJsonKeyLogCategories).is_number_integer() ||
+         document.at(kJsonKeyLogCategories).is_number_unsigned())) {
+      session.log_categories = static_cast<std::uint32_t>(
+          document.at(kJsonKeyLogCategories).get<std::int64_t>());
+    }
+    if (document.contains(kJsonKeyLogAutoScroll) &&
+        document.at(kJsonKeyLogAutoScroll).is_boolean()) {
+      session.log_auto_scroll =
+          document.at(kJsonKeyLogAutoScroll).get<bool>();
+    }
     if (document.contains(kJsonKeyLastBrowseDir) &&
         document.at(kJsonKeyLastBrowseDir).is_string()) {
       session.last_browse_dir =
@@ -133,6 +171,10 @@ struct UiSession {
     document[kJsonKeyRecentRoots] = recent_roots;
     document[kJsonKeyLastRoot] = last_root;
     document[kJsonKeyOpenGraphNames] = open_graph_names;
+    document[kJsonKeyViewWindows] = view_windows;
+    document[kJsonKeyLogLevel] = log_level;
+    document[kJsonKeyLogCategories] = log_categories;
+    document[kJsonKeyLogAutoScroll] = log_auto_scroll;
     document[kJsonKeyLastBrowseDir] = last_browse_dir;
     document[kJsonKeyThemeId] = theme_id;
     std::ofstream output(sessionFilePath(), std::ios::trunc);

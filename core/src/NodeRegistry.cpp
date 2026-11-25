@@ -3,24 +3,26 @@
 namespace tg {
 
 void NodeRegistry::add(std::string type_id, Factory factory,
-                       std::string caption) {
+                       std::string caption, std::string category) {
   if (caption.empty()) {
     caption = type_id;
   }
   const auto existing = _factories.find(type_id);
-  // 已有同 id 时只换工厂与 caption，保持 types 里原下标。
+  // 已有同 id 时只换工厂、caption 与 category，保持 types 里原下标。
   if (existing != _factories.end()) {
     existing->second = std::move(factory);
     for (NodeTypeInfo& info : _types) {
       if (info.type_id == type_id) {
         info.caption = std::move(caption);
+        info.category = std::move(category);
         break;
       }
     }
     return;
   }
   _factories.emplace(type_id, std::move(factory));
-  _types.push_back(NodeTypeInfo{std::move(type_id), std::move(caption)});
+  _types.push_back(NodeTypeInfo{std::move(type_id), std::move(caption),
+                                std::move(category)});
 }
 
 bool NodeRegistry::contains(const std::string& type_id) const {

@@ -9,6 +9,14 @@
 #include <string>
 #include <vector>
 
+// 内部头在 private -> public 宏内包含这些标准头；先包含，避免 libstdc++ 报访问级别冲突。
+#include <algorithm>
+#include <cassert>
+#include <cstddef>
+#include <map>
+#include <sstream>
+#include <type_traits>
+
 #include <imgui.h>
 #include <imgui_internal.h>
 

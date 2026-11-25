@@ -16,7 +16,12 @@ elseif(TASKGRAPH_UI STREQUAL "qt")
   list(APPEND VCPKG_MANIFEST_FEATURES "ui-qt")
 endif()
 
-project(${project_name} VERSION 0.2.0)
+# 单配置生成器不指定构建类型时，安装导出会缺具体配置；本地要 Debug 就自己传。
+if(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
+  set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type")
+endif()
+
+project(${project_name} VERSION 0.3.0)
 
 # Without this, MSVC reads UTF-8 sources as the system code page.
 if(MSVC)

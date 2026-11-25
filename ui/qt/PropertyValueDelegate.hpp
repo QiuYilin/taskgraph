@@ -2,7 +2,7 @@
 
 #include <QStyledItemDelegate>
 
-/** \brief 属性表 Value 列的编辑委托：int→QSpinBox、bool→QCheckBox、string→QLineEdit。 */
+/** \brief 属性表 Value 列的编辑委托：int→QSpinBox / Enum→QComboBox、double→QDoubleSpinBox（读 hints 范围/精度）、bool→QCheckBox、string→QLineEdit。 */
 class PropertyValueDelegate : public QStyledItemDelegate {
  public:
   explicit PropertyValueDelegate(QObject* parent = nullptr);

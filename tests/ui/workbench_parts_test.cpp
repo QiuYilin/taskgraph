@@ -1,6 +1,7 @@
 // ui 测试：工作台扩展点。
 // 命令注册、同 id 覆盖、禁用、移除、面板窗口名、默认不显示活动栏和主侧栏动作。
 
+#include "LogView.hpp"
 #include "Theme.hpp"
 #include "WorkbenchParts.hpp"
 
@@ -81,6 +82,16 @@ TEST(WorkbenchParts, PanelWindowName) {
       << "panel window keeps stable docking id";
 }
 
+TEST(WorkbenchParts, ViewWindowIdentity) {
+  ViewWindow view;
+  view.id = "point-cloud";
+  view.title = "Point Cloud";
+  EXPECT_EQ(view.window_name(), "Point Cloud###point-cloud")
+      << "view window title stays separate from stable id";
+  EXPECT_EQ(view.command_id(), "view.point-cloud")
+      << "view window exposes a stable View menu command";
+}
+
 TEST(WorkbenchChrome, ActivityIconFitsInCell) {
   EXPECT_FLOAT_EQ(kActivityIconEpx, kActivityIconReferenceEpx)
       << "line icon box stays the VS Code 24px glyph";
@@ -111,6 +122,67 @@ TEST(WorkbenchParts, DefaultActivityBarListsExplorerThenSearch) {
   EXPECT_EQ(parts.activity_bar_items[0].command, kShowExplorerCommand);
   EXPECT_EQ(parts.activity_bar_items[1].id, kSearchActivityId);
   EXPECT_EQ(parts.activity_bar_items[1].command, kShowSearchCommand);
+}
+
+TEST(WorkbenchParts, ActivityClickOnActiveTogglesSideBar) {
+  ActivityBarItem item;
+  item.command = kShowExplorerCommand;
+  EXPECT_EQ(ActivityClickCommand(item, false), std::string_view(kShowExplorerCommand))
+      << "点未激活图标切到该视图";
+  EXPECT_EQ(ActivityClickCommand(item, true),
+            std::string_view(kTogglePrimarySideBarCommand))
+      << "点已激活图标切主侧栏";
+}
+
+TEST(WorkbenchParts, SidebarRatioFromWidthKeepsDraggedWidth) {
+  EXPECT_FLOAT_EQ(SidebarRatioFromWidth(200.0f, 800.0f), 0.25f)
+      << "按停靠宿主宽度换算比例";
+  EXPECT_FLOAT_EQ(SidebarRatioFromWidth(0.0f, 800.0f), 0.0f)
+      << "还没量到宽度时返回 0";
+  EXPECT_FLOAT_EQ(SidebarRatioFromWidth(200.0f, 0.0f), 0.0f)
+      << "停靠宿主宽度为空时返回 0";
+  EXPECT_FLOAT_EQ(SidebarRatioFromWidth(1.0f, 800.0f), kMinDockSplitRatio)
+      << "过窄时按下限钳位";
+  EXPECT_FLOAT_EQ(SidebarRatioFromWidth(790.0f, 800.0f), kMaxDockSplitRatio)
+      << "过宽时按上限钳位";
+}
+
+TEST(WorkbenchParts, DockSplitRatioFromSizeRefMatchesSplitterMath) {
+  constexpr float kSidebarSizeRef = 132.0f;
+  constexpr float kSiblingSizeRef = 664.0f;
+  constexpr float kAvailableWidth = kSidebarSizeRef + kSiblingSizeRef;
+  EXPECT_FLOAT_EQ(DockSplitRatioFromSizeRef(kSidebarSizeRef, kSiblingSizeRef),
+                  kSidebarSizeRef / kAvailableWidth)
+      << "用同一父节点两子节点的 SizeRef 之比";
+  EXPECT_NE(DockSplitRatioFromSizeRef(kSidebarSizeRef, kSiblingSizeRef),
+            kSidebarSizeRef / (kAvailableWidth + 4.0f))
+      << "旧口径把分隔条算进分母，会每轮变窄";
+  EXPECT_FLOAT_EQ(DockSplitRatioFromSizeRef(kSidebarSizeRef, 0.0f), 0.0f)
+      << "没有兄弟节点时返回 0";
+}
+
+TEST(WorkbenchParts, DockSplitRatioFromSizeRefIsStable) {
+  constexpr float kInitialRatio = 2.0f / 12.0f;
+  constexpr int kAvailableWidth = 796;
+  const int size_ref = static_cast<int>(kAvailableWidth * kInitialRatio);
+  const int sibling_ref = kAvailableWidth - size_ref;
+  const float ratio = DockSplitRatioFromSizeRef(
+      static_cast<float>(size_ref), static_cast<float>(sibling_ref));
+  EXPECT_NEAR((size_ref + sibling_ref) * ratio, size_ref, 0.01f)
+      << "再展开时宽度不应继续变窄";
+}
+
+TEST(WorkbenchParts, ToggleMaximizedViewSwitchesTarget) {
+  EXPECT_EQ(ToggleMaximizedView(MaximizedView::None, MaximizedView::Output),
+            MaximizedView::Output)
+      << "未最大化时切到目标视图";
+  EXPECT_EQ(ToggleMaximizedView(MaximizedView::Output, MaximizedView::Output),
+            MaximizedView::None)
+      << "再点同一视图还原";
+  EXPECT_EQ(
+      ToggleMaximizedView(MaximizedView::Output, MaximizedView::Properties),
+      MaximizedView::Properties)
+      << "点另一个视图直接切换目标";
 }
 
 TEST(WorkbenchChrome, ActivityColumnSitsLeftOfDockAboveStatus) {
@@ -363,4 +435,97 @@ TEST(CanvasContent, EditorBeginsOnceSizeSettlesOrDeadlinePasses) {
   EXPECT_TRUE(
       CanvasEditorMayBegin(false, kCanvasContentCreateDeadline, false));
   EXPECT_TRUE(CanvasEditorMayBegin(false, 1, true));
+}
+
+TEST(WorkbenchParts, MonitorFollowAndMaximizeRules) {
+  const MonitorFollowDecision pin_current =
+      DecideMonitorFollowToggle(true, true);
+  EXPECT_FALSE(pin_current.follow);
+  EXPECT_TRUE(pin_current.pin_current);
+  EXPECT_FALSE(pin_current.clear_pin);
+
+  const MonitorFollowDecision no_source =
+      DecideMonitorFollowToggle(true, false);
+  EXPECT_FALSE(no_source.follow);
+  EXPECT_FALSE(no_source.pin_current);
+
+  const MonitorFollowDecision follow_again =
+      DecideMonitorFollowToggle(false, true);
+  EXPECT_TRUE(follow_again.follow);
+  EXPECT_TRUE(follow_again.clear_pin);
+  EXPECT_FALSE(follow_again.pin_current);
+
+  EXPECT_TRUE(MonitorMaximizeAvailable(false));
+  EXPECT_FALSE(MonitorMaximizeAvailable(true));
+}
+
+TEST(WorkbenchParts, MonitorSourceLabelAndFilter) {
+  EXPECT_EQ(MonitorSourceLabel("Graph", "Node", "cloud"),
+            "Graph / Node / cloud");
+  EXPECT_TRUE(MonitorSourceMatchesFilter("Graph / Node / cloud", "node"));
+  EXPECT_TRUE(MonitorSourceMatchesFilter("Graph / Node / cloud", "graph / node"));
+  EXPECT_FALSE(MonitorSourceMatchesFilter("Graph / Node / cloud", "missing"));
+  EXPECT_TRUE(MonitorSourceMatchesFilter("Graph / Node / cloud", ""));
+}
+
+TEST(LogView, DetailPresetMappingAndReverse) {
+  EXPECT_EQ(LogConfigForDetailPreset(LogDetailPreset::Off).level,
+            tg::LogLevel::Off);
+  EXPECT_EQ(LogConfigForDetailPreset(LogDetailPreset::Errors).level,
+            tg::LogLevel::Error);
+  EXPECT_EQ(LogConfigForDetailPreset(LogDetailPreset::Timing).level,
+            tg::LogLevel::Info);
+  EXPECT_EQ(LogConfigForDetailPreset(LogDetailPreset::Timing).categories,
+            static_cast<tg::LogCategoryMask>(tg::LogCategory::Timing))
+      << "Timing 预设只开 Timing 类别";
+  EXPECT_EQ(LogConfigForDetailPreset(LogDetailPreset::Summary).level,
+            tg::LogLevel::Info);
+  EXPECT_EQ(LogConfigForDetailPreset(LogDetailPreset::Detailed).level,
+            tg::LogLevel::Debug);
+  EXPECT_EQ(LogConfigForDetailPreset(LogDetailPreset::Everything).level,
+            tg::LogLevel::Trace);
+  EXPECT_EQ(LogDetailPresetForConfig(
+                LogConfigForDetailPreset(LogDetailPreset::Summary)),
+            LogDetailPreset::Summary)
+      << "完全匹配预设时反推预设名";
+
+  tg::LogConfig custom = LogConfigForDetailPreset(LogDetailPreset::Summary);
+  custom.categories &= ~static_cast<tg::LogCategoryMask>(tg::LogCategory::IO);
+  EXPECT_FALSE(LogDetailPresetForConfig(custom).has_value())
+      << "类别被手动改动后显示 Custom";
+}
+
+TEST(LogView, LineFormatAndCaseInsensitiveFilter) {
+  tg::LogRecord record;
+  record.level = tg::LogLevel::Warn;
+  record.category = tg::LogCategory::Node;
+  record.text = "graph 'G' node 'A': property 'x'=1";
+  EXPECT_EQ(FormatLogRecordLine(record),
+            "[Warn][Node] graph 'G' node 'A': property 'x'=1");
+  EXPECT_TRUE(LogRecordMatchesFilter(record, ""));
+  EXPECT_TRUE(LogRecordMatchesFilter(record, "PROPERTY 'X'=1"));
+  EXPECT_TRUE(LogRecordMatchesFilter(record, "g/a"));
+  EXPECT_FALSE(LogRecordMatchesFilter(record, "missing"));
+  EXPECT_FALSE(LogRecordMatchesFilter(record, "warn"))
+      << "过滤不匹配级别列";
+}
+
+TEST(LogView, SplitLogRecordContext) {
+  tg::LogRecord node;
+  node.text = "graph 'G' node 'A': property 'x'=1";
+  const LogRecordParts node_parts = SplitLogRecord(node);
+  EXPECT_EQ(node_parts.context, "G/A");
+  EXPECT_EQ(node_parts.message, "property 'x'=1");
+
+  tg::LogRecord graph;
+  graph.text = "graph 'G': took 1.000 ms";
+  const LogRecordParts graph_parts = SplitLogRecord(graph);
+  EXPECT_EQ(graph_parts.context, "G");
+  EXPECT_EQ(graph_parts.message, "took 1.000 ms");
+
+  tg::LogRecord app;
+  app.text = "application message";
+  const LogRecordParts app_parts = SplitLogRecord(app);
+  EXPECT_TRUE(app_parts.context.empty());
+  EXPECT_EQ(app_parts.message, "application message");
 }

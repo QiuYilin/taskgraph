@@ -45,6 +45,7 @@ constexpr const char* kJsonKeyPosition = "position";
 constexpr const char* kJsonKeyX = "x";
 constexpr const char* kJsonKeyY = "y";
 constexpr const char* kValueTypeInt = "int";
+constexpr const char* kValueTypeDouble = "double";
 constexpr const char* kValueTypeString = "string";
 constexpr const char* kValueTypeBool = "bool";
 constexpr const char* kPresentationPort = "port";
@@ -59,6 +60,9 @@ json PropertyValueToJson(const PropertyValue& value) {
         using Held = std::decay_t<decltype(held)>;
         if constexpr (std::is_same_v<Held, int>) {
           out[kJsonKeyValueType] = kValueTypeInt;
+          out[kJsonKeyValue] = held;
+        } else if constexpr (std::is_same_v<Held, double>) {
+          out[kJsonKeyValueType] = kValueTypeDouble;
           out[kJsonKeyValue] = held;
         } else if constexpr (std::is_same_v<Held, std::string>) {
           out[kJsonKeyValueType] = kValueTypeString;
@@ -79,6 +83,10 @@ bool PropertyValueFromJson(const json& object, PropertyValue& out_value) {
   const std::string type = object.at(kJsonKeyValueType).get<std::string>();
   if (type == kValueTypeInt) {
     out_value = object.at(kJsonKeyValue).get<int>();
+    return true;
+  }
+  if (type == kValueTypeDouble) {
+    out_value = object.at(kJsonKeyValue).get<double>();
     return true;
   }
   if (type == kValueTypeString) {
@@ -132,7 +140,7 @@ bool WriteTextAtomic(const std::filesystem::path& path,
                              copy_error);
   std::filesystem::remove(temp_path, remove_error);
   if (copy_error) {
-    logError("atomic write failed for {}: rename={}, copy={}", path.string(),
+    TG_LOG_ERROR(LogCategory::IO, "atomic write failed for {}: rename={}, copy={}", path.string(),
              rename_error.message(), copy_error.message());
     return false;
   }
@@ -156,7 +164,8 @@ json SerializeNode(const Node& node, std::size_t node_id,
     }
     json property_json = PropertyValueToJson(property->value);
     property_json[kJsonKeyName] = property->name;
-    if (std::holds_alternative<std::string>(property->value)) {
+    if (std::holds_alternative<std::string>(property->value) &&
+        property->hints.is_project_path) {
       property_json[kJsonKeyValue] = ProjectIo::toProjectRelative(
           root, std::get<std::string>(property->value));
     }
@@ -173,7 +182,8 @@ json SerializeNode(const Node& node, std::size_t node_id,
         PresentationToString(node.inputPresentation(index));
     if (auto property = node.inputProperty(index)) {
       json value_json = PropertyValueToJson(property->value);
-      if (std::holds_alternative<std::string>(property->value)) {
+      if (std::holds_alternative<std::string>(property->value) &&
+          property->hints.is_project_path) {
         value_json[kJsonKeyValue] = ProjectIo::toProjectRelative(
             root, std::get<std::string>(property->value));
       }
@@ -240,7 +250,8 @@ json SerializeGraph(const Graph& graph, const std::filesystem::path& root,
 
 void ApplyPropertyValue(Node::Property& property, const PropertyValue& value,
                         const std::filesystem::path& root) {
-  if (std::holds_alternative<std::string>(value)) {
+  if (std::holds_alternative<std::string>(value) &&
+      property.hints.is_project_path) {
     property.value = ProjectIo::fromProjectRelative(
         root, std::get<std::string>(value));
     return;
@@ -344,7 +355,7 @@ void RemoveOrphanGraphFiles(
   for (const std::filesystem::directory_entry& entry :
        std::filesystem::directory_iterator(graphs_dir, error)) {
     if (error) {
-      logError("save project: cannot iterate graphs dir: {}", error.message());
+      TG_LOG_ERROR(LogCategory::IO, "save project: cannot iterate graphs dir: {}", error.message());
       return;
     }
     if (!entry.is_regular_file(error)) {
@@ -362,7 +373,7 @@ void RemoveOrphanGraphFiles(
     }
     std::filesystem::remove(entry.path(), error);
     if (error) {
-      logError("save project: failed removing orphan {}: {}",
+      TG_LOG_ERROR(LogCategory::IO, "save project: failed removing orphan {}: {}",
                entry.path().string(), error.message());
       error.clear();
     }
@@ -376,12 +387,12 @@ bool ProjectIo::createEmpty(const std::filesystem::path& root,
   std::error_code error;
   std::filesystem::create_directories(root / kProjectGraphsDirectoryName, error);
   if (error) {
-    logError("create project graphs dir failed: {}", error.message());
+    TG_LOG_ERROR(LogCategory::IO, "create project graphs dir failed: {}", error.message());
     return false;
   }
   std::filesystem::create_directories(root / kProjectAssetsDirectoryName, error);
   if (error) {
-    logError("create project assets dir failed: {}", error.message());
+    TG_LOG_ERROR(LogCategory::IO, "create project assets dir failed: {}", error.message());
     return false;
   }
   json manifest;
@@ -399,12 +410,12 @@ bool ProjectIo::save(const Controller& controller,
   std::error_code error;
   std::filesystem::create_directories(root / kProjectGraphsDirectoryName, error);
   if (error) {
-    logError("save project: cannot create graphs dir: {}", error.message());
+    TG_LOG_ERROR(LogCategory::IO, "save project: cannot create graphs dir: {}", error.message());
     return false;
   }
   std::filesystem::create_directories(root / kProjectAssetsDirectoryName, error);
   if (error) {
-    logError("save project: cannot create assets dir: {}", error.message());
+    TG_LOG_ERROR(LogCategory::IO, "save project: cannot create assets dir: {}", error.message());
     return false;
   }
 
@@ -424,7 +435,7 @@ bool ProjectIo::save(const Controller& controller,
     const std::filesystem::path absolute = root / relative;
     const json graph_json = SerializeGraph(*graph, root, pose_getter);
     if (!WriteTextAtomic(absolute, graph_json.dump(kJsonIndentSpaces))) {
-      logError("save project: failed writing {}", absolute.string());
+      TG_LOG_ERROR(LogCategory::IO, "save project: failed writing {}", absolute.string());
       return false;
     }
     const std::string relative_key = relative.generic_string();
@@ -434,7 +445,7 @@ bool ProjectIo::save(const Controller& controller,
   manifest[kJsonKeyGraphs] = std::move(graph_entries);
   if (!WriteTextAtomic(root / kProjectManifestFileName,
                        manifest.dump(kJsonIndentSpaces))) {
-    logError("save project: failed writing manifest");
+    TG_LOG_ERROR(LogCategory::IO, "save project: failed writing manifest");
     return false;
   }
   RemoveOrphanGraphFiles(root, kept_relative_paths);
@@ -447,22 +458,22 @@ bool ProjectIo::load(Controller& controller, const std::filesystem::path& root,
   const std::filesystem::path manifest_path = root / kProjectManifestFileName;
   std::ifstream input(manifest_path, std::ios::binary);
   if (!input) {
-    logError("open project: missing {}", manifest_path.string());
+    TG_LOG_ERROR(LogCategory::IO, "open project: missing {}", manifest_path.string());
     return false;
   }
   json manifest;
   try {
     input >> manifest;
   } catch (const json::exception& error) {
-    logError("open project: invalid manifest: {}", error.what());
+    TG_LOG_ERROR(LogCategory::IO, "open project: invalid manifest: {}", error.what());
     return false;
   }
 
   const std::uint32_t version =
       manifest.value(kJsonKeyFileVersion, static_cast<std::uint32_t>(0));
-  // 兼容 v1（name 等于 type、允许重名）与当前 v2。
-  if (version != 1 && version != kProjectFileVersion) {
-    logError("open project: unsupported fileVersion {}", version);
+  // 兼容 v1（name 等于 type、允许重名）、v2 与当前 v3。
+  if (version < 1 || version > kProjectFileVersion) {
+    TG_LOG_ERROR(LogCategory::IO, "open project: unsupported fileVersion {}", version);
     return false;
   }
   // v1 的 name 全等于 kind，须在载入时重新生成唯一 identifier。
@@ -498,6 +509,8 @@ bool ProjectIo::load(Controller& controller, const std::filesystem::path& root,
             // 先入图再填属性，保证端口与绑定属性已生成。
             graph->addNode(node);
             LoadNodeFields(*node, node_json, root, pose_setter);
+            // 属性里的点类型可能改变端口类型；建边前刷新，canConnect 按最终类型判断。
+            graph->refreshPortTypes(node);
             // v2 保留存档 identifier；v1 的名称等于 kind，交给 addNode 去重。
             if (version != 1) {
               const std::string saved_name =
@@ -506,7 +519,7 @@ bool ProjectIo::load(Controller& controller, const std::filesystem::path& root,
               if (saved_name.empty() ||
                   !graph->renameNode(node, saved_name)) {
                 migrated = true;
-                logError(
+                TG_LOG_ERROR(LogCategory::IO,
                     "open project: duplicate or empty node name '{}' in graph "
                     "'{}'; kept '{}'",
                     saved_name, graph->getName(), node->getName());
@@ -534,12 +547,12 @@ bool ProjectIo::load(Controller& controller, const std::filesystem::path& root,
                 loaded_nodes[static_cast<std::size_t>(from)];
             const std::shared_ptr<Node>& downstream =
                 loaded_nodes[static_cast<std::size_t>(to)];
+            const Node::Port* output = upstream->outputPort(port_out);
+            const Node::Port* input = downstream->inputPort(port_in);
             // 类型、露面方式或重复边被 connect 拒绝时丢弃该边并标脏。
-            if (!graph->connect(upstream, port_out, downstream, port_in)) {
+            if (!graph->connect(output, input)) {
               migrated = true;
-              const Node::Port* output = upstream->outputPort(port_out);
-              const Node::Port* input = downstream->inputPort(port_in);
-              logError(
+              TG_LOG_ERROR(LogCategory::IO,
                   "open project: dropped connection '{}':{}('{}') -> "
                   "'{}':{}('{}') in graph '{}'",
                   upstream->getName(), port_out,
@@ -554,7 +567,7 @@ bool ProjectIo::load(Controller& controller, const std::filesystem::path& root,
       }
     }
   } catch (const std::exception& error) {
-    logError("open project failed: {}", error.what());
+    TG_LOG_ERROR(LogCategory::IO, "open project failed: {}", error.what());
     return false;
   }
 

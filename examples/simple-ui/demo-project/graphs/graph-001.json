@@ -1,0 +1,96 @@
+{
+  "name": "Gain",
+  "nodes": [
+    {
+      "id": 0,
+      "type": "IntNode",
+      "name": "IntNode",
+      "properties": [],
+      "inputs": [
+        {
+          "index": 0,
+          "presentation": "property",
+          "valueType": "int",
+          "value": 3
+        }
+      ],
+      "position": {
+        "x": 120.0,
+        "y": 120.0
+      }
+    },
+    {
+      "id": 1,
+      "type": "GainNode",
+      "name": "GainNode",
+      "properties": [
+        {
+          "name": "factor",
+          "valueType": "double",
+          "value": 1.5
+        },
+        {
+          "name": "rounding",
+          "valueType": "int",
+          "value": 0
+        }
+      ],
+      "inputs": [
+        {
+          "index": 0,
+          "presentation": "port"
+        }
+      ],
+      "position": {
+        "x": 380.0,
+        "y": 120.0
+      }
+    },
+    {
+      "id": 2,
+      "type": "LabelNode",
+      "name": "LabelNode",
+      "properties": [
+        {
+          "name": "title",
+          "valueType": "string",
+          "value": "gain"
+        },
+        {
+          "name": "source",
+          "valueType": "string",
+          "value": "assets/input.pcd"
+        },
+        {
+          "name": "folder",
+          "valueType": "string",
+          "value": "assets"
+        }
+      ],
+      "inputs": [
+        {
+          "index": 0,
+          "presentation": "port"
+        }
+      ],
+      "position": {
+        "x": 680.0,
+        "y": 120.0
+      }
+    }
+  ],
+  "connections": [
+    {
+      "from": 0,
+      "out": 0,
+      "to": 1,
+      "in": 0
+    },
+    {
+      "from": 1,
+      "out": 0,
+      "to": 2,
+      "in": 0
+    }
+  ]
+}

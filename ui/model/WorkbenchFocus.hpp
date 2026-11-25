@@ -66,7 +66,7 @@ class WorkbenchFocus {
 
   PrimarySideBarView primary_side_bar() const { return _primary_side_bar; }
 
-  // 切换主侧栏视图。不创建节点，不收起主侧栏。
+  // 只切主侧栏视图，不创建节点，也不改变主侧栏可见性。
   void ShowPrimarySideBar(PrimarySideBarView view) { _primary_side_bar = view; }
 
   // 只改当前图下标，并清掉节点选中（点图名时用）。

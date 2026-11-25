@@ -32,6 +32,10 @@ class TaskGraphModel : public QtNodes::AbstractGraphModel {
   GraphModel* graphModel() const { return _graph_model; }
   std::shared_ptr<tg::Node> node(QtNodes::NodeId node_id) const;
 
+  /** \brief 端口标签是否在功能名后附带具体类型名（如 value (PointXYZ)）。 */
+  void SetShowPortTypeNames(bool show);
+  bool showPortTypeNames() const { return _show_port_type_names; }
+
   QtNodes::NodeId newNodeId() override;
   std::unordered_set<QtNodes::NodeId> allNodeIds() const override;
   std::unordered_set<QtNodes::ConnectionId> allConnectionIds(
@@ -82,6 +86,7 @@ class TaskGraphModel : public QtNodes::AbstractGraphModel {
   std::vector<QMetaObject::Connection> _graph_connections;
   bool _suppress_connections_reset = false;
   bool _suppress_ports_reset = false;
+  bool _show_port_type_names = false;
   // loadNode 期间指定新节点的 NodeId；nodeAdded 处理后清回 Invalid。
   QtNodes::NodeId _pending_load_id = QtNodes::InvalidNodeId;
 };

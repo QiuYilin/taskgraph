@@ -187,7 +187,8 @@ TEST(Project, RoundtripWithPoseAndRelativePath) {
   graph->addNode(source);
   graph->addNode(sink);
   EXPECT_TRUE(graph->renameNode(source, "SourceA")) << "rename source";
-  EXPECT_TRUE(graph->connect(source, 0, sink, 0)) << "connect source to sink";
+  EXPECT_TRUE(graph->connect(source->outputPort(0), sink->inputPort(0)))
+      << "connect source to sink";
   writer.addGraph(graph);
 
   auto path_graph = std::make_shared<tg::Graph>("Paths");
@@ -496,7 +497,8 @@ TEST(Project, LoadDropsIncompatibleConnection) {
   auto sink = std::make_shared<SinkNode>();
   graph->addNode(source);
   graph->addNode(sink);
-  EXPECT_TRUE(graph->connect(source, 0, sink, 0)) << "connect compatible edge";
+  EXPECT_TRUE(graph->connect(source->outputPort(0), sink->inputPort(0)))
+      << "connect compatible edge";
   writer.addGraph(graph);
   EXPECT_TRUE(writer.saveProjectAs(root)) << "save project before corrupting edge";
 
@@ -534,6 +536,7 @@ TEST(Project, LoadDropsIncompatibleConnection) {
 TEST(Project, TypedRegistrationCaption) {
   constexpr const char* kExplicitCaption = "Custom";
   constexpr const char* kStrippedCaption = "KindCaption";
+  constexpr const char* kCategory = "Math";
 
   tg::Controller controller;
   controller.registerNodeType<KindCaptionNode>();
@@ -548,18 +551,20 @@ TEST(Project, TypedRegistrationCaption) {
   ASSERT_NE(node, nullptr) << "factory creates the node";
   EXPECT_EQ(node->typeId(), KindCaptionNode::kTypeId) << "kind comes from kTypeId";
 
-  controller.registerNodeType<KindCaptionNode>(kExplicitCaption);
+  controller.registerNodeType<KindCaptionNode>(kExplicitCaption, kCategory);
   const tg::NodeTypeInfo* overridden =
       FindNodeType(controller, KindCaptionNode::kTypeId);
   ASSERT_NE(overridden, nullptr) << "re-registration keeps the kind";
   EXPECT_EQ(overridden->type_id, KindCaptionNode::kTypeId);
   EXPECT_EQ(overridden->caption, kExplicitCaption) << "explicit caption kept";
+  EXPECT_EQ(overridden->category, kCategory) << "category kept";
 
   controller.registerNodeType<PlainKind>();
   const tg::NodeTypeInfo* plain = FindNodeType(controller, PlainKind::kTypeId);
   ASSERT_NE(plain, nullptr) << "kind without Node suffix listed";
   EXPECT_EQ(plain->caption, PlainKind::kTypeId)
       << "caption stays the type id";
+  EXPECT_TRUE(plain->category.empty()) << "category defaults empty";
 
   controller.registerNodeType("SourceNode",
                               [] { return std::make_shared<SourceNode>(); });
@@ -567,6 +572,89 @@ TEST(Project, TypedRegistrationCaption) {
   ASSERT_NE(source, nullptr) << "factory overload listed";
   EXPECT_EQ(source->caption, "SourceNode")
       << "empty factory caption still uses the type id";
+}
+
+class StringConfigNode : public tg::Node {
+ public:
+  StringConfigNode() {
+    setTypeId("StringConfigNode");
+    tg::PropertyHints label_hints;
+    label_hints.editor = tg::PropertyEditor::Text;
+    label_hints.is_project_path = false;
+    addProperty("label", std::string("C:/demo/label"), label_hints);
+    tg::PropertyHints source_hints;
+    source_hints.editor = tg::PropertyEditor::File;
+    addProperty("source", std::string{});
+  }
+
+  unsigned int nFixedPorts(tg::PortType) const override { return 0; }
+  void onSetInPortData(unsigned int, std::shared_ptr<tg::NodeData>) override {}
+  std::shared_ptr<tg::NodeData> getOutPortData(unsigned int) override {
+    return nullptr;
+  }
+};
+
+TEST(Project, NonPathStringStaysAbsoluteWhileFileRelativizes) {
+  const std::filesystem::path root =
+      MakeTempRoot("taskgraph-project-test-string-path");
+  std::error_code error;
+  const std::filesystem::path asset = root / "assets" / "in.pcd";
+  std::filesystem::create_directories(asset.parent_path(), error);
+  {
+    std::ofstream file(asset);
+    file << "pcd";
+  }
+
+  tg::Controller writer;
+  RegisterTypes(writer);
+  writer.registerNodeType("StringConfigNode",
+                          [] { return std::make_shared<StringConfigNode>(); });
+  auto graph = std::make_shared<tg::Graph>("Config");
+  auto node = std::make_shared<StringConfigNode>();
+  node->getProperties()[0]->value = std::string("C:/demo/label");
+  node->getProperties()[1]->value = asset.string();
+  graph->addNode(node);
+  writer.addGraph(graph);
+  EXPECT_TRUE(writer.saveProjectAs(root)) << "save string project";
+
+  tg::Controller reader;
+  RegisterTypes(reader);
+  reader.registerNodeType("StringConfigNode",
+                          [] { return std::make_shared<StringConfigNode>(); });
+  EXPECT_TRUE(reader.openProject(root)) << "open string project";
+  ASSERT_EQ(reader.getGraphs().size(), std::size_t{1});
+  const auto loaded = reader.getGraphs()[0]->getNodes().front();
+  const auto& props = loaded->getProperties();
+  ASSERT_EQ(props.size(), std::size_t{2});
+  EXPECT_EQ(std::get<std::string>(props[0]->value), "C:/demo/label")
+      << "is_project_path=false 的字符串不应被相对化";
+  const std::string source = std::get<std::string>(props[1]->value);
+  EXPECT_TRUE(std::filesystem::path(source).is_absolute())
+      << "is_project_path=true 的路径应还原为绝对";
+  EXPECT_EQ(std::filesystem::path(source).lexically_normal().generic_string(),
+            asset.lexically_normal().generic_string());
+
+  std::filesystem::remove_all(root, error);
+}
+
+TEST(Project, LoadsV2AndV3Manifests) {
+  for (const unsigned int version : {2u, 3u}) {
+    const std::filesystem::path root = MakeTempRoot(
+        ("taskgraph-project-test-v" + std::to_string(version)).c_str());
+    std::error_code error;
+    const std::string name = "V" + std::to_string(version);
+    {
+      std::ofstream manifest(root / tg::kProjectManifestFileName);
+      manifest << "{\n  \"fileVersion\": " << version << ",\n  \"name\": \""
+               << name << "\",\n  \"graphs\": []\n}";
+    }
+    tg::Controller reader;
+    RegisterTypes(reader);
+    EXPECT_TRUE(reader.openProject(root))
+        << "fileVersion " << version << " 应能载入";
+    EXPECT_EQ(reader.projectName(), name);
+    std::filesystem::remove_all(root, error);
+  }
 }
 
 }  // namespace

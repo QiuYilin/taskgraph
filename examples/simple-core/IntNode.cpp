@@ -62,14 +62,14 @@ const char* IntNode::fixedPortCaption(PortType port_type,
 }
 
 void IntNode::compute() {
-  logInfo("[{}]computing ...", "IntNode");
+  TG_LOG_DEBUG(tg::LogCategory::App, "[{}]computing ...", "IntNode");
   const auto value_property = inputProperty(kValueIndex);
   if (value_property == nullptr) {
     throw tg::NodeError("Property value of IntNode is missing!");
   }
   const int value = std::get<int>(value_property->value);
   _out_data = std::make_shared<IntData_t>(value);
-  logInfo("[{}]result: {}", "IntNode", value);
+  TG_LOG_DEBUG(tg::LogCategory::App, "[{}]result: {}", "IntNode", value);
   return;
 }
 
