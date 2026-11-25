@@ -357,7 +357,7 @@ inline void PruneMonitorRuntime(MonitorWindowsState& windows_state,
   }
 }
 
-// 每个实例一个不进主 DockSpace 的原生窗口。
+// 每个实例一个可停靠的原生窗口。首次浮动，之后的停靠由 ImGui ini 记住。
 inline MonitorWorkspaceActions ShowMonitorWindows(
     MonitorWindowsState& windows_state, MonitorWindowsHost& host) {
   MonitorWorkspaceActions out;
@@ -371,8 +371,7 @@ inline MonitorWorkspaceActions ShowMonitorWindows(
         kViewWindowMarginEpx * ui_scale);
   }
   const ImGuiWindowFlags window_flags =
-      ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoScrollbar |
-      ImGuiWindowFlags_NoScrollWithMouse;
+      ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse;
 
   for (MonitorWindow& window : host.workspace.windows()) {
     if (!window.visible) {
@@ -387,6 +386,8 @@ inline MonitorWorkspaceActions ShowMonitorWindows(
       }
       const std::string name = instance.title + "###" + instance.id;
       bool open = true;
+      // 没有 ini 记录时保持浮动；拖进停靠区后不再被拉回。
+      ImGui::SetNextWindowDockID(0, ImGuiCond_FirstUseEver);
       if (first_use.size.x > 0.0f && first_use.size.y > 0.0f) {
         ImGui::SetNextWindowPos(ToImVec2(first_use.pos), ImGuiCond_FirstUseEver);
         ImGui::SetNextWindowSize(ToImVec2(first_use.size),
