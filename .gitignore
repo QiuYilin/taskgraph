@@ -15,13 +15,16 @@ out
 build*
 *build
 
-# 私有规则：只在本机生效，不进 Git
-.cursor/rules/private/*
-!.cursor/rules/private/README.md
-.github/instructions/private/
-
-# Kilo 计划存档：本地会话产物，不进 Git
-.kilo/plans/
+# 本机与 Agent 配置只在本地，不进 Git
+.cursor/
+.cursorignore
+.rgignore
+.clangd
+.vscode/
+.github/copilot-instructions.md
+.github/instructions/
+kilo.json
+.kilo/
 
 # 运行时日志，不进 Git
 logs/
