@@ -190,4 +190,4 @@ int main(int argc, char** argv) {
 
 ### 为什么写两套 UI
 
-一部分原因是为了说明 core 能被任意 UI 框架使用：`taskgraph::Core` 不依赖任何 UI，两个前端都只是同一份模型上的观察者。imgui 版用 imgui-node-editor；立即模式很适合让 AI 随时完善 UI 代码：每一帧都从当前状态重建，改动集中在一处，改完立刻能看见。Qt 版基于 QtNodes，最新版支持 MVD；按 MVD 分层写下来，AI 实现 UI 的速度非常快。复用上，ImGui 前端用规格和适配器包原生 `ImGui::Begin` 窗口（面板、Monitor、独立视图窗口）以及编辑区原生页签栏，Qt 前端用面向对象的 MVD（model / view / delegate）。
+一部分原因是为了说明 core 能被任意 UI 框架使用：`taskgraph::Core` 不依赖任何 UI，两个前端都只是同一份模型上的观察者。imgui 版用 imgui-node-editor；立即模式很适合让 AI 随时完善 UI 代码：每一帧都从当前状态重建，改动集中在一处，改完立刻能看见。Qt 版基于 QtNodes，最新版支持 MVD；按 MVD 分层写下来，AI 实现 UI 的速度非常快。复用上，ImGui 前端用规格和适配器包原生 `ImGui::Begin` 窗口（面板、Monitor、独立视图窗口）以及编辑区原生页签栏。Qt 前端用面向对象的 MVD（model / view / delegate）做工作台，Monitor 窗口用 ADS 停靠。

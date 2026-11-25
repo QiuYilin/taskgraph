@@ -133,7 +133,7 @@ graph 页签下面是画布。节点第一次出现时，工程里有坐标就�
 - 空状态：`Run the graph to compute an output.`、`No node selected.`、`Selected node has no matching output.`、`Pinned node has no matching output.`。kind 已不在注册表里时显示 `This monitor kind is no longer registered.`。
 - 内容区拿到 taskgraph 算好的 `width/height`，窗口禁用滚动条；有 `status` 时底部留一行小字。
 - session 按窗口保存实例、活动实例和下一实例序号；重启后已保存的窗口会再打开。旧 `monitor_tabs` 会迁移成单个 `monitor` 窗口。
-- `simple-ui` 注册 **Custom Monitor** kind（`open_on_first_run` 为 false，启动时没有窗口），同时接受 `IntData` / `DoubleData`，演示 `accepts` / `draw` / `status` 三个回调的最小写法。
+- `simple-ui` 注册 **Custom Monitor** kind（`open_on_first_run` 为 false，启动时没有窗口），同时接受 `IntData` / `DoubleData`，演示 `accepts` / `draw` / `status`。Qt 用同一套字段里的 `text`，不调用 `draw`。
 
 注册接口：
 
@@ -155,7 +155,8 @@ ui.AddMonitorView(std::move(view));
 | `id` / `title` | monitor kind 的稳定 id 和窗口标题；实例 id 由 taskgraph 生成 |
 | `open_on_first_run` | 保留在注册结构里；当前启动不按它自动开窗口 |
 | `accepts` | 过滤该 kind 接受的 NodeData；空表示全部 |
-| `draw` | 内容区渲染，`width/height` 是 taskgraph 算好的可用尺寸 |
+| `draw` | ImGui 内容区渲染，`width/height` 是 taskgraph 算好的可用尺寸 |
+| `text` | Qt 内容区的纯文本。空则 Qt 显示 `debugSummary()`。ImGui 不调用它 |
 | `status` | 有来源时的底部短状态；返回空则不占行 |
 | `open` | 旧字段，保留兼容；打开哪些窗口以 session 里的 monitor 窗口为准 |
 
@@ -281,9 +282,9 @@ ui.AddMonitorView(std::move(view));
 
 - **File**：New Project...、Open Project...、Open Recent、Save、Save As...；**Preferences > Keyboard Shortcuts** 打开只读快捷键页签；**Preferences > Theme** 在 **Dark** / **Light** 间即时切换，选择写入 `session.json`，下次启动恢复。
 - **Edit**：Undo、Redo、Cut、Copy、Paste、Delete，作用于当前画布。
-- **View**：Zoom In、Zoom Out、Fit All、Fit Selected；**Activity Bar**、**Explorer**、**Search**；**Properties** / **Output** 开关右侧属性表和底部面板。
+- **View**：Zoom In、Zoom Out、Fit All、Fit Selected；**Activity Bar**、**Explorer**、**Search**；**Properties** / **Output** 开关右侧属性表和底部面板。**Monitor** 在还没有 Monitor 窗口时，用第一个注册 kind 新建一个浮动窗口；已经有窗口时不变。
 - **Run**：**Run Graph**（F5）跑当前页签的图。
-- **Help**：**Welcome**（暂不可用）。
+- **Help**：**Welcome**（暂不可用）。注册了 monitor kind 时，**New Monitor** 紧挨在菜单栏 **Help** 右边；每次点击都再新建一个浮动窗口，用第一个注册 kind。没有注册 kind 时 **Monitor** 和 **New Monitor** 都不显示。
 
 ## 主侧栏
 
@@ -306,6 +307,19 @@ ui.AddMonitorView(std::move(view));
 ## 属性表
 
 选中节点时三列：**Name**、**Type**、**Value**。int 用数字框，bool 用勾选框，string 可直接输入；路径值右键 **Browse...** 选文件。端口露面的输入行只读；右键 **Convert to Property**，改回时用 **Convert to Port**。标题栏的最大化/还原动作见「外壳」；关闭后可从 **View > Properties** 重开。
+
+## Monitor 窗口
+
+每个 Monitor 实例是一个可停靠的 ADS 窗口，默认浮动，也可以拖进主停靠区。编辑区是中央窗口，Monitor 作为新页签或新格子停进去。
+
+- **View > Monitor** 和菜单栏 **New Monitor** 的规则与 ImGui 版相同：前者只在还没有实例时新建，后者每次都新建。多种 kind 时暂不选择，用第一个注册 kind。
+- 首次出现在编辑区页签栏下方的右上角。关闭按钮销毁该实例。
+- 内容首行：**Source**、**Follow Selection**。窗口变窄时 Source 文字缩短，Follow 先去掉标签，再收进 `...`。
+- **Source** 打开带过滤框的列表，按 `图名 / 节点 / 端口` 列出当前可用的输出；选择后关闭 Follow 并固定该来源。
+- **Follow Selection** 默认开启，跟随主侧栏或画布选中的节点。空状态文案与 ImGui 版相同。
+- 正文用注册时的 `text`；没有 `text` 时显示 `debugSummary()`。有 `status` 时底部留一行。
+- session 与 ImGui 共用 `monitor_windows`。重启后已保存的实例会再打开。
+- `simple-qt` 注册 **Custom Monitor**（`open_on_first_run` 为 false），接受 `IntData` / `DoubleData`。
 
 ## 面板与状态栏
 

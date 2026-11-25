@@ -1,5 +1,9 @@
 #pragma once
 
+#include "MonitorSources.hpp"
+#include "MonitorWorkspace.hpp"
+#include "WorkbenchParts.hpp"
+
 #include <QByteArray>
 #include <QMainWindow>
 #include <QPoint>
@@ -48,6 +52,7 @@ enum class PrimarySideBarView;
 namespace ads {
 class CDockManager;
 class CDockWidget;
+class CFloatingDockContainer;
 }
 
 class Ui : public QMainWindow {
@@ -55,7 +60,8 @@ class Ui : public QMainWindow {
   explicit Ui(tg::Controller& project);
   ~Ui() override;
 
-  void Run() { show(); }
+  void Run();
+  void AddMonitorView(MonitorView view);
 
  private:
   void BuildMenuBar();
@@ -130,6 +136,15 @@ class Ui : public QMainWindow {
   void UpdateProjectUi();
   void RememberOpenedProject(const std::filesystem::path& root);
   void PersistSession();
+  void EnsureMonitorSession();
+  void UpdateMonitorActions();
+  void OpenMonitorIfNone();
+  void CreateMonitor();
+  void SpawnMonitorDock(const MonitorInstance& instance, bool focus);
+  void PlaceMonitorFloating(ads::CFloatingDockContainer* floating);
+  void CloseMonitorInstance(const std::string& instance_id);
+  void RefreshMonitors();
+  tg::Node* SelectedNode() const;
 
   tg::Controller& _project;
   std::unique_ptr<UiSession> _session;
@@ -176,4 +191,10 @@ class Ui : public QMainWindow {
   };
   std::unordered_map<QUndoStack*, UndoTrack> _undo_tracks;
   std::uint64_t _next_edit_seq = 0;
+  std::vector<MonitorView> _monitor_views;
+  MonitorWorkspace _monitor;
+  std::unordered_map<std::string, MonitorWindowState> _monitor_states;
+  std::unordered_map<std::string, ads::CDockWidget*> _monitor_docks;
+  QAction* _monitor_view_action = nullptr;
+  QAction* _new_monitor_action = nullptr;
 };

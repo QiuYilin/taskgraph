@@ -9,6 +9,7 @@ set(HPP_HEADER_FILES
     Undo.hpp
     UiSession.hpp
     MonitorContainer.hpp
+    MonitorSources.hpp
     MonitorWorkspace.hpp
     LogView.hpp
     LinkVariable.hpp

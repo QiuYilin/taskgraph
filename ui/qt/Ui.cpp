@@ -31,12 +31,14 @@
 #include <QStackedWidget>
 #include <QStatusBar>
 #include <QStyle>
+#include <QTabBar>
 #include <QTableView>
 #include <QTimer>
 #include <QToolButton>
 #include <QTreeView>
 #include <QWidget>
 
+#include <algorithm>
 #include <memory>
 #include <filesystem>
 #include <map>
@@ -54,6 +56,8 @@
 #include "WorkbenchClipboard.hpp"
 #include "EditorModel.hpp"
 #include "EditorTabsView.hpp"
+#include "FloatingDockContainer.h"
+#include "MonitorPane.hpp"
 #include "GraphCanvasView.hpp"
 #include "GraphModel.hpp"
 #include "NativePathDialog.hpp"
@@ -158,6 +162,11 @@ Ui::~Ui() {
   }
   if (_output_dock != nullptr) {
     disconnect(_output_dock, nullptr, this, nullptr);
+  }
+  for (auto& entry : _monitor_docks) {
+    if (entry.second != nullptr) {
+      disconnect(entry.second, nullptr, this, nullptr);
+    }
   }
   PersistSession();
 }
@@ -711,8 +720,21 @@ void Ui::BuildMenuBar() {
   _run_action->setEnabled(false);
   connect(_run_action, &QAction::triggered, this, [this] { RunActiveGraph(); });
 
+  _monitor_view_action = view->addAction("Monitor");
+  _monitor_view_action->setObjectName("viewMonitorAction");
+  _monitor_view_action->setVisible(false);
+  connect(_monitor_view_action, &QAction::triggered, this,
+          [this] { OpenMonitorIfNone(); });
+
   QMenu* help = menuBar()->addMenu("&Help");
   help->addAction("Welcome")->setEnabled(false);
+
+  // 菜单栏从左到右：File、Edit、View、Run、Help，New Monitor 紧挨 Help。
+  _new_monitor_action = menuBar()->addAction("New Monitor");
+  _new_monitor_action->setObjectName("newMonitorAction");
+  _new_monitor_action->setVisible(false);
+  connect(_new_monitor_action, &QAction::triggered, this,
+          [this] { CreateMonitor(); });
 }
 
 void Ui::BuildWorkbench() {
@@ -851,6 +873,7 @@ void Ui::BuildWorkbench() {
   connect(_editor_model, &EditorModel::selectionChanged, this, [this] {
     _property_model->setNode(_editor_model->selectedGraph(),
                              _editor_model->selectedNode());
+    RefreshMonitors();
   });
 
   _property_table->setContextMenuPolicy(Qt::CustomContextMenu);
@@ -1291,13 +1314,13 @@ void Ui::UpdateStatusBar() {
 void Ui::PollLogLines() {
   std::vector<tg::LogRecord> records;
   _log_cursor = tg::copyLogRecordsSince(_log_cursor, records);
-  if (_output == nullptr) {
-    return;
+  if (_output != nullptr) {
+    for (const tg::LogRecord& record : records) {
+      _output->appendPlainText(
+          QString::fromStdString(FormatLogRecordLine(record)));
+    }
   }
-  for (const tg::LogRecord& record : records) {
-    _output->appendPlainText(
-        QString::fromStdString(FormatLogRecordLine(record)));
-  }
+  RefreshMonitors();
 }
 
 void Ui::NewProject() {
@@ -1460,6 +1483,158 @@ void Ui::RememberOpenedProject(const std::filesystem::path& root) {
   _session->save();
 }
 
+void Ui::Run() {
+  EnsureMonitorSession();
+  show();
+}
+
+void Ui::AddMonitorView(MonitorView view) {
+  for (MonitorView& existing : _monitor_views) {
+    if (existing.id == view.id) {
+      existing = std::move(view);
+      UpdateMonitorActions();
+      return;
+    }
+  }
+  _monitor_views.push_back(std::move(view));
+  UpdateMonitorActions();
+}
+
+void Ui::EnsureMonitorSession() {
+  if (_session == nullptr || _monitor.restored()) {
+    return;
+  }
+  _monitor.Restore(_monitor_views, *_session);
+  for (const MonitorWindow& window : _monitor.windows()) {
+    if (!window.visible) {
+      continue;
+    }
+    for (const MonitorInstance& instance : window.tabs.instances()) {
+      SpawnMonitorDock(instance, false);
+    }
+  }
+}
+
+void Ui::UpdateMonitorActions() {
+  const bool has_kind = !_monitor_views.empty();
+  if (_monitor_view_action != nullptr) {
+    _monitor_view_action->setVisible(has_kind);
+  }
+  if (_new_monitor_action != nullptr) {
+    _new_monitor_action->setVisible(has_kind);
+  }
+}
+
+void Ui::OpenMonitorIfNone() {
+  EnsureMonitorSession();
+  if (_monitor.has_instances()) {
+    return;
+  }
+  CreateMonitor();
+}
+
+void Ui::CreateMonitor() {
+  EnsureMonitorSession();
+  if (_monitor_views.empty()) {
+    return;
+  }
+  if (!_monitor.CreateTab(_monitor_views.front().id, _monitor_views)) {
+    return;
+  }
+  const auto& instances = _monitor.windows().back().tabs.instances();
+  if (instances.empty()) {
+    return;
+  }
+  SpawnMonitorDock(instances.back(), true);
+}
+
+void Ui::SpawnMonitorDock(const MonitorInstance& instance, bool focus) {
+  if (_dock_manager == nullptr ||
+      _monitor_docks.find(instance.id) != _monitor_docks.end()) {
+    return;
+  }
+  MonitorWindowState& state = _monitor_states[instance.id];
+  auto* dock = new ads::CDockWidget(_dock_manager,
+                                    QString::fromStdString(instance.title));
+  dock->setObjectName(QString::fromStdString(instance.id));
+  auto* pane = new MonitorPane(_project, _monitor_views, instance.kind_id, state,
+                               dock);
+  dock->setWidget(pane);
+  dock->setFeature(ads::CDockWidget::CustomCloseHandling, true);
+  const std::string instance_id = instance.id;
+  connect(dock, &ads::CDockWidget::closeRequested, this,
+          [this, instance_id] { CloseMonitorInstance(instance_id); });
+  _monitor_docks.emplace(instance_id, dock);
+  ads::CFloatingDockContainer* floating =
+      _dock_manager->addDockWidgetFloating(dock);
+  PlaceMonitorFloating(floating);
+  pane->Refresh(SelectedNode());
+  if (focus) {
+    dock->toggleView(true);
+    dock->raise();
+  }
+}
+
+void Ui::PlaceMonitorFloating(ads::CFloatingDockContainer* floating) {
+  if (floating == nullptr) {
+    return;
+  }
+  floating->resize(kMonitorDefaultWidth, kMonitorDefaultHeight);
+  if (_editor_dock == nullptr || _editor_dock->width() <= 0) {
+    return;
+  }
+  const int tab_height =
+      _tabs != nullptr && _tabs->tabBar() != nullptr ? _tabs->tabBar()->height()
+                                                     : 0;
+  const int index = static_cast<int>(_monitor_docks.size()) - 1;
+  const int cascade = (std::max)(index, 0) * kMonitorCascadeStep;
+  const QPoint origin = _editor_dock->mapToGlobal(QPoint(0, tab_height));
+  const int x = origin.x() + _editor_dock->width() - kMonitorDefaultWidth -
+                kMonitorEdgeMargin + cascade;
+  const int y = origin.y() + kMonitorEdgeMargin + cascade;
+  floating->move(x, y);
+}
+
+void Ui::CloseMonitorInstance(const std::string& instance_id) {
+  const auto found = _monitor_docks.find(instance_id);
+  if (found == _monitor_docks.end()) {
+    return;
+  }
+  ads::CDockWidget* dock = found->second;
+  _monitor_docks.erase(found);
+  if (dock != nullptr) {
+    disconnect(dock, nullptr, this, nullptr);
+  }
+  if (MonitorWindow* window = _monitor.FindWindowForInstance(instance_id)) {
+    _monitor.CloseTab(window->id, instance_id);
+  }
+  if (dock != nullptr) {
+    dock->deleteDockWidget();
+  }
+  _monitor_states.erase(instance_id);
+}
+
+void Ui::RefreshMonitors() {
+  tg::Node* selected = SelectedNode();
+  for (const auto& entry : _monitor_docks) {
+    if (entry.second == nullptr) {
+      continue;
+    }
+    auto* pane = qobject_cast<MonitorPane*>(entry.second->widget());
+    if (pane != nullptr) {
+      pane->Refresh(selected);
+    }
+  }
+}
+
+tg::Node* Ui::SelectedNode() const {
+  if (_editor_model == nullptr) {
+    return nullptr;
+  }
+  const std::shared_ptr<tg::Node> node = _editor_model->selectedNode();
+  return node.get();
+}
+
 void Ui::PersistSession() {
   if (_session == nullptr) {
     return;
@@ -1476,6 +1651,7 @@ void Ui::PersistSession() {
       }
     }
   }
+  _monitor.Save(_monitor_views, *_session);
   _session->save();
 }
 

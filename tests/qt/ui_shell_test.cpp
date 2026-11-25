@@ -6,6 +6,7 @@
 
 #include <QAction>
 #include <QApplication>
+#include <QCheckBox>
 #include <QColor>
 #include <QCoreApplication>
 #include <QLineEdit>
@@ -34,6 +35,7 @@
 #include "WorkbenchClipboard.hpp"
 #include "EditorModel.hpp"
 #include "EditorTabsView.hpp"
+#include "MonitorPane.hpp"
 #include "GraphCanvasView.hpp"
 #include "GraphModel.hpp"
 #include "KeyboardShortcutsView.hpp"
@@ -45,6 +47,8 @@
 #include "Undo.hpp"
 #include "UndoTarget.hpp"
 #include "WorkbenchFocus.hpp"
+
+#include <taskgraph/NodeData.hpp>
 
 namespace {
 
@@ -175,6 +179,7 @@ class UiShellTest : public QObject {
   void explorerUndoStrictCrossStackOrder();
   void contextMenuSpecsFollowOrder();
   void canvasRenameRoundTrip();
+  void monitorWindowFromMenu();
 };
 
 void UiShellTest::themeSwitchAppliesAndPersists() {
@@ -748,6 +753,41 @@ void UiShellTest::canvasRenameRoundTrip() {
   // 撤销改回原名。
   QVERIFY(rename.Revert(target));
   QCOMPARE(alpha->getName(), original);
+}
+
+void UiShellTest::monitorWindowFromMenu() {
+  UiHarness harness;
+  QAction* create = nullptr;
+  for (QAction* action : harness.ui->menuBar()->actions()) {
+    if (action != nullptr && action->text() == "New Monitor") {
+      create = action;
+    }
+  }
+  QVERIFY(create != nullptr);
+  QVERIFY(!create->isVisible());
+
+  MonitorView view;
+  view.id = "custom-monitor";
+  view.title = "Custom Monitor";
+  view.text = [](const tg::NodeData& data) { return data.debugSummary(); };
+  harness.ui->AddMonitorView(std::move(view));
+  QVERIFY(create->isVisible());
+
+  create->trigger();
+  QCoreApplication::processEvents();
+  auto* dock = harness.ui->findChild<QWidget*>("monitor.custom-monitor.1");
+  QVERIFY(dock != nullptr);
+  QCOMPARE(dock->windowTitle(), QString("Custom Monitor"));
+  auto* follow = harness.ui->findChild<QCheckBox*>("monitorFollowCheck");
+  QVERIFY(follow != nullptr);
+  QVERIFY(follow->isChecked());
+  QCOMPARE(harness.ui->findChildren<MonitorPane*>().size(), 1);
+
+  QAction* again = FindAction(harness.ui->menuBar(), QString("Monitor"));
+  QVERIFY(again != nullptr);
+  again->trigger();
+  QCoreApplication::processEvents();
+  QCOMPARE(harness.ui->findChildren<MonitorPane*>().size(), 1);
 }
 
 QTEST_MAIN(UiShellTest)

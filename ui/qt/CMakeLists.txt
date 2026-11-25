@@ -11,6 +11,7 @@ set(PRIVATE_HEADER_FILES
     EditorModel.hpp
     EditorTabsView.hpp
     KeyboardShortcutsView.hpp
+    MonitorPane.hpp
     ProjectRowDelegate.hpp
     TaskGraphModel.hpp
     GraphCanvasView.hpp
@@ -30,6 +31,7 @@ set(SOURCE_FILES
     EditorModel.cpp
     EditorTabsView.cpp
     KeyboardShortcutsView.cpp
+    MonitorPane.cpp
     ProjectRowDelegate.cpp
     TaskGraphModel.cpp
     GraphCanvasView.cpp
@@ -59,7 +61,8 @@ target_include_directories(${component} PUBLIC
 
 target_link_libraries(${component}
     PUBLIC Qt6::Widgets
-    PRIVATE ${project_name}::UiModel ads::qtadvanceddocking-qt6 QtNodes::QtNodes
+    PUBLIC ${project_name}::UiModel
+    PRIVATE ads::qtadvanceddocking-qt6 QtNodes::QtNodes
     )
 
 ###############

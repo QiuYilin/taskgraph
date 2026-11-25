@@ -201,8 +201,10 @@ struct MonitorView {
   bool open_on_first_run = false;
   // 可接受的 NodeData；空表示任何类型。
   std::function<bool(const tg::NodeData&)> accepts;
-  // 内容区：width/height 是 taskgraph 算好的可用尺寸，从当前光标开始画。
+  // 内容区：width/height 是 taskgraph 算好的可用尺寸，从当前光标开始画。ImGui 用。
   std::function<void(const tg::NodeData&, float width, float height)> draw;
+  // Qt 内容区的纯文本。空则 Qt 显示 debugSummary()。
+  std::function<std::string(const tg::NodeData&)> text;
   // 有来源时的短状态（如 "63 points"）；空则不占行。
   std::function<std::string(const tg::NodeData*)> status;
 
