@@ -4082,12 +4082,14 @@ class Ui : public UiBase<Ui> {
 
   // 库在上一帧 End 里认出快捷键，这一帧 BeginShortcut 才读得到。
   // 每一条是否执行，问清单上该命令的 When。
-  void HandleEditorShortcuts(const std::shared_ptr<tg::Graph>& graph) {
-    if (!ax::NodeEditor::BeginShortcut()) {
+  void HandleEditorShortcuts(const std::shared_ptr<tg::Graph>& graph,
+                             bool editor_focused) {
+    // 快捷键只在画布有焦点时执行，浮窗获得焦点后不能落到画布。
+    if (!editor_focused || !ax::NodeEditor::BeginShortcut()) {
       return;
     }
     ShortcutContext context;
-    context.editor_focused = true;
+    context.editor_focused = editor_focused;
     context.placing = _focus.armed_placement().armed;
     const tg::NodePose anchor = CanvasLocalMousePose();
     if (ax::NodeEditor::AcceptCut()) {
@@ -4421,14 +4423,19 @@ class Ui : public UiBase<Ui> {
       }
       ax::NodeEditor::EndDelete();
       // 剪切、复制、粘贴、空格新建。落点中忽略。
-      HandleEditorShortcuts(graphs[_focus.selected_graph_index()]);
+      HandleEditorShortcuts(graphs[_focus.selected_graph_index()],
+                            library_keys.editor_focused);
       // 落点判定在菜单之前：编辑区右键取消时不再打开引脚、节点、空白菜单。
       const bool cancel_armed_place = UpdateArmedPlacement(graphs);
       // 画布右键：引脚 / 节点 / 背景菜单（Suspend 后弹 ImGui）。
       // PinId 只在 ShowPinContextMenu 为真的那一帧有效，必须存进成员供后续帧画菜单。
       ax::NodeEditor::Suspend();
+      // 浮窗盖在画布上时，右键不能落到画布菜单；Suspend 后仍要显式判断 hover。
+      const bool canvas_hovered = ImGui::IsWindowHovered(
+          ImGuiHoveredFlags_AllowWhenBlockedByActiveItem);
       ax::NodeEditor::PinId context_pin_id;
-      if (ax::NodeEditor::ShowPinContextMenu(&context_pin_id)) {
+      if (canvas_hovered &&
+          ax::NodeEditor::ShowPinContextMenu(&context_pin_id)) {
         auto* const port = context_pin_id.AsPointer<tg::Node::Port>();
         if (port != nullptr && port->node != nullptr && !port->is_output &&
             port->node->allowsPropertyPresentation(port->index)) {
@@ -4439,13 +4446,15 @@ class Ui : public UiBase<Ui> {
         }
       }
       ax::NodeEditor::NodeId context_node_id;
-      if (ax::NodeEditor::ShowNodeContextMenu(&context_node_id) &&
+      if (canvas_hovered &&
+          ax::NodeEditor::ShowNodeContextMenu(&context_node_id) &&
           context_node_id.AsPointer<tg::Node>() != nullptr &&
           !cancel_armed_place) {
         _canvas_menu_node = context_node_id.AsPointer<tg::Node>();
         ImGui::OpenPopup("Canvas Node Menu");
       }
-      if (ax::NodeEditor::ShowBackgroundContextMenu() && !cancel_armed_place) {
+      if (canvas_hovered && ax::NodeEditor::ShowBackgroundContextMenu() &&
+          !cancel_armed_place) {
         ImGui::OpenPopup("Canvas Background Menu");
       }
       if (ImGui::BeginPopup("Pin Context Menu")) {
