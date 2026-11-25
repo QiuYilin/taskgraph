@@ -39,7 +39,7 @@ inline constexpr float kViewWindowCenterRatio = 0.5f;
 inline constexpr float kViewWindowDefaultWidthEpx = 720.0f;
 inline constexpr float kViewWindowDefaultHeightEpx = 540.0f;
 inline constexpr float kViewWindowMarginEpx = 24.0f;
-// VS Code 按钮（.monaco-button）：2epx 圆角、1epx 描边。
+// 按钮：2epx 圆角、1epx 描边。
 inline constexpr float kButtonCornerRadiusEpx = 2.0f;
 inline constexpr float kButtonBorderSizeEpx = 1.0f;
 // 下拉框 chevron：以框高中心为原点的小折线。
@@ -109,7 +109,7 @@ inline float ButtonWidth(const char* label) {
 
 enum class ButtonKind : unsigned char { Secondary, Primary };
 
-// VS Code 按钮：secondary 用于 Browse / Cancel，primary 用于对话框确认。
+// 按钮：secondary 用于 Browse / Cancel，primary 用于对话框确认。
 // width_epx 为 0 时按文字宽；height_ratio 为 0 时用当前 FrameHeight，和同排输入框对齐。
 inline bool Button(const char* label, ButtonKind kind = ButtonKind::Secondary,
                    float width_epx = 0.0f, float height_ratio = 0.0f) {

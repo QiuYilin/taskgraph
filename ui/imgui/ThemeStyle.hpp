@@ -50,7 +50,7 @@ inline constexpr int kPanelStyleVarCount = 1;
 // 面板内容紧贴页签条，只留一点呼吸空间。
 inline constexpr float kPanelContentTopPaddingEpx = 2.0f;
 
-// 工具栏按 VS Code 面板工具栏密度压缩；Output / Monitor 共用。数值是有效像素。
+// 工具栏按面板工具栏密度压缩；Output / Monitor 共用。数值是有效像素。
 inline constexpr float kOutputToolbarHeightEpx = 22.0f;
 inline constexpr float kOutputToolbarPaddingXEpx = 4.0f;
 inline constexpr float kOutputToolbarGapEpx = 4.0f;

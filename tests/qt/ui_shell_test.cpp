@@ -182,7 +182,7 @@ void UiShellTest::themeSwitchAppliesAndPersists() {
   const Theme* light = FindTheme("light-modern");
   QVERIFY(light != nullptr);
 
-  QAction* action = FindAction(harness.ui->menuBar(), QString("Light Modern"));
+  QAction* action = FindAction(harness.ui->menuBar(), QString("Light"));
   QVERIFY(action != nullptr);
   action->trigger();
 

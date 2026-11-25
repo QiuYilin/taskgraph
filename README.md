@@ -140,13 +140,13 @@ int main() {
 
 ## core + ui
 
-Same `tg::Controller`: register kinds and open a project on **core**, then wrap with `Ui` and `Run()` for a VS Code–style workbench. Two backends share the same core and models; the interaction details for both are in [`docs/ui.md`](docs/ui.md).
+Same `tg::Controller`: register kinds and open a project on **core**, then wrap with `Ui` and `Run()` for the workbench. Two backends share the same core and models; the interaction details for both are in [`docs/ui.md`](docs/ui.md).
 
 ![simple-ui example (ImGui build)](docs/images/simple-ui.png)
 
 ### ImGui build
 
-The default backend: a docking workbench with an activity bar, Explorer/Search, an imgui-node-editor canvas, the Properties table, the Output panel, and the Dark Modern / Light Modern themes. Its dependencies are lightweight — imgui, imgui-node-editor, and GLFW/OpenGL — so it does not pull in a full widget toolkit like the Qt build. They are also permissively licensed (MIT/zlib), so there is no LGPL/GPL obligation or commercial Qt license to work around.
+The default backend: a docking workbench with an activity bar, Explorer/Search, an imgui-node-editor canvas, the Properties table, the Output panel, and the Dark / Light themes. Its dependencies are lightweight — imgui, imgui-node-editor, and GLFW/OpenGL — so it does not pull in a full widget toolkit like the Qt build. They are also permissively licensed (MIT/zlib), so there is no LGPL/GPL obligation or commercial Qt license to work around.
 
 ```
 #include "taskgraph/taskgraph.hpp"

@@ -94,7 +94,7 @@ TEST(WorkbenchParts, ViewWindowIdentity) {
 
 TEST(WorkbenchChrome, ActivityIconFitsInCell) {
   EXPECT_FLOAT_EQ(kActivityIconEpx, kActivityIconReferenceEpx)
-      << "line icon box stays the VS Code 24px glyph";
+      << "line icon box stays the 24px glyph";
   EXPECT_GT(kActivityBarWidthEpx, kActivityIconEpx)
       << "glyph is smaller than the 48px activity cell";
   EXPECT_LE(ExplorerActivityIconExtent(kActivityIconEpx),

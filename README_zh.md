@@ -140,13 +140,13 @@ int main() {
 
 ## core + ui
 
-仍用同一个 `tg::Controller`：在 **core** 上登记种类并打开工程，再套上 `Ui` 调用 `Run()`，得到 VS Code 风格工作台。两个后端共用同一份 core 和模型；两边的交互细节都在 [`docs/ui.md`](docs/ui.md)。
+仍用同一个 `tg::Controller`：在 **core** 上登记种类并打开工程，再套上 `Ui` 调用 `Run()`，得到工作台。两个后端共用同一份 core 和模型；两边的交互细节都在 [`docs/ui.md`](docs/ui.md)。
 
 ![simple-ui 示例界面（imgui 版）](docs/images/simple-ui.png)
 
 ### ImGui 版
 
-默认后端：带活动栏、Explorer/Search、imgui-node-editor 画布、属性表、Output 面板和 Dark Modern / Light Modern 主题的停靠工作台。依赖很轻量：imgui、imgui-node-editor 和 GLFW/OpenGL，不像 Qt 版那样要拉一整套 qtbase。它们也都是 MIT/zlib 这类宽松许可证，没有 Qt 的 LGPL/GPL 义务或商业授权。
+默认后端：带活动栏、Explorer/Search、imgui-node-editor 画布、属性表、Output 面板和 Dark / Light 主题的停靠工作台。依赖很轻量：imgui、imgui-node-editor 和 GLFW/OpenGL，不像 Qt 版那样要拉一整套 qtbase。它们也都是 MIT/zlib 这类宽松许可证，没有 Qt 的 LGPL/GPL 义务或商业授权。
 
 ```
 #include "taskgraph/taskgraph.hpp"

@@ -412,7 +412,7 @@ static void DrawExplorerRowBackground(ImDrawList* draw, const ImVec2& row_min,
                                       const ExplorerTreePalette& palette) {
   constexpr float kHalfSpan = 0.5f;
   const float ui_scale = ImGui::GetStyle().FontScaleMain;
-  // 选中底跟随窗口焦点，未聚焦时用 VS Code 的非活动选中色。
+  // 选中底跟随窗口焦点，未聚焦时用非活动选中色。
   if (selected) {
     draw->AddRectFilled(row_min, row_max,
                         window_focused ? palette.active_selection_bg
@@ -431,7 +431,7 @@ static void DrawExplorerRowBackground(ImDrawList* draw, const ImVec2& row_min,
   }
 }
 
-// 画 VS Code 风格的细线 chevron：展开朝下，收起朝右。
+// 画细线 chevron：展开朝下，收起朝右。
 static void DrawExplorerChevron(ImDrawList* draw, const ImVec2& center,
                                 bool open, ImU32 color) {
   const float ui_scale = ImGui::GetStyle().FontScaleMain;
@@ -768,7 +768,7 @@ class Ui : public UiBase<Ui> {
         };
   }
 
-  // 运行中切到内置 VS Code 主题；立即生效并写入会话。
+  // 运行中切到内置主题；立即生效并写入会话。
   void SetTheme(const std::string& id) {
     const Theme* theme = ::FindTheme(id);
     // 未知主题 id 不改当前主题。
@@ -1282,7 +1282,7 @@ class Ui : public UiBase<Ui> {
     }
   }
 
-  // 日志行颜色：错误/警告用 VS Code 语义色，Info 正文，Debug/Trace 次要文字。
+  // 日志行颜色：错误/警告用语义色，Info 正文，Debug/Trace 次要文字。
   static ImVec4 LogLevelColor(tg::LogLevel level) {
     const theme_detail::ThemeTokens& tokens = theme_detail::CurrentTokens();
     switch (level) {
@@ -1818,7 +1818,7 @@ class Ui : public UiBase<Ui> {
                     ToImVec2(chrome.activity_size));
 
     // Begin / End：主侧栏里的 Explorer。折叠时不画图和节点，编辑区继续画。
-    // 主侧栏标题行仍用 VS Code 编辑器页签高度。编辑区页签是 ImGui 原生页签栏。
+    // 主侧栏标题行仍用编辑器页签高度。编辑区页签是 ImGui 原生页签栏。
     bool explorer_focused = false;
     // 最大化时主侧栏让位给目标视图。
     if (_parts.primary_sidebar_visible &&
@@ -2248,7 +2248,7 @@ class Ui : public UiBase<Ui> {
     }
 
     // Begin / End：编辑区。Welcome 或 graph 页签；全关则显示打开指引。
-    // 对照 VS Code：编辑区内容贴边，不用全局 WindowPadding（kSurfaceTextMargin）。
+    // 编辑区内容贴边，不用全局 WindowPadding（kSurfaceTextMargin）。
     // 最大化时编辑区让位给目标视图。
     if (_maximized_view == MaximizedView::None) {
       HideDockTab("Canvas");
@@ -2560,7 +2560,7 @@ class Ui : public UiBase<Ui> {
                 }
               } else if (auto* real = std::get_if<double>(&property->value)) {
                 const tg::PropertyHints& hints = property->hints;
-                // 0 = 不画步进按钮；VS Code 的数字框只有输入。
+                // 0 = 不画步进按钮；数字框只有输入。
                 constexpr double kDoubleNoStep = 0.0;
                 constexpr int kDoubleFormatCapacity = 32;
                 constexpr const char* kDoubleAutoFormat = "%g";
@@ -2968,7 +2968,7 @@ class Ui : public UiBase<Ui> {
     if (TextAction("View", WidgetMetrics{0.0f, 0.0f, false})) {
       ImGui::OpenPopup("##TitleViewMenu");
     }
-    // Begin / End：View 菜单。对照 VS Code：Appearance、侧栏视图、区域可见性、显示开关。
+    // Begin / End：View 菜单。含侧栏视图、区域可见性和显示开关。
     if (ImGui::BeginPopup("##TitleViewMenu")) {
       if (ImGui::BeginMenu("Appearance")) {
         if (ImGui::MenuItem("Activity Bar")) {

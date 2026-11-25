@@ -80,7 +80,7 @@ struct UiSession {
   bool log_auto_scroll = true;
   /** \brief 上次 Browse 落点目录（工程选目录或属性选文件的父目录）。 */
   std::string last_browse_dir;
-  /** \brief 当前 VS Code 主题 id；空表示使用默认主题。 */
+  /** \brief 当前主题 id；空表示使用默认主题。 */
   std::string theme_id;
 
   /** \brief 测试用：非空则 configDirectory / session 读写都走该目录。 */

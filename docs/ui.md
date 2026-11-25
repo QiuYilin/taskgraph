@@ -1,6 +1,6 @@
 # 界面说明
 
-`Ui::Run()` 打开一套 VS Code 风格的工作台，两个后端共用 core 与 `ui/model`。界面字符串用英文。本文先写 **ImGui 版**（默认后端），再写 **Qt 版**。
+`Ui::Run()` 打开一套工作台，两个后端共用 core 与 `ui/model`。界面字符串用英文。本文先写 **ImGui 版**（默认后端），再写 **Qt 版**。
 
 工程是目录：`project.json`、`graphs/`、`assets/`。工程内路径存相对路径；会话在用户配置目录的 `taskgraph/session.json`。`simple-ui` 与 `simple-qt` 都把源码里的 `demo-project` 复制到可执行文件旁再打开，改图不会弄脏仓库。
 
@@ -8,7 +8,7 @@
 
 # ImGui 版
 
-分区从外到内是：标题栏、活动栏、主侧栏、编辑区、辅助侧栏、面板、状态栏。主题是 **Dark Modern** 或 **Light Modern**，色值来自随仓库附带的 VS Code 官方主题 JSON。
+分区从外到内是：标题栏、活动栏、主侧栏、编辑区、辅助侧栏、面板、状态栏。主题是 **Dark** 或 **Light**，色值来自随仓库附带的主题 JSON。
 
 ```text
 ┌──────────────────────────────────────────────────────────────┐
@@ -32,7 +32,7 @@
 
 菜单栏从左到右是 **File**、**Edit**、**View**、**Run**、**Help**。注册了 monitor kind 时，**New Monitor** 紧挨在 **Help** 右边；每次点击都再新建一个独立窗口，用第一个注册 kind。没有注册 kind 时不显示。
 
-- **File**：New Project...、Open Project...、Open Recent、Save、Save As...。**Preferences > Theme** 在 Dark Modern 与 Light Modern 之间切换，立刻生效，并写入用户配置目录的 `taskgraph/session.json`。**Preferences > Keyboard Shortcuts** 在编辑区打开快捷键页签。
+- **File**：New Project...、Open Project...、Open Recent、Save、Save As...。**Preferences > Theme** 在 Dark 与 Light 之间切换，立刻生效，并写入用户配置目录的 `taskgraph/session.json`。**Preferences > Keyboard Shortcuts** 在编辑区打开快捷键页签。
 - **Edit**：Undo、Redo、Cut、Copy、Paste、Delete。Undo/Redo 走全局栈（图操作与各页签节点操作统一排序），其余命令作用于当前选中的节点。
 - **View**：Appearance、Explorer、Search、Properties、Output、Monitor、Primary Side Bar、Status Bar、Show Type Names。**Monitor** 在还没有 Monitor 窗口时，用第一个注册 kind 新建一个独立窗口；已经有窗口时不变。另外注册的独立视图窗口也列在这里：每个是可停靠的 ImGui 原生窗口，用标题栏上的关闭按钮关掉，没有铺满工作区的按钮。第一次出现在工作区中央。
 - **Run**：**Run Graph** 跑当前 graph。没有 graph 时这项不可用。
@@ -113,7 +113,7 @@ graph 页签下面是画布。节点第一次出现时，工程里有坐标就�
 
 标题栏右侧有**最大化/还原**和**关闭**按钮。最大化时隐藏所有其它停靠（主侧栏、编辑区、Output），只留活动栏、标题栏和状态栏；再点还原回到最大化前的布局。关闭等同于取消勾选 **View > Properties**，之后可从菜单重开。浮动时标题栏自绘最大化/还原和关闭字形，两个按钮同尺寸；停靠时仍用页签栏按钮。
 
-选中节点时，表有三列：**Name**、**Type**、**Value**。原生属性可以直接改。整数是 `int`，布尔是勾选框，字符串可以手输；数字直接输入，没有 `-` / `+` 步进按钮（与 Qt 版一致）。File / Directory 的路径框占满值列，**Browse...** 在下一行右对齐，打开系统选择框。按钮用 VS Code 的 secondary 样式（2px 圆角、1px 半透明描边）；工程路径弹窗里 **OK** 是 primary，**Cancel** 是 secondary。图像和点云的值是导入文件的路径。
+选中节点时，表有三列：**Name**、**Type**、**Value**。原生属性可以直接改。整数是 `int`，布尔是勾选框，字符串可以手输；数字直接输入，没有 `-` / `+` 步进按钮（与 Qt 版一致）。File / Directory 的路径框占满值列，**Browse...** 在下一行右对齐，打开系统选择框。按钮用 secondary 样式（2px 圆角、1px 半透明描边）；工程路径弹窗里 **OK** 是 primary，**Cancel** 是 secondary。图像和点云的值是导入文件的路径。
 
 有固定输入口时，每个输入槽默认以端口露面：画布上有引脚，属性表仍列出这一行，但只读。右键 **Convert to Property** 后，画布不再画这只引脚，属性表可以改；指向该口的入边会断开，口上的上游数据清空。右键 **Convert to Port** 改回端口露面。属性露面时，不能再把线连到这个口。节点一开始就没有固定输入口时，没有这套切换，只有原生属性。
 
@@ -279,7 +279,7 @@ ui.AddMonitorView(std::move(view));
 
 ## 菜单
 
-- **File**：New Project...、Open Project...、Open Recent、Save、Save As...；**Preferences > Keyboard Shortcuts** 打开只读快捷键页签；**Preferences > Theme** 在 **Dark Modern** / **Light Modern** 间即时切换，选择写入 `session.json`，下次启动恢复。
+- **File**：New Project...、Open Project...、Open Recent、Save、Save As...；**Preferences > Keyboard Shortcuts** 打开只读快捷键页签；**Preferences > Theme** 在 **Dark** / **Light** 间即时切换，选择写入 `session.json`，下次启动恢复。
 - **Edit**：Undo、Redo、Cut、Copy、Paste、Delete，作用于当前画布。
 - **View**：Zoom In、Zoom Out、Fit All、Fit Selected；**Activity Bar**、**Explorer**、**Search**；**Properties** / **Output** 开关右侧属性表和底部面板。
 - **Run**：**Run Graph**（F5）跑当前页签的图。

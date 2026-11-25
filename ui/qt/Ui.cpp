@@ -1502,7 +1502,7 @@ void Ui::OnActivityBarViewRequested(PrimarySideBarView view) {
     SetPrimarySideBarView(view);
     return;
   }
-  // 再点当前图标：按 VS Code 收起/展开主侧栏，活动栏留在外侧。
+  // 再点当前图标：收起/展开主侧栏，活动栏留在外侧。
   if (_activity_bar != nullptr && _explorer_dock != nullptr &&
       view == _activity_bar->view() && _explorer_dock->isVisible()) {
     _explorer_dock->toggleView(false);
