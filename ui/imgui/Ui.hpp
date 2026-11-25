@@ -3,11 +3,12 @@
 #include "ExplorerProjectActions.hpp"
 #include "LinkVariable.hpp"
 #include "LogView.hpp"
-#include "MonitorContainer.hpp"
+#include "MonitorWorkspace.hpp"
 #include "MonitorWindows.hpp"
 #include "NativePathDialog.hpp"
+#include "ActivityBarView.hpp"
+#include "EditorTabsView.hpp"
 #include "PortTypeVisual.hpp"
-#include "TabStrip.hpp"
 #include "ThemeStyle.hpp"
 #include "UiBase.hpp"
 #include "UiSession.hpp"
@@ -78,6 +79,8 @@ constexpr const char* kOutputRestoreTooltip = "Restore Panel Size";
 constexpr const char* kOutputCloseTooltip = "Close Panel";
 constexpr const char* kMonitorCommandId = "view.toggleMonitor";
 constexpr const char* kMonitorCommandLabel = "Monitor";
+constexpr const char* kNewMonitorCommandId = "view.newMonitor";
+constexpr const char* kNewMonitorCommandLabel = "New Monitor";
 constexpr const char* kPropertiesMaximizeTooltip =
     "Maximize Secondary Side Bar";
 constexpr const char* kPropertiesRestoreTooltip =
@@ -935,12 +938,49 @@ class Ui : public UiBase<Ui> {
     _parts.monitor_views.push_back(std::move(view));
   }
 
+  void FocusNewestMonitorInstance() {
+    if (_monitor.windows().empty()) {
+      return;
+    }
+    const auto& instances = _monitor.windows().back().tabs.instances();
+    if (instances.empty()) {
+      return;
+    }
+    _monitor_windows.focus_instance = instances.back().id;
+  }
+
   void ToggleMonitorView(std::string_view id) {
-    _monitor.FocusOrCreate(id, _parts.monitor_views);
+    // 这种 kind 已经有窗口时保持原样。
+    if (_monitor.IsOpen(id)) {
+      return;
+    }
+    if (_monitor.FocusOrCreate(id, _parts.monitor_views).empty()) {
+      return;
+    }
+    FocusNewestMonitorInstance();
   }
 
   bool IsMonitorOpen(std::string_view id) const {
     return _monitor.IsOpen(id);
+  }
+
+  void FocusMonitorPrimary() {
+    // View > Monitor：没有实例才新建一个独立窗口；已有实例时保持原样。
+    if (_monitor.has_instances()) {
+      return;
+    }
+    CreateMonitorTab();
+  }
+
+  void CreateMonitorTab() {
+    if (_parts.monitor_views.empty()) {
+      return;
+    }
+    if (!_monitor.CreateTab(_parts.monitor_views.front().id,
+                            _parts.monitor_views)) {
+      return;
+    }
+    FocusNewestMonitorInstance();
   }
 
   bool IsViewWindowOpen(std::string_view id) const {
@@ -1016,8 +1056,11 @@ class Ui : public UiBase<Ui> {
                 [this] { return _parts.panel_visible; },
                 [this] { SetPanelVisible(!_parts.panel_visible); }});
     AddCommand({kMonitorCommandId, kMonitorCommandLabel, "View", "", {},
-                [this] { return _monitor.open(); },
-                [this] { _monitor.ToggleOpen(); }});
+                [this] { return _monitor.has_instances(); },
+                [this] { FocusMonitorPrimary(); }});
+    AddCommand({kNewMonitorCommandId, kNewMonitorCommandLabel, "View", "", {},
+                [this] { return !_parts.monitor_views.empty(); },
+                [this] { CreateMonitorTab(); }});
     AddCommand({"view.toggleStatusBar", "Status Bar", "View", "", {},
                 [this] { return _parts.status_bar_visible; },
                 [this] { SetStatusBarVisible(!_parts.status_bar_visible); }});
@@ -1064,7 +1107,7 @@ class Ui : public UiBase<Ui> {
     ApplyLogSessionConfig();
     ApplyViewWindowSessionState();
     _monitor.Restore(_parts.monitor_views, _session);
-    _monitor_windows.instances.clear();
+    _monitor_windows = {};
     // session 里记了主题就恢复；未知 id 保持 UiBase 已应用的默认主题。
     if (!_session.theme_id.empty()) {
       if (const Theme* theme = ::FindTheme(_session.theme_id)) {
@@ -1154,95 +1197,17 @@ class Ui : public UiBase<Ui> {
 
   // 活动栏：固定列，不进停靠。没开启或没有高度时不建窗口。
   void ShowActivityBar(ImVec2 pos, ImVec2 size) {
-    if (!_parts.activity_bar_visible || size.x <= 0.0f || size.y <= 0.0f) {
-      return;
-    }
-    const ImGuiViewport* viewport = ImGui::GetMainViewport();
-    ImGui::SetNextWindowPos(pos);
-    ImGui::SetNextWindowSize(size);
-    ImGui::SetNextWindowViewport(viewport->ID);
-    const theme_detail::ThemeTokens& tokens = theme_detail::CurrentTokens();
-    ImGui::PushStyleColor(ImGuiCol_WindowBg, ToImVec4(tokens.activity_bar_background));
-    ImGui::PushStyleColor(ImGuiCol_ChildBg, ToImVec4(tokens.activity_bar_background));
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
-    // 不自带标题、滚动条和停靠，避免浮回主侧栏上面。
-    const ImGuiWindowFlags activity_flags =
-        ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
-        ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar |
-        ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoCollapse |
-        ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoDocking |
-        ImGuiWindowFlags_NoNavFocus | ImGuiWindowFlags_NoBringToFrontOnFocus;
-    if (ImGui::Begin(kActivityBarWindowName, nullptr, activity_flags)) {
-      constexpr float kActivityActiveBorderEpx = 2.0f;
-      const float ui_scale = ImGui::GetStyle().FontScaleMain;
-      const float cell = kActivityBarWidthEpx * ui_scale;
-      const float icon = kActivityIconEpx * ui_scale;
-      const ImVec2 clip_min = ImGui::GetWindowPos();
-      const ImVec2 clip_max(clip_min.x + ImGui::GetWindowSize().x,
-                            clip_min.y + ImGui::GetWindowSize().y);
-      ImGui::PushClipRect(clip_min, clip_max, true);
-      for (const ActivityBarItem& item : _parts.activity_bar_items) {
-        ImGui::PushID(item.id.c_str());
-        ImGui::InvisibleButton("##ActivityBarItem", ImVec2(cell, cell));
-        const bool hovered = ImGui::IsItemHovered();
-        const bool clicked = ImGui::IsItemClicked(ImGuiMouseButton_Left);
-        const bool active = item.is_active && item.is_active();
-        const ImVec2 min = ImGui::GetItemRectMin();
-        const ImVec2 max = ImGui::GetItemRectMax();
-        ImDrawList* draw = ImGui::GetWindowDrawList();
-        // 悬停/活动底色用主题 token，活动时左侧画焦点条。
-        if (active) {
-          draw->AddRectFilled(min, max, ImGui::ColorConvertFloat4ToU32(
-                                             ToImVec4(tokens.activity_bar_active_background)));
-        } else if (hovered) {
-          draw->AddRectFilled(min, max, ImGui::ColorConvertFloat4ToU32(
-                                             ToImVec4(tokens.activity_bar_hover_background)));
-        }
-        if (active) {
-          const float bar_width = kActivityActiveBorderEpx * ui_scale;
-          draw->AddRectFilled(
-              min, ImVec2(min.x + bar_width, max.y),
-              ImGui::ColorConvertFloat4ToU32(
-                  ToImVec4(tokens.activity_bar_active_border)));
-        }
-        const ImU32 icon_color = ImGui::ColorConvertFloat4ToU32(
-            active ? ToImVec4(tokens.activity_bar_foreground)
-                   : ToImVec4(tokens.activity_bar_inactive_foreground));
-        const ImVec2 center((min.x + max.x) * 0.5f,
-                            (min.y + max.y) * 0.5f);
-        // 有图标就画图标；没有就先画说明首字符。
-        const IconPainter item_painter = ImGuiIconPainter(item.icon);
-        if (item_painter.draw) {
-          item_painter.draw(draw, center, icon, icon_color);
-        } else if (!item.tooltip.empty()) {
-          const char glyph[2] = {item.tooltip[0], '\0'};
-          const ImVec2 glyph_size = ImGui::CalcTextSize(glyph);
-          draw->AddText(
-              ImVec2(center.x - glyph_size.x * 0.5f,
-                     center.y - glyph_size.y * 0.5f),
-              icon_color, glyph);
-        }
-        // 悬停显示活动栏项说明。
-        if (hovered && !item.tooltip.empty()) {
-          ImGui::SetTooltip("%s", item.tooltip.c_str());
-        }
-        // 点击执行注册的命令；点已经是当前项的图标则收起/展开主侧栏。
-        if (clicked && !item.command.empty()) {
-          // 最大化时先还原布局，再显示点中的视图，不按“点当前项收起”处理。
-          if (_maximized_view != MaximizedView::None) {
-            ClearMaximizedView();
-            ExecuteCommand(item.command);
-          } else {
-            ExecuteCommand(ActivityClickCommand(item, active));
-          }
-        }
-        ImGui::PopID();
-      }
-      ImGui::PopClipRect();
-    }
-    ImGui::End();
-    ImGui::PopStyleVar();
-    ImGui::PopStyleColor(2);
+    ActivityBarViewContext context;
+    context.visible = _parts.activity_bar_visible;
+    context.pos = pos;
+    context.size = size;
+    context.items = &_parts.activity_bar_items;
+    context.maximized = _maximized_view != MaximizedView::None;
+    context.execute = [this](std::string_view command) {
+      ExecuteCommand(command);
+    };
+    context.clear_maximized = [this] { ClearMaximizedView(); };
+    DrawActivityBarView(context);
   }
 
   void ApplyViewWindowSessionState() {
@@ -1299,25 +1264,13 @@ class Ui : public UiBase<Ui> {
       const bool is_output = view->id == kOutputPanelId;
       ShowDockTab(window_name.c_str());
       PushPanelStyle();
-      const bool content_visible = ImGui::Begin(window_name.c_str(), nullptr);
-      const bool docked = ImGui::IsWindowDocked();
-      const bool focused = ImGui::IsWindowFocused();
-      const ImVec2 window_pos = ImGui::GetWindowPos();
-      const ImVec2 window_size = ImGui::GetWindowSize();
+      bool panel_open = true;
+      const bool content_visible =
+          ImGui::Begin(window_name.c_str(), &panel_open);
+      if (is_output && !panel_open) {
+        SetPanelVisible(false);
+      }
       if (content_visible) {
-        // Output 页签栏右侧：最大化/还原与关闭。
-        if (is_output) {
-          const DockTitleActionPress press = DrawDockTitleActions(
-              ImGui::GetWindowDockNode(),
-              _maximized_view == MaximizedView::Output, kOutputMaximizeTooltip,
-              kOutputRestoreTooltip, kOutputCloseTooltip);
-          if (press.toggle_maximize) {
-            ToggleMaximizedPanel(MaximizedView::Output);
-          }
-          if (press.close) {
-            SetPanelVisible(false);
-          }
-        }
         DrawPanelToolbar(*view);
         // 视图只画内容；窗口生命周期由这里管。
         if (view->draw) {
@@ -1326,19 +1279,6 @@ class Ui : public UiBase<Ui> {
       }
       ImGui::End();
       PopPanelStyle();
-      // 浮动 Output 和 monitor 一样：自绘最大化/还原 + 关闭。
-      if (is_output && !docked) {
-        const FloatingWindowCaptionResult press = FloatingWindowCaptionButtons(
-            "panel-output", _maximized_view == MaximizedView::Output,
-            window_pos, window_size, focused, kOutputMaximizeTooltip,
-            kOutputRestoreTooltip, kOutputCloseTooltip);
-        if (press.toggle_maximize) {
-          ToggleMaximizedPanel(MaximizedView::Output);
-        }
-        if (press.close) {
-          SetPanelVisible(false);
-        }
-      }
     }
   }
 
@@ -1862,7 +1802,7 @@ class Ui : public UiBase<Ui> {
                   ImGuiDockNodeFlags_NoWindowMenuButton);
             }
           }
-          // Explorer / 编辑区自绘顶栏，不显示停靠标签；属性与输出保留页签。
+          // Explorer 自绘标题行，编辑区用原生页签栏；两者都不显示停靠标签。属性与输出保留页签。
           ImGui::DockBuilderDockWindow("Canvas", dock_canvas);
           HideBuiltDockTab(dock_canvas);
           DisallowDockingOver(dock_canvas);
@@ -1878,7 +1818,7 @@ class Ui : public UiBase<Ui> {
                     ToImVec2(chrome.activity_size));
 
     // Begin / End：主侧栏里的 Explorer。折叠时不画图和节点，编辑区继续画。
-    // 顶边与编辑区页签条对齐：WindowPadding 顶为 0，标题行高度同 kEditorTabHeightEpx。
+    // 主侧栏标题行仍用 VS Code 编辑器页签高度。编辑区页签是 ImGui 原生页签栏。
     bool explorer_focused = false;
     // 最大化时主侧栏让位给目标视图。
     if (_parts.primary_sidebar_visible &&
@@ -2366,25 +2306,13 @@ class Ui : public UiBase<Ui> {
       constexpr const char* kPropertiesWindowName = "Properties";
       ShowDockTab(kPropertiesWindowName);
       PushPropertiesPanelStyle();
+      bool properties_open = true;
       const bool content_visible =
-          ImGui::Begin(kPropertiesWindowName, nullptr);
-      const bool docked = ImGui::IsWindowDocked();
-      const bool focused = ImGui::IsWindowFocused();
-      const ImVec2 window_pos = ImGui::GetWindowPos();
-      const ImVec2 window_size = ImGui::GetWindowSize();
+          ImGui::Begin(kPropertiesWindowName, &properties_open);
+      if (!properties_open) {
+        SetSecondarySideBarVisible(false);
+      }
       if (content_visible) {
-        // 页签栏右侧：最大化/还原与关闭。
-        const DockTitleActionPress title_press = DrawDockTitleActions(
-            ImGui::GetWindowDockNode(),
-            _maximized_view == MaximizedView::Properties,
-            kPropertiesMaximizeTooltip, kPropertiesRestoreTooltip,
-            kPropertiesCloseTooltip);
-        if (title_press.toggle_maximize) {
-          ToggleMaximizedPanel(MaximizedView::Properties);
-        }
-        if (title_press.close) {
-          SetSecondarySideBarVisible(false);
-        }
         constexpr int kPropertyTableColumnCount = 3;
         constexpr float kFillColumnWidth = -FLT_MIN;
         constexpr float kPropertyNameColumnRatio = 0.34f;
@@ -2757,19 +2685,6 @@ class Ui : public UiBase<Ui> {
       }
       ImGui::End();
       PopPropertiesPanelStyle();
-      // 浮动 Properties 和 monitor 一样：自绘最大化/还原 + 关闭。
-      if (!docked) {
-        const FloatingWindowCaptionResult press = FloatingWindowCaptionButtons(
-            "panel-properties", _maximized_view == MaximizedView::Properties,
-            window_pos, window_size, focused, kPropertiesMaximizeTooltip,
-            kPropertiesRestoreTooltip, kPropertiesCloseTooltip);
-        if (press.toggle_maximize) {
-          ToggleMaximizedPanel(MaximizedView::Properties);
-        }
-        if (press.close) {
-          SetSecondarySideBarVisible(false);
-        }
-      }
     }
 
     // 主侧栏有焦点、且不在改文本时：F2 改名，Delete/Backspace 删除，
@@ -2825,15 +2740,14 @@ class Ui : public UiBase<Ui> {
     if (_parts.panel_visible) {
       ShowPanels();
     }
-    // Begin / End：独立视图窗口，不占面板停靠格。
-    ShowViewWindows(_parts.view_windows, _view_window_states, chrome);
-    // Begin / End：Monitor 容器，页签内容和新建请求在帧末处理。
-    const MonitorContainerActions monitor_actions = ShowMonitorContainer(
-        _monitor_windows,
-        {_controller, _parts.monitor_views, _monitor, SelectedNode(),
-         MonitorFirstUseArea(chrome)},
-        chrome);
-    ApplyMonitorContainerActions(monitor_actions);
+    // Begin / End：独立视图窗口。默认浮动，可拖进主停靠区。
+    ShowViewWindows(_parts.view_windows);
+    // Begin / End：每个 Monitor 实例一个独立窗口。
+    MonitorWindowsHost monitor_host{_controller, _monitor,
+                                    _parts.monitor_views, SelectedNode(),
+                                    MonitorFirstUseArea(chrome)};
+    ApplyMonitorWorkspaceActions(
+        ShowMonitorWindows(_monitor_windows, monitor_host));
 
     // Begin / End：状态栏。通栏贴底，不进停靠。左=工程名 + Run + 当前图，右=选中节点。
     if (chrome.status_size.y > 0.0f) {
@@ -2953,9 +2867,9 @@ class Ui : public UiBase<Ui> {
         ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoCollapse |
         ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoDocking |
         ImGuiWindowFlags_NoNavFocus | ImGuiWindowFlags_NoBringToFrontOnFocus;
-    // Begin / End：窗口标题栏。左 File→View→Run→Help，中命令中心，右窗口按钮。
+    // Begin / End：窗口标题栏。左菜单栏（Help 右边是 New Monitor），中命令中心，右窗口按钮。
     ImGui::Begin("Window Title Bar", nullptr, title_flags);
-    // 标题栏菜单栏从左到右：File、View、Run、Help。不要活动栏，不要第二条工具栏。
+    // 标题栏菜单栏从左到右：File、Edit、View、Run、Help，New Monitor 紧挨 Help。不要活动栏，不要第二条工具栏。
     if (TextAction("File", WidgetMetrics{0.0f, 0.0f, false})) {
       ImGui::OpenPopup("##TitleFileMenu");
     }
@@ -3057,35 +2971,29 @@ class Ui : public UiBase<Ui> {
     // Begin / End：View 菜单。对照 VS Code：Appearance、侧栏视图、区域可见性、显示开关。
     if (ImGui::BeginPopup("##TitleViewMenu")) {
       if (ImGui::BeginMenu("Appearance")) {
-        if (ImGui::MenuItem("Activity Bar", nullptr,
-                            _parts.activity_bar_visible)) {
+        if (ImGui::MenuItem("Activity Bar")) {
           ExecuteCommand("view.toggleActivityBar");
         }
         ImGui::EndMenu();
       }
       ImGui::Separator();
-      if (ImGui::MenuItem("Explorer", nullptr,
-                          _focus.primary_side_bar() ==
-                              PrimarySideBarView::Explorer)) {
+      if (ImGui::MenuItem("Explorer")) {
         ExecuteCommand(kShowExplorerCommand);
       }
-      if (ImGui::MenuItem("Search", nullptr,
-                          _focus.primary_side_bar() ==
-                              PrimarySideBarView::Search)) {
+      if (ImGui::MenuItem("Search")) {
         ExecuteCommand(kShowSearchCommand);
       }
-      if (ImGui::MenuItem("Properties", nullptr,
-                          _parts.secondary_sidebar_visible)) {
+      if (ImGui::MenuItem("Properties")) {
         ExecuteCommand("view.toggleProperties");
       }
-      if (ImGui::MenuItem("Output", nullptr, _parts.panel_visible)) {
+      if (ImGui::MenuItem("Output")) {
         ExecuteCommand("view.toggleOutput");
       }
       if (!_parts.view_windows.empty()) {
         ImGui::Separator();
         for (const ViewWindow& view : _parts.view_windows) {
           const std::string command_id = view.command_id();
-          if (ImGui::MenuItem(view.title.c_str(), nullptr, view.open,
+          if (ImGui::MenuItem(view.title.c_str(), nullptr, false,
                               _parts.commands.Enabled(command_id))) {
             ExecuteCommand(command_id);
           }
@@ -3093,20 +3001,19 @@ class Ui : public UiBase<Ui> {
       }
       if (!_parts.monitor_views.empty()) {
         ImGui::Separator();
-        if (ImGui::MenuItem(kMonitorCommandLabel, nullptr, _monitor.open())) {
-          ExecuteCommand(kMonitorCommandId);
+        if (ImGui::MenuItem(kMonitorCommandLabel)) {
+          FocusMonitorPrimary();
         }
       }
       ImGui::Separator();
-      if (ImGui::MenuItem("Primary Side Bar", nullptr,
-                          _parts.primary_sidebar_visible)) {
+      if (ImGui::MenuItem("Primary Side Bar")) {
         ExecuteCommand(kTogglePrimarySideBarCommand);
       }
-      if (ImGui::MenuItem("Status Bar", nullptr, _parts.status_bar_visible)) {
+      if (ImGui::MenuItem("Status Bar")) {
         ExecuteCommand("view.toggleStatusBar");
       }
       ImGui::Separator();
-      if (ImGui::MenuItem("Show Type Names", nullptr, _show_port_type_names)) {
+      if (ImGui::MenuItem("Show Type Names")) {
         ExecuteCommand("editor.showTypeNames");
       }
       ImGui::EndPopup();
@@ -3135,27 +3042,38 @@ class Ui : public UiBase<Ui> {
       }
       ImGui::EndPopup();
     }
+    // 紧挨 Help 右边；SameLine 回到 Help 那一行，避免掉到标题栏下沿被裁掉。
+    if (!_parts.monitor_views.empty()) {
+      ImGui::SameLine(0.0f, kBetweenControlsEpx * ui_scale);
+      if (TextAction(kNewMonitorCommandLabel, WidgetMetrics{0.0f, 0.0f, false})) {
+        ExecuteCommand(kNewMonitorCommandId);
+      }
+    }
     const float menu_right_x =
         ImGui::GetItemRectMax().x - ImGui::GetWindowPos().x +
         kBetweenControlsEpx * ui_scale;
-    const ImVec2 caption_size(kWindowCaptionButtonWidthEpx * ui_scale,
-                              title_bar_height);
-    ImGui::SameLine();
-    ImGui::SetCursorPosX(ImGui::GetWindowContentRegionMax().x - caption_width);
-    ImGui::SetCursorPosY(0.0f);
+    const float content_max_x = ImGui::GetWindowContentRegionMax().x;
+    const float caption_button_width = kWindowCaptionButtonWidthEpx * ui_scale;
+    const ImVec2 caption_size(caption_button_width, title_bar_height);
+    const float caption_x = content_max_x - caption_width;
+    // 窗口按钮钉在 Y=0，避免被排到下一行裁掉。
+    float caption_cursor_x = caption_x;
+    ImGui::SetCursorPos(ImVec2(caption_cursor_x, 0.0f));
     // 点最小化。
     if (DrawCaptionButton("##CaptionMinimize", CaptionGlyph::Minimize,
                           caption_size)) {
       glfwIconifyWindow(Window());
     }
-    ImGui::SameLine(0.0f, 0.0f);
+    caption_cursor_x += caption_button_width;
+    ImGui::SetCursorPos(ImVec2(caption_cursor_x, 0.0f));
     const CaptionGlyph maximize_glyph =
         CoveringWorkArea() ? CaptionGlyph::Restore : CaptionGlyph::Maximize;
     // 点最大化或还原。
     if (DrawCaptionButton("##CaptionMaximize", maximize_glyph, caption_size)) {
       ToggleWorkAreaCover();
     }
-    ImGui::SameLine(0.0f, 0.0f);
+    caption_cursor_x += caption_button_width;
+    ImGui::SetCursorPos(ImVec2(caption_cursor_x, 0.0f));
     // 点关闭。
     if (DrawCaptionButton("##CaptionClose", CaptionGlyph::Close,
                           caption_size)) {
@@ -3171,7 +3089,6 @@ class Ui : public UiBase<Ui> {
         _controller.hasProjectRoot() ? _controller.projectName().c_str()
                                      : kUntitledProjectLabel;
     const float content_min_x = ImGui::GetWindowContentRegionMin().x;
-    const float content_max_x = ImGui::GetWindowContentRegionMax().x;
     const float title_right_limit =
         content_max_x - caption_width - kBetweenControlsEpx * ui_scale;
     const float frame_pad_x = ImGui::GetStyle().FramePadding.x;
@@ -4602,8 +4519,7 @@ class Ui : public UiBase<Ui> {
     if (_maximized_view == MaximizedView::None) {
       const ImGuiWindow* canvas = ImGui::FindWindowByName("Canvas");
       if (canvas != nullptr) {
-        const float tab_height =
-            kEditorTabHeightEpx * ImGui::GetStyle().FontScaleMain;
+        const float tab_height = _editor_tab_bar_height;
         const float body_height = canvas->Size.y - tab_height;
         // 只剩余页签高度时不拿这个矩形。
         if (canvas->Size.x > 0.0f && body_height > 0.0f) {
@@ -4616,14 +4532,21 @@ class Ui : public UiBase<Ui> {
     return ScreenRect{chrome.dock_pos, chrome.dock_size};
   }
 
-  void ApplyMonitorContainerActions(const MonitorContainerActions& actions) {
-    if (!actions.close_instance.empty() &&
-        _monitor.Close(actions.close_instance)) {
-      _monitor_windows.instances.erase(actions.close_instance);
+  void ApplyMonitorWorkspaceActions(const MonitorWorkspaceActions& actions) {
+    for (const MonitorWindowActions& action : actions.windows) {
+      if (!action.close_instance.empty()) {
+        _monitor.CloseTab(action.window_id, action.close_instance);
+      }
+      if (action.close_window) {
+        _monitor.CloseWindow(action.window_id);
+      }
+      if (!action.create_kind.empty()) {
+        if (_monitor.CreateTab(action.create_kind, _parts.monitor_views)) {
+          FocusNewestMonitorInstance();
+        }
+      }
     }
-    if (!actions.create_kind.empty()) {
-      _monitor.Create(actions.create_kind, _parts.monitor_views);
-    }
+    PruneMonitorRuntime(_monitor_windows, _monitor);
   }
 
   // 记下目标图并打开种类 Quick Pick。选中种类后才进入落点。
@@ -5142,112 +5065,26 @@ class Ui : public UiBase<Ui> {
     draw_centered_line(kCreateGraphHint, create_graph_size, true);
   }
 
-  // 编辑区页签条：只提供 item 和右侧动作，绘制交给共用 TabStrip。
+  // 编辑区页签栏：切换、关闭和重排交给 ImGui。Show Type Names 是右侧按钮。
   void DrawEditorTabs() {
-    // 没有打开的页签就不画页签条。
-    if (_focus.open_editors().empty()) {
-      return;
-    }
-    const float ui_scale = ImGui::GetStyle().FontScaleMain;
-    const float tab_height = kEditorTabHeightEpx * ui_scale;
-    const float pad_x = kEditorTabHorizontalPaddingEpx * ui_scale;
-    const ImVec2 bar_min = ImGui::GetCursorScreenPos();
-    const float bar_width = ImGui::GetContentRegionAvail().x;
-
-    std::vector<TabStripItem> items;
-    std::vector<int> editor_indices;
-    int active_item = -1;
-    for (int editor_index = 0;
-         editor_index < static_cast<int>(_focus.open_editors().size());
-         ++editor_index) {
-      const EditorTab& tab = _focus.open_editors()[editor_index];
-      const bool is_graph = tab.kind == EditorTab::Kind::Graph;
-      if (is_graph && tab.graph == nullptr) {
-        continue;
-      }
-      TabStripItem item;
-      item.id = "editor." + std::to_string(editor_index);
-      if (tab.kind == EditorTab::Kind::KeyboardShortcuts) {
-        item.title = kKeyboardShortcutsTabLabel;
-      } else if (is_graph) {
-        item.title = tab.graph->getName();
-      } else {
-        item.title = kWelcomeTabLabel;
-      }
-      if (editor_index == _focus.active_editor()) {
-        active_item = static_cast<int>(items.size());
-      }
-      items.push_back(std::move(item));
-      editor_indices.push_back(editor_index);
-    }
-
-    const bool graph_editor_active =
-        _focus.active_editor() >= 0 &&
-        _focus.active_editor() <
-            static_cast<int>(_focus.open_editors().size()) &&
-        _focus.open_editors()[_focus.active_editor()].kind ==
-            EditorTab::Kind::Graph;
-    const float action_width =
-        ImGui::CalcTextSize(kShowTypeNamesActionLabel).x +
-        pad_x * kFramePaddingSideCount;
-    TabStripOptions options;
-    options.overflow = TabStripOverflow::Clip;
-    options.right_reserved_width =
-        graph_editor_active ? action_width + pad_x : 0.0f;
-    const TabStripResult result =
-        DrawTabStrip("##EditorTabs", items, active_item,
-                     ImGui::IsWindowFocused(), bar_width, options, nullptr);
-
-    // 页签点击和关闭都映射回原 editor 下标。
-    if (result.clicked >= 0 &&
-        result.clicked < static_cast<int>(editor_indices.size())) {
-      const int editor_index = editor_indices[result.clicked];
-      _focus.active_editor() = editor_index;
-      const EditorTab& tab = _focus.open_editors()[editor_index];
-      if (tab.kind == EditorTab::Kind::Graph && tab.graph != nullptr) {
-        SyncSelectedItemToGraph(tab.graph);
-      }
-    }
-
-    // 编辑区右侧动作：仅 Graph 页签；与页签条同高、文字垂直居中。
-    const bool action_visible =
-        _focus.active_editor() >= 0 &&
-        _focus.active_editor() <
-            static_cast<int>(_focus.open_editors().size()) &&
-        _focus.open_editors()[_focus.active_editor()].kind ==
-            EditorTab::Kind::Graph;
-    if (action_visible) {
-      const EditorTabPalette tab_palette = MakeEditorTabPalette();
-      ImDrawList* draw = ImGui::GetWindowDrawList();
-      const ImVec2 action_label_size =
-          ImGui::CalcTextSize(kShowTypeNamesActionLabel);
-      const float action_x = bar_min.x + bar_width - pad_x - action_width;
-      ImGui::SetCursorScreenPos(ImVec2(action_x, bar_min.y));
-      ImGui::InvisibleButton("##ShowTypeNames",
-                             ImVec2(action_width, tab_height));
-      const bool action_hovered = ImGui::IsItemHovered();
-      if (ImGui::IsItemClicked(ImGuiMouseButton_Left)) {
-        ExecuteCommand("editor.showTypeNames");
-      }
-      const ImVec2 action_min = ImGui::GetItemRectMin();
-      const ImVec2 action_max = ImGui::GetItemRectMax();
-      // 按下态 / 悬停用列表高亮，不另起一块「假页签」底。
-      if (_show_port_type_names || action_hovered) {
-        draw->AddRectFilled(action_min, action_max, tab_palette.hover_bg);
-      }
-      const ImVec2 action_text_pos(
-          action_min.x + pad_x,
-          action_min.y + (tab_height - action_label_size.y) * kTabStripCenterRatio);
-      draw->AddText(action_text_pos, tab_palette.active_text,
-                    kShowTypeNamesActionLabel);
-    }
-    // TabStrip 已把光标放到页签栏下一行；右侧动作画完后恢复。
-    ImGui::SetCursorScreenPos(ImVec2(bar_min.x, bar_min.y + tab_height));
-    // 点过叉再关，避免边扫边改页签列表。
-    if (result.closed >= 0 &&
-        result.closed < static_cast<int>(editor_indices.size())) {
-      CloseEditorAt(editor_indices[result.closed]);
-    }
+    EditorTabsViewContext context;
+    context.focus = &_focus;
+    context.show_port_type_names = _show_port_type_names;
+    context.welcome_label = kWelcomeTabLabel;
+    context.shortcuts_label = kKeyboardShortcutsTabLabel;
+    context.show_type_names_label = kShowTypeNamesActionLabel;
+    context.submitted_active = &_editor_tab_submitted_active;
+    context.tab_bar_height = &_editor_tab_bar_height;
+    context.sync_graph = [this](const std::shared_ptr<tg::Graph>& graph) {
+      SyncSelectedItemToGraph(graph);
+    };
+    context.close_editor = [this](int editor_index) {
+      CloseEditorAt(editor_index);
+    };
+    context.toggle_show_type_names = [this] {
+      ExecuteCommand("editor.showTypeNames");
+    };
+    DrawEditorTabsView(context);
   }
 
   // 删掉一张图，清掉其上节点的选中和落位，并夹回当前下标。
@@ -5838,7 +5675,7 @@ class Ui : public UiBase<Ui> {
   std::string _search_filter;
   UiSession _session;
   WorkbenchParts _parts;
-  MonitorContainer _monitor;
+  MonitorWorkspace _monitor;
   bool _workbench_layout_dirty = false;
   MaximizedView _maximized_view = MaximizedView::None;
   float _primary_sidebar_ratio = 0.0f;
@@ -5849,7 +5686,8 @@ class Ui : public UiBase<Ui> {
   std::string _log_filter;
   bool _log_auto_scroll = true;
   MonitorWindowsState _monitor_windows;
-  ViewWindowStateMap _view_window_states;
+  int _editor_tab_submitted_active = -1;
+  float _editor_tab_bar_height = 0.0f;
   bool _dragging_window = false;
   bool _resizing_window = false;
   bool _resize_left = false;

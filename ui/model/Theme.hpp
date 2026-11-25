@@ -37,9 +37,6 @@ inline constexpr float kTitleBarHeightEpx = 30.0f;
 // 默认编辑器页签高度（window.density.editorTabHeight = default）。
 inline constexpr float kEditorTabHeightEpx = 35.0f;
 inline constexpr float kEditorTabHorizontalPaddingEpx = 10.0f;
-inline constexpr float kEditorTabCloseSizeEpx = 16.0f;
-inline constexpr float kEditorTabLabelCloseGapEpx = 6.0f;
-inline constexpr float kEditorTabCloseGlyphHalfEpx = 3.5f;
 inline constexpr float kEditorTabSeparatorThicknessEpx = 1.0f;
 inline constexpr float kExplorerTreeRowHeightEpx = 22.0f;
 // VS Code workbench.tree.indent 默认 8。

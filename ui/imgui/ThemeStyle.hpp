@@ -455,37 +455,6 @@ static void ApplyFlowCanvasTheme(ax::NodeEditor::Style& editor_style,
       ToImVec4(t.editor_group_border);
 }
 
-// 编辑区页签自绘用色；与 ApplyTheme / 画布共用 token。
-struct EditorTabPalette {
-  ImU32 tab_bar_bg = 0;
-  ImU32 active_bg = 0;
-  ImU32 inactive_bg = 0;
-  ImU32 hover_bg = 0;
-  ImU32 close_hover_bg = 0;
-  ImU32 active_text = 0;
-  ImU32 inactive_text = 0;
-  ImU32 border = 0;
-  ImU32 active_top_border = 0;
-  ImU32 unfocused_active_top_border = 0;
-};
-
-// 算出页签条自绘所需的 ImU32。
-static EditorTabPalette MakeEditorTabPalette() {
-  const theme_detail::ThemeTokens& t = theme_detail::CurrentTokens();
-  EditorTabPalette palette;
-  palette.tab_bar_bg = ToImU32(t.tab_bar_background);
-  palette.active_bg = ToImU32(t.tab_active_background);
-  palette.inactive_bg = ToImU32(t.tab_inactive_background);
-  palette.hover_bg = ToImU32(t.tab_hover_background);
-  palette.close_hover_bg = ToImU32(t.tab_close_hover_background);
-  palette.active_text = ToImU32(t.tab_active_foreground);
-  palette.inactive_text = ToImU32(t.tab_inactive_foreground);
-  palette.border = ToImU32(t.tab_border);
-  palette.active_top_border = ToImU32(t.tab_active_border_top);
-  palette.unfocused_active_top_border = ToImU32(t.tab_unfocused_active_border_top);
-  return palette;
-}
-
 // Explorer 树行自绘用色；与 ApplyTheme 共用 token。
 struct ExplorerTreePalette {
   ImU32 row_hover_bg = 0;

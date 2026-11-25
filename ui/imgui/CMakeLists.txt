@@ -6,9 +6,10 @@ set(HPP_HEADER_FILES
     UiWidgets.hpp
     WorkbenchIcons.hpp
     CanvasViewLock.hpp
+    ActivityBarView.hpp
+    EditorTabsView.hpp
     MonitorWindows.hpp
     PortTypeVisual.hpp
-    TabStrip.hpp
     ViewWindows.hpp
     WindowChrome.hpp
     )

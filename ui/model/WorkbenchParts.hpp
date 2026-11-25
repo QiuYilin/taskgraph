@@ -217,17 +217,9 @@ struct MonitorInstance {
   std::string title;
 };
 
-// 第 1 个页签用 kind title，之后用 "<title> 2"、"<title> 3"。
-inline std::string MonitorInstanceTitle(std::string_view kind_title,
-                                        int ordinal) {
-  std::string title =
-      kind_title.empty() ? std::string("Monitor") : std::string(kind_title);
-  if (ordinal <= 1) {
-    return title;
-  }
-  title += ' ';
-  title += std::to_string(ordinal);
-  return title;
+// 窗口标题用 kind title，不带序号；空标题退回 Monitor。
+inline std::string MonitorInstanceTitle(std::string_view kind_title) {
+  return kind_title.empty() ? std::string("Monitor") : std::string(kind_title);
 }
 
 // 页签实例的稳定 id；窗口内部使用，不直接显示。

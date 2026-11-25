@@ -1,8 +1,6 @@
 #pragma once
 
-#include "MonitorContainer.hpp"
-#include "TabStrip.hpp"
-#include "WindowChrome.hpp"
+#include "MonitorWorkspace.hpp"
 #include "ThemeStyle.hpp"
 #include "UiWidgets.hpp"
 #include "WorkbenchParts.hpp"
@@ -26,15 +24,8 @@
 constexpr float kMonitorSourceActionWidthEpx = 180.0f;
 constexpr float kMonitorSourceMinWidthEpx = 40.0f;
 constexpr float kMonitorMinContentHeightEpx = 80.0f;
-constexpr const char* kMonitorContainerWindowName = "Monitor###monitor";
-constexpr const char* kMonitorContainerId = "monitor";
 constexpr const char* kMonitorSourceLabel = "Source";
 constexpr const char* kMonitorFollowLabel = "Follow Selection";
-constexpr const char* kMonitorMaximizeTooltip = "Maximize Monitor";
-constexpr const char* kMonitorRestoreTooltip = "Restore Monitor Size";
-constexpr const char* kMonitorCloseTooltip = "Close Monitor";
-constexpr const char* kMonitorNewTooltip = "New Monitor";
-constexpr const char* kMonitorKindPickPopupId = "##MonitorKindPick";
 constexpr const char* kMonitorSourceFilterHint = "Filter outputs";
 constexpr const char* kMonitorNoSourceMessage =
     "Run the graph to compute an output.";
@@ -43,13 +34,8 @@ constexpr const char* kMonitorSelectedNoMatchMessage =
     "Selected node has no matching output.";
 constexpr const char* kMonitorPinnedNoMatchMessage =
     "Pinned node has no matching output.";
-constexpr const char* kMonitorEmptyMessage =
-    "No monitors. Use + to create one.";
-constexpr const char* kMonitorNoKindsMessage = "No monitors are registered.";
 constexpr const char* kMonitorMissingKindMessage =
     "This monitor kind is no longer registered.";
-constexpr float kMonitorTabMinWidthEpx = 40.0f;
-constexpr float kMonitorTabMaxWidthEpx = 240.0f;
 
 struct MonitorSourceEntry {
   std::string label;
@@ -67,47 +53,41 @@ struct MonitorWindowState {
 };
 
 struct MonitorWindowsState {
-  DetachedWindowState container_window;
-  std::unordered_map<std::string, MonitorWindowState> instances;
-  // 页签溢出时的横向滚动量；页签数量变化后会被钳住。
-  float tab_scroll = 0.0f;
+  std::unordered_map<std::string, MonitorWindowState> instance_states;
+  std::string focus_instance;
 };
 
-struct MonitorContainerHost {
+struct MonitorWindowsHost {
   const tg::Controller& controller;
+  MonitorWorkspace& workspace;
   const std::vector<MonitorView>& kinds;
-  MonitorContainer& container;
   tg::Node* selected_node = nullptr;
   ScreenRect first_use_area{};
 };
 
-struct MonitorContainerActions {
+struct MonitorWindowActions {
+  std::string window_id;
   std::string create_kind;
   std::string close_instance;
+  bool close_window = false;
+};
+
+struct MonitorWorkspaceActions {
+  std::vector<MonitorWindowActions> windows;
+  std::string focus_window;
 };
 
 inline MonitorWindowState& MonitorInstanceStateFor(MonitorWindowsState& state,
                                                    const std::string& id) {
-  return state.instances[id];
+  return state.instance_states[id];
 }
 
 // 按 kind id 找注册的 MonitorView；找不到返回 nullptr。
-inline const MonitorView* FindMonitorKind(const MonitorContainerHost& host,
+inline const MonitorView* FindMonitorKind(const std::vector<MonitorView>& kinds,
                                           std::string_view kind_id) {
-  for (const MonitorView& kind : host.kinds) {
+  for (const MonitorView& kind : kinds) {
     if (kind.id == kind_id) {
       return &kind;
-    }
-  }
-  return nullptr;
-}
-
-// 按实例 id 找页签；找不到返回 nullptr。
-inline const MonitorInstance* FindMonitorInstance(
-    const MonitorContainerHost& host, std::string_view instance_id) {
-  for (const MonitorInstance& instance : host.container.instances()) {
-    if (instance.id == instance_id) {
-      return &instance;
     }
   }
   return nullptr;
@@ -348,9 +328,9 @@ inline void ShowMonitorContent(const MonitorView& view,
   }
 }
 
-// 画活动页签的内容：Source / Follow 工具栏 + 注册方内容。
+// 画一个实例的内容：Source / Follow 工具栏 + 注册方内容。
 inline void ShowMonitorInstanceContent(MonitorWindowsState& windows_state,
-                                       const MonitorContainerHost& host,
+                                       const MonitorWindowsHost& host,
                                        const MonitorInstance& instance,
                                        const MonitorView& kind, float ui_scale) {
   MonitorWindowState& state =
@@ -364,152 +344,81 @@ inline void ShowMonitorInstanceContent(MonitorWindowsState& windows_state,
   ShowMonitorContent(kind, resolved, message, ui_scale);
 }
 
-// 容器页签栏：实例转成共用 TabStrip，样式与编辑区一致。
-inline void ShowMonitorTabBar(MonitorWindowsState& windows_state,
-                              const MonitorContainerHost& host,
-                              MonitorContainerActions& actions) {
-  const float ui_scale = ImGui::GetStyle().FontScaleMain;
-  const auto& instances = host.container.instances();
-  std::vector<TabStripItem> items;
-  items.reserve(instances.size());
-  int active_item = -1;
-  for (int index = 0; index < static_cast<int>(instances.size()); ++index) {
-    const MonitorInstance& instance = instances[index];
-    TabStripItem item;
-    item.id = instance.id;
-    item.title = instance.title;
-    if (instance.id == host.container.active_instance()) {
-      active_item = index;
-    }
-    items.push_back(std::move(item));
-  }
-
-  TabStripOptions options;
-  options.overflow = TabStripOverflow::ShrinkScroll;
-  options.min_width = kMonitorTabMinWidthEpx * ui_scale;
-  options.max_width = kMonitorTabMaxWidthEpx * ui_scale;
-  options.show_new_action = !host.kinds.empty();
-  options.new_action_enabled = !host.kinds.empty();
-  options.new_action_tooltip = host.kinds.empty()
-                                   ? kMonitorNoKindsMessage
-                                   : kMonitorNewTooltip;
-  options.scroll_active_into_view =
-      !host.container.select_instance().empty();
-  const TabStripResult result = DrawTabStrip(
-      "##MonitorTabs", items, active_item, ImGui::IsWindowFocused(),
-      ImGui::GetContentRegionAvail().x, options, &windows_state.tab_scroll);
-
-  if (result.clicked >= 0 &&
-      result.clicked < static_cast<int>(instances.size())) {
-    host.container.SetActive(instances[result.clicked].id);
-  }
-  if (result.closed >= 0 && result.closed < static_cast<int>(instances.size())) {
-    actions.close_instance = instances[result.closed].id;
-  }
-  if (result.new_action) {
-    if (host.kinds.size() == 1) {
-      actions.create_kind = host.kinds.front().id;
+// 清掉已关闭实例的 Source / Follow 状态。
+inline void PruneMonitorRuntime(MonitorWindowsState& windows_state,
+                                MonitorWorkspace& workspace) {
+  for (auto it = windows_state.instance_states.begin();
+       it != windows_state.instance_states.end();) {
+    if (workspace.FindWindowForInstance(it->first) == nullptr) {
+      it = windows_state.instance_states.erase(it);
     } else {
-      ImGui::OpenPopup(kMonitorKindPickPopupId);
+      ++it;
     }
   }
-
-  if (ImGui::BeginPopup(kMonitorKindPickPopupId)) {
-    ScopedStyle picker_style(PushQuickPickStyle, PopQuickPickStyle);
-    for (const MonitorView& kind : host.kinds) {
-      if (ImGui::Selectable(kind.title.c_str(), false)) {
-        actions.create_kind = kind.id;
-        ImGui::CloseCurrentPopup();
-      }
-    }
-    ImGui::EndPopup();
-  }
-  host.container.ClearSelect();
 }
 
-// 单容器：页签栏 + 活动页签内容；新建/关闭请求交给 Ui 在帧末处理。
-inline MonitorContainerActions ShowMonitorContainer(
-    MonitorWindowsState& windows_state, const MonitorContainerHost& host,
-    const WorkbenchChrome& chrome) {
-  MonitorContainerActions actions;
-  // 容器关闭时不提交窗口；否则会留下一个没有标题按钮的空壳。
-  if (!host.container.open()) {
-    return actions;
-  }
+// 每个实例一个不进主 DockSpace 的原生窗口。
+inline MonitorWorkspaceActions ShowMonitorWindows(
+    MonitorWindowsState& windows_state, MonitorWindowsHost& host) {
+  MonitorWorkspaceActions out;
   const float ui_scale = ImGui::GetStyle().FontScaleMain;
-
-  DetachedWindowSpec spec;
-  spec.name = kMonitorContainerWindowName;
-  spec.id = kMonitorContainerId;
-  spec.open = host.container.open_ptr();
-  // 页签栏像编辑区一样贴窗口左上角；内容内边距由 body child 负责。
-  spec.zero_window_padding = true;
-  spec.extra_flags =
-      ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse;
-  spec.maximize_tooltip = kMonitorMaximizeTooltip;
-  spec.restore_tooltip = kMonitorRestoreTooltip;
-  spec.close_tooltip = kMonitorCloseTooltip;
-  // 首次出现在编辑区右上角；之后由 ImGui ini 和停靠状态决定。
+  const ImVec2 default_size(kViewWindowDefaultWidthEpx * ui_scale,
+                            kViewWindowDefaultHeightEpx * ui_scale);
+  ScreenRect first_use;
   if (host.first_use_area.size.x > 0.0f && host.first_use_area.size.y > 0.0f) {
-    const ScreenRect rect = TopRightFloatingRect(
-        host.first_use_area,
-        Vec2{kViewWindowDefaultWidthEpx * ui_scale,
-             kViewWindowDefaultHeightEpx * ui_scale},
+    first_use = TopRightFloatingRect(
+        host.first_use_area, Vec2{default_size.x, default_size.y},
         kViewWindowMarginEpx * ui_scale);
-    if (rect.size.x > 0.0f && rect.size.y > 0.0f) {
-      spec.first_use_placed = true;
-      spec.first_use_pos = ToImVec2(rect.pos);
-      spec.first_use_size = ToImVec2(rect.size);
-    }
   }
+  const ImGuiWindowFlags window_flags =
+      ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoScrollbar |
+      ImGuiWindowFlags_NoScrollWithMouse;
 
-  // 旧 session 可能记着一个已不在的页签；回退到第一个。
-  if (!host.container.active_instance().empty() &&
-      FindMonitorInstance(host, host.container.active_instance()) == nullptr) {
-    host.container.SetActive("");
-  }
-  if (host.container.active_instance().empty() &&
-      !host.container.instances().empty()) {
-    host.container.SetActive(host.container.instances().front().id);
-  }
-
-  const DetachedWindowFrame frame =
-      BeginDetachedWindow(spec, windows_state.container_window, chrome);
-  if (frame.content_visible) {
-    ShowMonitorTabBar(windows_state, host, actions);
-    // 页签栏可能刚切换活动页签；内容在下一行按当前活动实例画。
-    if (FindMonitorInstance(host, host.container.active_instance()) == nullptr) {
-      host.container.SetActive(host.container.instances().empty()
-                                   ? std::string()
-                                   : host.container.instances().front().id);
+  for (MonitorWindow& window : host.workspace.windows()) {
+    if (!window.visible) {
+      continue;
     }
-    const float margin = kSurfaceTextMarginEpx * ui_scale;
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,
-                        ImVec2(margin, margin));
-    ImGui::BeginChild("##MonitorBody", ImVec2(0.0f, 0.0f),
-                      ImGuiChildFlags_None,
-                      ImGuiWindowFlags_NoScrollbar |
-                          ImGuiWindowFlags_NoScrollWithMouse);
-    if (host.container.instances().empty()) {
-      ImGui::TextDisabled("%s", host.kinds.empty() ? kMonitorNoKindsMessage
-                                                   : kMonitorEmptyMessage);
-    } else {
-      const MonitorInstance* instance =
-          FindMonitorInstance(host, host.container.active_instance());
-      const MonitorView* kind =
-          instance != nullptr ? FindMonitorKind(host, instance->kind_id)
-                              : nullptr;
-      // kind 被宿主注销后仍保留页签，内容给出说明。
-      if (instance != nullptr && kind != nullptr) {
-        ShowMonitorInstanceContent(windows_state, host, *instance, *kind,
-                                   ui_scale);
-      } else {
-        ImGui::TextDisabled("%s", kMonitorMissingKindMessage);
+    for (const MonitorInstance& instance : window.tabs.instances()) {
+      const MonitorView* kind = FindMonitorKind(host.kinds, instance.kind_id);
+      // 旧 session 的实例可能没有 kind；只有一个注册 kind 时按它恢复。
+      if (kind == nullptr && instance.kind_id.empty() &&
+          host.kinds.size() == 1) {
+        kind = &host.kinds.front();
+      }
+      const std::string name = instance.title + "###" + instance.id;
+      bool open = true;
+      if (first_use.size.x > 0.0f && first_use.size.y > 0.0f) {
+        ImGui::SetNextWindowPos(ToImVec2(first_use.pos), ImGuiCond_FirstUseEver);
+        ImGui::SetNextWindowSize(ToImVec2(first_use.size),
+                                 ImGuiCond_FirstUseEver);
+      }
+      // 刚新建的实例放到最前；之后的位置交给 ImGui ini。
+      if (!windows_state.focus_instance.empty() &&
+          windows_state.focus_instance == instance.id) {
+        ImGui::SetNextWindowFocus();
+        windows_state.focus_instance.clear();
+      }
+      PushPanelStyle();
+      // Begin / End：一个 Monitor 实例的独立窗口。
+      const bool content_visible =
+          ImGui::Begin(name.c_str(), &open, window_flags);
+      if (content_visible) {
+        if (kind == nullptr) {
+          ImGui::TextDisabled("%s", kMonitorMissingKindMessage);
+        } else {
+          ShowMonitorInstanceContent(windows_state, host, instance, *kind,
+                                     ui_scale);
+        }
+      }
+      ImGui::End();
+      PopPanelStyle();
+      if (!open) {
+        MonitorWindowActions action;
+        action.window_id = window.id;
+        action.close_instance = instance.id;
+        out.windows.push_back(std::move(action));
       }
     }
-    ImGui::EndChild();
-    ImGui::PopStyleVar();
   }
-  EndDetachedWindow(spec, windows_state.container_window, frame);
-  return actions;
+  return out;
 }

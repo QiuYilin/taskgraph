@@ -12,7 +12,7 @@
 
 ```text
 ┌──────────────────────────────────────────────────────────────┐
-│ 标题栏   File  Run  Help          工程名           — □ ×   │
+│ 标题栏  File … Help  New Monitor    工程名          — □ ×    │
 ├────┬────────────┬────────────────────────────┬──────────────┤
 │活动│ 主侧栏     │ 编辑区                      │ 辅助侧栏     │
 │栏  │ Explorer   │ 页签                        │ Properties   │
@@ -30,11 +30,11 @@
 
 从左到右三块：菜单栏、命令中心、窗口按钮。菜单栏里没有活动栏，也没有第二条工具栏。
 
-菜单栏从左到右是 **File**、**Edit**、**View**、**Run**、**Help**。
+菜单栏从左到右是 **File**、**Edit**、**View**、**Run**、**Help**。注册了 monitor kind 时，**New Monitor** 紧挨在 **Help** 右边；每次点击都再新建一个独立窗口，用第一个注册 kind。没有注册 kind 时不显示。
 
 - **File**：New Project...、Open Project...、Open Recent、Save、Save As...。**Preferences > Theme** 在 Dark Modern 与 Light Modern 之间切换，立刻生效，并写入用户配置目录的 `taskgraph/session.json`。**Preferences > Keyboard Shortcuts** 在编辑区打开快捷键页签。
 - **Edit**：Undo、Redo、Cut、Copy、Paste、Delete。Undo/Redo 走全局栈（图操作与各页签节点操作统一排序），其余命令作用于当前选中的节点。
-- **View**：Appearance、Explorer、Search、Properties、Output、Monitor、Primary Side Bar、Status Bar、Show Type Names。Monitor 只开关容器；新建入口在容器页签栏的 `+`，View 菜单没有新建子菜单。
+- **View**：Appearance、Explorer、Search、Properties、Output、Monitor、Primary Side Bar、Status Bar、Show Type Names。**Monitor** 在还没有 Monitor 窗口时，用第一个注册 kind 新建一个独立窗口；已经有窗口时不变。另外注册的独立视图窗口也列在这里：每个是可停靠的 ImGui 原生窗口，用标题栏上的关闭按钮关掉，没有铺满工作区的按钮。第一次出现在工作区中央。
 - **Run**：**Run Graph** 跑当前 graph。没有 graph 时这项不可用。
 - **Help**：**Welcome** 打开 Welcome 页签。
 
@@ -78,13 +78,13 @@
 
 启动后如果没有可恢复的页签，这里打开 **Welcome**。**Welcome** 里是 **Start**（New Project...、Open Project...）和 **Recent**。从菜单打开工程时不自动打开 graph 页签；下次启动会按会话恢复上次打开的 graph 页签。
 
-页签从左到右排在编辑区顶部，可以点掉关闭。关掉页签不删除 graph。全部关掉之后不显示画布，中间提示 **No editor is open**，并说明从 Explorer 打开 graph，或用 **+ Graph** 新建。
+页签从左到右排在编辑区顶部，用 ImGui 页签栏：可以拖动重排、点关闭或用中键关掉，放不下时按 ImGui 的默认策略收缩。重排只在这次运行里保持，下次启动仍按打开顺序恢复。关掉页签不删除 graph。全部关掉之后不显示画布，中间提示 **No editor is open**，并说明从 Explorer 打开 graph，或用 **+ Graph** 新建。页签高度跟 ImGui 的页签栏，不再使用单独的 35px 自绘条。整行底色仍是编辑区页签底色：明亮模式是浅灰，选中页签是编辑区白底。
 
 页签有三种：
 
 - **Welcome**
 - **Keyboard Shortcuts**：过滤框在上，下面三列是 Command、Keybinding、When。这一页只列出快捷键，不能在这里改键。
-- graph：页签名是图名。这一页的右侧、与页签同一行，有 **Show Type Names**。打开后，引脚功能名上方叠类型名，节点 identifier 上方补一行 kind。类型名用类型色，引脚仍和功能名对齐。关闭时悬停节点 identifier 总会显示 kind；identifier 与 kind 相同时显示相同文字。悬停引脚功能名则显示对应的类型名。
+- graph：页签名是图名。这一页激活时，**Show Type Names** 贴在页签栏这一行的最右边，和最后一个页签之间留空。打开后，引脚功能名上方叠类型名，节点 identifier 上方补一行 kind。类型名用类型色，引脚仍和功能名对齐。关闭时悬停节点 identifier 总会显示 kind；identifier 与 kind 相同时显示相同文字。悬停引脚功能名则显示对应的类型名。按钮在打开时用选中页签的底色。
 
 graph 页签下面是画布。节点第一次出现时，工程里有坐标就用那个坐标，否则按列排开。之后的位置写回工程。针脚默认画成圆，颜色由类型 id 哈希；作者可在 `NodeData_` 上可选指定 `PinShape` / `PortTypeColor`。
 
@@ -111,7 +111,7 @@ graph 页签下面是画布。节点第一次出现时，工程里有坐标就�
 
 这里是 **Properties**。
 
-标题栏右侧有**最大化/还原**和**关闭**按钮。最大化时隐藏所有其它停靠（主侧栏、编辑区、Output），只留活动栏、标题栏和状态栏；再点还原回到最大化前的布局。关闭等同于取消勾选 **View > Properties**，之后可从菜单重开。浮动时标题栏与 Custom Monitor 一致：自绘最大化/还原和关闭字形，两个按钮同尺寸；停靠时仍用页签栏按钮。
+标题栏右侧有**最大化/还原**和**关闭**按钮。最大化时隐藏所有其它停靠（主侧栏、编辑区、Output），只留活动栏、标题栏和状态栏；再点还原回到最大化前的布局。关闭等同于取消勾选 **View > Properties**，之后可从菜单重开。浮动时标题栏自绘最大化/还原和关闭字形，两个按钮同尺寸；停靠时仍用页签栏按钮。
 
 选中节点时，表有三列：**Name**、**Type**、**Value**。原生属性可以直接改。整数是 `int`，布尔是勾选框，字符串可以手输；数字直接输入，没有 `-` / `+` 步进按钮（与 Qt 版一致）。File / Directory 的路径框占满值列，**Browse...** 在下一行右对齐，打开系统选择框。按钮用 VS Code 的 secondary 样式（2px 圆角、1px 半透明描边）；工程路径弹窗里 **OK** 是 primary，**Cancel** 是 secondary。图像和点云的值是导入文件的路径。
 
@@ -119,26 +119,21 @@ graph 页签下面是画布。节点第一次出现时，工程里有坐标就�
 
 选中连线时，表改成两列：**Type**、**Value**。这是这根线代表的变量。变量目前没有名称。输出已经算出、并且能写成属性值时，**Value** 里有值。
 
-## Monitor 容器
+## Monitor 窗口
 
-Monitor 是一个容器窗口，内部用页签放多个 monitor 实例，行为对齐 VS Code Terminal：View 菜单只有一个 **Monitor** 开关，新建在容器页签栏右侧的 `+`。
+每个 Monitor 实例是一个 ImGui 原生独立窗口，不进主停靠区，也不再用自绘页签栏。
 
-- 默认浮动，首次出现在编辑区右上角（页签栏下方，右侧让开 Properties，底部让开 Output）；也可拖进停靠区。位置和停靠状态由 ImGui ini 记住。
-- 页签栏和编辑区共用 `TabStrip` 的页签高度、左右 padding、关闭按钮和活动/悬停配色。页签栏右侧 `+`：只注册了一种 monitor kind 时直接新建；多种 kind 时打开列表选类型。页签标题过长截断并给 tooltip。页签少时 `+` 紧贴最后一个页签右侧；页签多时先缩到最小宽度，再用鼠标滚轮横向滚动，`+` 固定在页签栏右端，不显示滚动箭头。页签栏紧贴标题栏，下面直接是 Source/Follow 工具栏和内容；内容使用 `kSurfaceTextMarginEpx` 内边距。
-- 关闭页签销毁该实例；关闭最后一个页签隐藏容器。容器标题栏或停靠页签栏的关闭按钮只隐藏容器，不销毁页签；从 View > Monitor 重新打开时恢复原页签。
-- 没有页签时容器显示 `No monitors. Use + to create one.`；没有注册 kind 时 `+` 不可用，并提示 `No monitors are registered.`。
-- 每个页签内容独立保存 Source / Follow / 过滤状态；新建页签默认 Follow Selection 开启，不继承其它页签的固定来源。
-- 工具栏单行内所有控件统一按当前 FrameHeight 占满行高并垂直居中；文字动作用扁平 Button，不按文字高度贴顶。
-- 工具栏空间不足时按**截断 → 紧凑 → 溢出**降级：可伸缩项先缩短并给 tooltip，可紧凑项只留复选框/图标并给 tooltip，最后把低优先级项收进 `...` 菜单；如果 `...` 比该项还宽就不强行溢出，继续缩短可伸缩项。不把文字截半个。
-- 容器和 view window 统一用 `DetachedWindowSpec` + `BeginDetachedWindow` / `EndDetachedWindow` 原语：浮动标题栏右侧自绘最大化/还原和关闭字形（同一套尺寸，不使用 ImGui 原生 X）；停靠页签栏右侧同样自绘最大化/还原与关闭，和 Output/Properties 一致。
-- 内容首行工具栏：**Source**、**Follow Selection** 复选框；Source 先缩短，再窄时 Follow 变无标签复选框；必要时才进 `...` 菜单。
+- **View > Monitor**：还没有实例时，用第一个注册 kind 新建一个窗口；已经有实例时不变，不聚焦、不新建。
+- **New Monitor** 紧挨在标题栏 **Help** 右边。每次点击都再新建一个窗口，同样用第一个注册 kind。多种 kind 时暂不选择。没有注册 kind 时这个动作不出现。
+- 窗口使用 ImGui 标题栏和关闭按钮，带 `NoDocking`，避免被编辑区的停靠格吞掉。首次出现在编辑区右上角（页签栏下方）；之后的位置由 ImGui ini 记住。刚新建的窗口会放到最前。
+- 关闭按钮销毁该实例。一个模型窗口里如果还留着旧 session 的多个实例，每个实例仍各开一个原生窗口。
+- 内容首行工具栏：**Source**、**Follow Selection**。Source 先缩短，再窄时 Follow 变无标签复选框；必要时才进 `...` 菜单。
 - **Source** 打开带过滤框的 Quick Pick，按 `图名 / 节点 / 端口` 列出当前可用的输出；选择后关闭 Follow 并固定该来源。
-- **Follow Selection** 默认开启，跟随主侧栏/画布选中的节点；关闭时固定当前来源。固定节点删除后清空来源。
-- 空状态：`Run the graph to compute an output.`、`No node selected.`、`Selected node has no matching output.`、`Pinned node has no matching output.`。
+- **Follow Selection** 默认开启，跟随主侧栏/画布选中的节点；关闭时固定当前来源。固定节点删除后清空来源。每个实例各自保存 Source / Follow / 过滤状态。新建窗口不继承其它窗口的固定来源。
+- 空状态：`Run the graph to compute an output.`、`No node selected.`、`Selected node has no matching output.`、`Pinned node has no matching output.`。kind 已不在注册表里时显示 `This monitor kind is no longer registered.`。
 - 内容区拿到 taskgraph 算好的 `width/height`，窗口禁用滚动条；有 `status` 时底部留一行小字。
-- 最大化在浮动和停靠时都可点：铺满应用标题栏下方、活动栏右侧、状态栏上方的工作区；从停靠触发时先临时浮出，还原时回到原位置。
-- session 保存页签列表、活动页签和容器开关；旧 `view_windows` 里的 Monitor 开关会迁移成默认页签。
-- `simple-ui` 注册 **Custom Monitor** kind（`open_on_first_run` 为 false，默认没有页签），同时接受 `IntData` / `DoubleData`，演示 `accepts` / `draw` / `status` 三个回调的最小写法。
+- session 按窗口保存实例、活动实例和下一实例序号；重启后已保存的窗口会再打开。旧 `monitor_tabs` 会迁移成单个 `monitor` 窗口。
+- `simple-ui` 注册 **Custom Monitor** kind（`open_on_first_run` 为 false，启动时没有窗口），同时接受 `IntData` / `DoubleData`，演示 `accepts` / `draw` / `status` 三个回调的最小写法。
 
 注册接口：
 
@@ -157,16 +152,16 @@ ui.AddMonitorView(std::move(view));
 
 | 字段 | 含义 |
 | --- | --- |
-| `id` / `title` | monitor kind 的稳定 id 和默认页签标题；实例 id 由 taskgraph 生成 |
-| `open_on_first_run` | 没有页签记录时是否种一个默认页签 |
+| `id` / `title` | monitor kind 的稳定 id 和窗口标题；实例 id 由 taskgraph 生成 |
+| `open_on_first_run` | 保留在注册结构里；当前启动不按它自动开窗口 |
 | `accepts` | 过滤该 kind 接受的 NodeData；空表示全部 |
 | `draw` | 内容区渲染，`width/height` 是 taskgraph 算好的可用尺寸 |
 | `status` | 有来源时的底部短状态；返回空则不占行 |
-| `open` | 旧字段，保留兼容；容器和页签状态现在以 session 为准 |
+| `open` | 旧字段，保留兼容；打开哪些窗口以 session 里的 monitor 窗口为准 |
 
 ## 面板
 
-状态栏上面、编辑区下面是面板。默认只有 **Output**，按行显示日志。页签栏右侧有**最大化/还原**和**关闭**；浮动时标题栏与 Monitor 容器一致：自绘最大化/还原和关闭字形，两个按钮同尺寸；停靠时仍用页签栏按钮。最大化时隐藏主侧栏、辅助侧栏和编辑区，只留活动栏、标题栏和状态栏。关闭等同于取消勾选 **View > Output**。Output 顶部是 22px 紧凑单行工具栏，有 **Detail**（Off / Errors / Timing / Summary / Detailed / Everything，配置不匹配预设时显示 **Custom**）、**Categories** 多选、**Clear**、**Auto-scroll** 和文本过滤框；Categories/Clear 是无底色文字动作，复选框 16px。窄面板时 Auto-scroll 先变无标签复选框，再依次把 Categories、Clear、Auto-scroll 收进 `...` 菜单；过滤框优先放右侧，放不下换行。日志表分四列：**Level**、**Category**、**Context**（`Graph` 或 `Graph/Node`）、**Message**；Message 自动换行，Level/Message 按级别着色。节点类型只在 start 消息出现。过滤匹配 Context + Message。超过内存 1000 条时显示 **Dropped N**。级别、类别和 Auto-scroll 写入 session；**Off 只停止新记录，已有行保留，Clear 才清空**。
+状态栏上面、编辑区下面是面板。默认只有 **Output**，按行显示日志。页签栏右侧有**最大化/还原**和**关闭**；浮动时标题栏自绘最大化/还原和关闭字形，两个按钮同尺寸；停靠时仍用页签栏按钮。最大化时隐藏主侧栏、辅助侧栏和编辑区，只留活动栏、标题栏和状态栏。关闭等同于取消勾选 **View > Output**。Output 顶部是 22px 紧凑单行工具栏，有 **Detail**（Off / Errors / Timing / Summary / Detailed / Everything，配置不匹配预设时显示 **Custom**）、**Categories** 多选、**Clear**、**Auto-scroll** 和文本过滤框；Categories/Clear 是无底色文字动作，复选框 16px。窄面板时 Auto-scroll 先变无标签复选框，再依次把 Categories、Clear、Auto-scroll 收进 `...` 菜单；过滤框优先放右侧，放不下换行。日志表分四列：**Level**、**Category**、**Context**（`Graph` 或 `Graph/Node`）、**Message**；Message 自动换行，Level/Message 按级别着色。节点类型只在 start 消息出现。过滤匹配 Context + Message。超过内存 1000 条时显示 **Dropped N**。级别、类别和 Auto-scroll 写入 session；**Off 只停止新记录，已有行保留，Clear 才清空**。
 
 ## 状态栏
 

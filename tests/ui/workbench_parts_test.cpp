@@ -287,10 +287,10 @@ TEST(WorkbenchParts, DefaultsShowAllRegions) {
 }
 
 TEST(WorkbenchParts, MonitorInstanceIdentity) {
-  EXPECT_EQ(MonitorInstanceTitle("Point Cloud", 1), "Point Cloud")
-      << "first tab keeps the kind title";
-  EXPECT_EQ(MonitorInstanceTitle("Point Cloud", 2), "Point Cloud 2")
-      << "second tab gets an ordinal";
+  EXPECT_EQ(MonitorInstanceTitle("Point Cloud"), "Point Cloud")
+      << "window title keeps the kind title";
+  EXPECT_EQ(MonitorInstanceTitle(""), "Monitor")
+      << "empty kind title falls back to Monitor";
   EXPECT_EQ(MonitorInstanceId("pcl.point-cloud", 3),
             "monitor.pcl.point-cloud.3")
       << "instance id keeps kind id and ordinal";

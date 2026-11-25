@@ -62,11 +62,17 @@ void SessionTest::sessionSaveLoadRoundtrip() {
   written.open_graph_names = {"Graph", "Graph 2"};
   written.view_windows["point-cloud"] = true;
   written.view_windows["inspector"] = false;
-  written.monitor_tabs["custom"] = {
-      MonitorTabRecord{"monitor.custom.1", "Custom Monitor"}};
-  written.monitor_tabs["empty-kind"] = {};
-  written.monitor_active_tab = "monitor.custom.1";
-  written.monitor_container_open = true;
+  MonitorWindowRecord primary;
+  primary.id = "monitor";
+  primary.title = "Monitor";
+  primary.active_tab = "monitor.custom.1";
+  primary.tabs.push_back(
+      MonitorTabRecord{"monitor.custom.1", "custom", "Custom Monitor"});
+  MonitorWindowRecord detached;
+  detached.id = "monitor-2";
+  detached.title = "Monitor 2";
+  written.monitor_windows = {primary, detached};
+  written.monitor_next_window_ordinal = 3;
   written.log_level = static_cast<int>(tg::LogLevel::Debug);
   written.log_categories =
       static_cast<tg::LogCategoryMask>(tg::LogCategory::App) |
@@ -89,15 +95,14 @@ void SessionTest::sessionSaveLoadRoundtrip() {
   QCOMPARE(static_cast<int>(loaded.view_windows.size()), 2);
   QVERIFY(loaded.view_windows.at("point-cloud"));
   QVERIFY(!loaded.view_windows.at("inspector"));
-  QCOMPARE(static_cast<int>(loaded.monitor_tabs.count("custom")), 1);
-  QCOMPARE(static_cast<int>(loaded.monitor_tabs.at("custom").size()), 1);
-  QVERIFY(loaded.monitor_tabs.at("custom")[0].id == "monitor.custom.1");
-  QVERIFY(loaded.monitor_tabs.at("custom")[0].title == "Custom Monitor");
-  QCOMPARE(static_cast<int>(loaded.monitor_tabs.count("empty-kind")), 1);
-  QVERIFY(loaded.monitor_tabs.at("empty-kind").empty());
-  QVERIFY(loaded.monitor_active_tab == "monitor.custom.1");
-  QVERIFY(loaded.monitor_container_open_known);
-  QVERIFY(loaded.monitor_container_open);
+  QCOMPARE(static_cast<int>(loaded.monitor_windows.size()), 2);
+  QVERIFY(loaded.monitor_windows[0].id == "monitor");
+  QVERIFY(loaded.monitor_windows[0].active_tab == "monitor.custom.1");
+  QCOMPARE(static_cast<int>(loaded.monitor_windows[0].tabs.size()), 1);
+  QVERIFY(loaded.monitor_windows[0].tabs[0].kind == "custom");
+  QVERIFY(loaded.monitor_windows[0].tabs[0].title == "Custom Monitor");
+  QVERIFY(loaded.monitor_windows[1].id == "monitor-2");
+  QCOMPARE(loaded.monitor_next_window_ordinal, 3);
   QCOMPARE(loaded.log_level, static_cast<int>(tg::LogLevel::Debug));
   QCOMPARE(loaded.log_categories,
            static_cast<tg::LogCategoryMask>(tg::LogCategory::App) |

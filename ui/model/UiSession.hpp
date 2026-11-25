@@ -15,7 +15,16 @@
 /** \brief Monitor 页签在 session 里的记录；只保存重建窗口所需的最小信息。 */
 struct MonitorTabRecord {
   std::string id;
+  std::string kind;
   std::string title;
+};
+
+/** \brief 一个 Monitor 窗口及其页签分组。 */
+struct MonitorWindowRecord {
+  std::string id;
+  std::string title;
+  std::string active_tab;
+  std::vector<MonitorTabRecord> tabs;
 };
 
 /** \brief 会话 Facade：读写用户配置目录下的 session.json（Recent / 上次工程 / 打开的图）。 */
@@ -31,6 +40,9 @@ struct UiSession {
   static constexpr const char* kJsonKeyMonitorActiveTab = "monitor_active_tab";
   static constexpr const char* kJsonKeyMonitorContainerOpen =
       "monitor_container_open";
+  static constexpr const char* kJsonKeyMonitorWindows = "monitor_windows";
+  static constexpr const char* kJsonKeyMonitorNextWindow =
+      "monitor_next_window_ordinal";
   static constexpr const char* kJsonKeyLogLevel = "log_level";
   static constexpr const char* kJsonKeyLogCategories = "log_categories";
   static constexpr const char* kJsonKeyLogAutoScroll = "log_auto_scroll";
@@ -52,10 +64,14 @@ struct UiSession {
   std::map<std::string, std::vector<MonitorTabRecord>> monitor_tabs;
   /** \brief 当前活动的 Monitor 实例 id；不在当前 kind 列表时忽略。 */
   std::string monitor_active_tab;
-  /** \brief Monitor 容器是否打开；没有记录时由是否有页签决定。 */
+  /** \brief Monitor 容器是否打开；仅用于旧 session 迁移。 */
   bool monitor_container_open = false;
   /** \brief 运行时标记：session 里是否真的写过容器开关；不落盘。 */
   bool monitor_container_open_known = false;
+  /** \brief 当前所有 Monitor 窗口；数组顺序就是窗口顺序。 */
+  std::vector<MonitorWindowRecord> monitor_windows;
+  /** \brief 下一个 Monitor 窗口序号；关闭窗口后不复用。 */
+  int monitor_next_window_ordinal = 1;
   /** \brief Output 日志级别；-1 表示未设置，使用固定 Summary。 */
   int log_level = -1;
   /** \brief Output 日志类别位；0xFFFFFFFF 表示未设置。 */
@@ -180,6 +196,46 @@ struct UiSession {
       session.monitor_active_tab =
           document.at(kJsonKeyMonitorActiveTab).get<std::string>();
     }
+    if (document.contains(kJsonKeyMonitorWindows) &&
+        document.at(kJsonKeyMonitorWindows).is_array()) {
+      for (const auto& entry : document.at(kJsonKeyMonitorWindows)) {
+        if (!entry.is_object() || !entry.contains("id") ||
+            !entry.at("id").is_string()) {
+          continue;
+        }
+        MonitorWindowRecord window;
+        window.id = entry.at("id").get<std::string>();
+        if (entry.contains("title") && entry.at("title").is_string()) {
+          window.title = entry.at("title").get<std::string>();
+        }
+        if (entry.contains("active_tab") && entry.at("active_tab").is_string()) {
+          window.active_tab = entry.at("active_tab").get<std::string>();
+        }
+        if (entry.contains("tabs") && entry.at("tabs").is_array()) {
+          for (const auto& tab : entry.at("tabs")) {
+            if (!tab.is_object() || !tab.contains("id") ||
+                !tab.at("id").is_string()) {
+              continue;
+            }
+            MonitorTabRecord record;
+            record.id = tab.at("id").get<std::string>();
+            if (tab.contains("kind") && tab.at("kind").is_string()) {
+              record.kind = tab.at("kind").get<std::string>();
+            }
+            if (tab.contains("title") && tab.at("title").is_string()) {
+              record.title = tab.at("title").get<std::string>();
+            }
+            window.tabs.push_back(std::move(record));
+          }
+        }
+        session.monitor_windows.push_back(std::move(window));
+      }
+    }
+    if (document.contains(kJsonKeyMonitorNextWindow) &&
+        document.at(kJsonKeyMonitorNextWindow).is_number_integer()) {
+      session.monitor_next_window_ordinal =
+          document.at(kJsonKeyMonitorNextWindow).get<int>();
+    }
     if (document.contains(kJsonKeyMonitorContainerOpen) &&
         document.at(kJsonKeyMonitorContainerOpen).is_boolean()) {
       session.monitor_container_open =
@@ -224,20 +280,25 @@ struct UiSession {
     document[kJsonKeyLastRoot] = last_root;
     document[kJsonKeyOpenGraphNames] = open_graph_names;
     document[kJsonKeyViewWindows] = view_windows;
-    nlohmann::json monitor_tabs_json = nlohmann::json::object();
-    for (const auto& entry : monitor_tabs) {
-      nlohmann::json records = nlohmann::json::array();
-      for (const MonitorTabRecord& record : entry.second) {
+    nlohmann::json monitor_windows_json = nlohmann::json::array();
+    for (const MonitorWindowRecord& window : monitor_windows) {
+      nlohmann::json tabs = nlohmann::json::array();
+      for (const MonitorTabRecord& record : window.tabs) {
         nlohmann::json item = nlohmann::json::object();
         item["id"] = record.id;
+        item["kind"] = record.kind;
         item["title"] = record.title;
-        records.push_back(std::move(item));
+        tabs.push_back(std::move(item));
       }
-      monitor_tabs_json[entry.first] = std::move(records);
+      nlohmann::json entry = nlohmann::json::object();
+      entry["id"] = window.id;
+      entry["title"] = window.title;
+      entry["active_tab"] = window.active_tab;
+      entry["tabs"] = std::move(tabs);
+      monitor_windows_json.push_back(std::move(entry));
     }
-    document[kJsonKeyMonitorTabs] = std::move(monitor_tabs_json);
-    document[kJsonKeyMonitorActiveTab] = monitor_active_tab;
-    document[kJsonKeyMonitorContainerOpen] = monitor_container_open;
+    document[kJsonKeyMonitorWindows] = std::move(monitor_windows_json);
+    document[kJsonKeyMonitorNextWindow] = monitor_next_window_ordinal;
     document[kJsonKeyLogLevel] = log_level;
     document[kJsonKeyLogCategories] = log_categories;
     document[kJsonKeyLogAutoScroll] = log_auto_scroll;
