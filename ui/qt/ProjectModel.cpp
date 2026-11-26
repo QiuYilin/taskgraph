@@ -213,7 +213,8 @@ GraphModel* ProjectModel::addGraph() {
 
 void ProjectModel::removeGraph(GraphModel* model) {
   const int index = indexOfGraph(model);
-  if (index < 0) {
+  if (index < 0 ||
+      (model->graph() != nullptr && model->graph()->isRunning())) {
     return;
   }
   emit graphAboutToBeRemoved(model, index);

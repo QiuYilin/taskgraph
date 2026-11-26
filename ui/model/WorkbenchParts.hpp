@@ -2,6 +2,7 @@
 
 #include "Types.hpp"
 
+#include <algorithm>
 #include <cctype>
 #include <cstring>
 #include <functional>
@@ -200,14 +201,37 @@ struct MonitorView {
   bool open_on_first_run = false;
   // 可接受的 NodeData；空表示任何类型。
   std::function<bool(const tg::NodeData&)> accepts;
-  // 内容区：width/height 是 taskgraph 算好的可用尺寸，从当前光标开始画。
+  // 内容区：width/height 是 taskgraph 算好的可用尺寸，从当前光标开始画。ImGui 用。
   std::function<void(const tg::NodeData&, float width, float height)> draw;
+  // Qt 内容区的纯文本。空则 Qt 显示 debugSummary()。
+  std::function<std::string(const tg::NodeData&)> text;
   // 有来源时的短状态（如 "63 points"）；空则不占行。
   std::function<std::string(const tg::NodeData*)> status;
 
   std::string window_name() const { return title + kWindowIdSeparator + id; }
   std::string command_id() const { return std::string("view.") + id; }
 };
+
+// 一个 Monitor 页签实例；kind 由注册的 MonitorView 描述。
+struct MonitorInstance {
+  std::string id;
+  std::string kind_id;
+  std::string title;
+};
+
+// 窗口标题用 kind title，不带序号；空标题退回 Monitor。
+inline std::string MonitorInstanceTitle(std::string_view kind_title) {
+  return kind_title.empty() ? std::string("Monitor") : std::string(kind_title);
+}
+
+// 页签实例的稳定 id；窗口内部使用，不直接显示。
+inline std::string MonitorInstanceId(std::string_view kind_id, int ordinal) {
+  std::string id = "monitor.";
+  id += kind_id;
+  id += '.';
+  id += std::to_string(ordinal);
+  return id;
+}
 
 // 监视器 Source 的显示名：graph / node / port。
 inline std::string MonitorSourceLabel(std::string_view graph,
@@ -444,6 +468,30 @@ struct ScreenRect {
            point.y < pos.y + size.y;
   }
 };
+
+// 首次浮动位置：区域右上角，四边内缩 margin；尺寸先钳进可用区。
+// 左右 / 上下各一条边距，所以可用区扣两倍 margin。
+inline constexpr float kFloatingMarginSideCount = 2.0f;
+
+inline ScreenRect TopRightFloatingRect(ScreenRect area, Vec2 size,
+                                       float margin) {
+  const float inset = (std::max)(margin, 0.0f);
+  const float usable_width =
+      (std::max)(area.size.x - inset * kFloatingMarginSideCount, 0.0f);
+  const float usable_height =
+      (std::max)(area.size.y - inset * kFloatingMarginSideCount, 0.0f);
+  // 区域太小或尺寸无效时不给出落点，调用方回退居中。
+  if (usable_width <= 0.0f || usable_height <= 0.0f || size.x <= 0.0f ||
+      size.y <= 0.0f) {
+    return ScreenRect{};
+  }
+  ScreenRect rect;
+  rect.size = Vec2{(std::min)(size.x, usable_width),
+                   (std::min)(size.y, usable_height)};
+  rect.pos = Vec2{area.pos.x + inset + usable_width - rect.size.x,
+                  area.pos.y + inset};
+  return rect;
+}
 
 // 停靠初始分割下的活动栏、主侧栏和编辑区。editor_content 在页签之下。
 struct WorkbenchRegions {

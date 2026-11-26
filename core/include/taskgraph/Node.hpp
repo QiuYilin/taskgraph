@@ -304,6 +304,9 @@ public:
   }
 
   void setProperty(int index, PropertyValue value) {
+    if (!acceptsEdits()) {
+      return;
+    }
     _properties[index]->value = std::move(value);
     refreshPortTypes();
   }
@@ -337,6 +340,8 @@ public:
  private:
   void ensurePorts() const;
   void ensureInputBindings() const;
+  /** \brief 所属图正在跑时拒绝改属性，避免和 worker 同时写。 */
+  bool acceptsEdits() const;
   void syncInputPropertyFromData(unsigned int index,
                                  std::shared_ptr<NodeData> data);
 
@@ -447,7 +452,7 @@ class Prop {
 
 template <typename T>
 bool Node::setProperty(const Prop<T>& prop, const T& value) {
-  if (prop._property == nullptr) {
+  if (prop._property == nullptr || !acceptsEdits()) {
     return false;
   }
   for (const auto& stored : _properties) {

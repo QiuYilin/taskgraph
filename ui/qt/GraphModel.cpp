@@ -46,6 +46,9 @@ void GraphModel::setNodePosition(const tg::Node* node, QPointF position) {
 }
 
 std::shared_ptr<tg::Node> GraphModel::addNode(const std::string& type_id) {
+  if (_graph != nullptr && _graph->isRunning()) {
+    return nullptr;
+  }
   auto node = _controller.createNode(type_id);
   if (node == nullptr) {
     return nullptr;
@@ -60,6 +63,9 @@ std::shared_ptr<tg::Node> GraphModel::addNode(const std::string& type_id) {
 }
 
 bool GraphModel::removeNode(const std::shared_ptr<tg::Node>& node) {
+  if (_graph != nullptr && _graph->isRunning()) {
+    return false;
+  }
   const int index = indexOf(node.get());
   if (index < 0) {
     return false;
@@ -137,6 +143,9 @@ bool GraphModel::setInputPresentation(
 
 bool GraphModel::setProperty(const std::shared_ptr<tg::Node>& node,
                              int property_index, tg::PropertyValue value) {
+  if (_graph != nullptr && _graph->isRunning()) {
+    return false;
+  }
   auto properties = node->getEditableProperties();
   if (property_index < 0 ||
       property_index >= static_cast<int>(properties.size())) {

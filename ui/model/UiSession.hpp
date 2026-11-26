@@ -7,9 +7,25 @@
 #include <fstream>
 #include <map>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <nlohmann/json.hpp>
+
+/** \brief Monitor 页签在 session 里的记录；只保存重建窗口所需的最小信息。 */
+struct MonitorTabRecord {
+  std::string id;
+  std::string kind;
+  std::string title;
+};
+
+/** \brief 一个 Monitor 窗口及其页签分组。 */
+struct MonitorWindowRecord {
+  std::string id;
+  std::string title;
+  std::string active_tab;
+  std::vector<MonitorTabRecord> tabs;
+};
 
 /** \brief 会话 Facade：读写用户配置目录下的 session.json（Recent / 上次工程 / 打开的图）。 */
 struct UiSession {
@@ -20,6 +36,13 @@ struct UiSession {
   static constexpr const char* kJsonKeyLastRoot = "last_root";
   static constexpr const char* kJsonKeyOpenGraphNames = "open_graph_names";
   static constexpr const char* kJsonKeyViewWindows = "view_windows";
+  static constexpr const char* kJsonKeyMonitorTabs = "monitor_tabs";
+  static constexpr const char* kJsonKeyMonitorActiveTab = "monitor_active_tab";
+  static constexpr const char* kJsonKeyMonitorContainerOpen =
+      "monitor_container_open";
+  static constexpr const char* kJsonKeyMonitorWindows = "monitor_windows";
+  static constexpr const char* kJsonKeyMonitorNextWindow =
+      "monitor_next_window_ordinal";
   static constexpr const char* kJsonKeyLogLevel = "log_level";
   static constexpr const char* kJsonKeyLogCategories = "log_categories";
   static constexpr const char* kJsonKeyLogAutoScroll = "log_auto_scroll";
@@ -37,6 +60,18 @@ struct UiSession {
   std::vector<std::string> open_graph_names;
   /** \brief 独立视图窗口的开关状态；没有记录表示从未开关过。 */
   std::map<std::string, bool> view_windows;
+  /** \brief Monitor 页签：kind id -> 该 kind 当前存在的实例；空数组表示被关完。 */
+  std::map<std::string, std::vector<MonitorTabRecord>> monitor_tabs;
+  /** \brief 当前活动的 Monitor 实例 id；不在当前 kind 列表时忽略。 */
+  std::string monitor_active_tab;
+  /** \brief Monitor 容器是否打开；仅用于旧 session 迁移。 */
+  bool monitor_container_open = false;
+  /** \brief 运行时标记：session 里是否真的写过容器开关；不落盘。 */
+  bool monitor_container_open_known = false;
+  /** \brief 当前所有 Monitor 窗口；数组顺序就是窗口顺序。 */
+  std::vector<MonitorWindowRecord> monitor_windows;
+  /** \brief 下一个 Monitor 窗口序号；关闭窗口后不复用。 */
+  int monitor_next_window_ordinal = 1;
   /** \brief Output 日志级别；-1 表示未设置，使用固定 Summary。 */
   int log_level = -1;
   /** \brief Output 日志类别位；0xFFFFFFFF 表示未设置。 */
@@ -45,7 +80,7 @@ struct UiSession {
   bool log_auto_scroll = true;
   /** \brief 上次 Browse 落点目录（工程选目录或属性选文件的父目录）。 */
   std::string last_browse_dir;
-  /** \brief 当前 VS Code 主题 id；空表示使用默认主题。 */
+  /** \brief 当前主题 id；空表示使用默认主题。 */
   std::string theme_id;
 
   /** \brief 测试用：非空则 configDirectory / session 读写都走该目录。 */
@@ -134,6 +169,79 @@ struct UiSession {
         }
       }
     }
+    if (document.contains(kJsonKeyMonitorTabs) &&
+        document.at(kJsonKeyMonitorTabs).is_object()) {
+      for (auto kind = document.at(kJsonKeyMonitorTabs).begin();
+           kind != document.at(kJsonKeyMonitorTabs).end(); ++kind) {
+        if (!kind.value().is_array()) {
+          continue;
+        }
+        std::vector<MonitorTabRecord>& records = session.monitor_tabs[kind.key()];
+        for (const auto& entry : kind.value()) {
+          if (!entry.is_object() || !entry.contains("id") ||
+              !entry.at("id").is_string()) {
+            continue;
+          }
+          MonitorTabRecord record;
+          record.id = entry.at("id").get<std::string>();
+          if (entry.contains("title") && entry.at("title").is_string()) {
+            record.title = entry.at("title").get<std::string>();
+          }
+          records.push_back(std::move(record));
+        }
+      }
+    }
+    if (document.contains(kJsonKeyMonitorActiveTab) &&
+        document.at(kJsonKeyMonitorActiveTab).is_string()) {
+      session.monitor_active_tab =
+          document.at(kJsonKeyMonitorActiveTab).get<std::string>();
+    }
+    if (document.contains(kJsonKeyMonitorWindows) &&
+        document.at(kJsonKeyMonitorWindows).is_array()) {
+      for (const auto& entry : document.at(kJsonKeyMonitorWindows)) {
+        if (!entry.is_object() || !entry.contains("id") ||
+            !entry.at("id").is_string()) {
+          continue;
+        }
+        MonitorWindowRecord window;
+        window.id = entry.at("id").get<std::string>();
+        if (entry.contains("title") && entry.at("title").is_string()) {
+          window.title = entry.at("title").get<std::string>();
+        }
+        if (entry.contains("active_tab") && entry.at("active_tab").is_string()) {
+          window.active_tab = entry.at("active_tab").get<std::string>();
+        }
+        if (entry.contains("tabs") && entry.at("tabs").is_array()) {
+          for (const auto& tab : entry.at("tabs")) {
+            if (!tab.is_object() || !tab.contains("id") ||
+                !tab.at("id").is_string()) {
+              continue;
+            }
+            MonitorTabRecord record;
+            record.id = tab.at("id").get<std::string>();
+            if (tab.contains("kind") && tab.at("kind").is_string()) {
+              record.kind = tab.at("kind").get<std::string>();
+            }
+            if (tab.contains("title") && tab.at("title").is_string()) {
+              record.title = tab.at("title").get<std::string>();
+            }
+            window.tabs.push_back(std::move(record));
+          }
+        }
+        session.monitor_windows.push_back(std::move(window));
+      }
+    }
+    if (document.contains(kJsonKeyMonitorNextWindow) &&
+        document.at(kJsonKeyMonitorNextWindow).is_number_integer()) {
+      session.monitor_next_window_ordinal =
+          document.at(kJsonKeyMonitorNextWindow).get<int>();
+    }
+    if (document.contains(kJsonKeyMonitorContainerOpen) &&
+        document.at(kJsonKeyMonitorContainerOpen).is_boolean()) {
+      session.monitor_container_open =
+          document.at(kJsonKeyMonitorContainerOpen).get<bool>();
+      session.monitor_container_open_known = true;
+    }
     if (document.contains(kJsonKeyLogLevel) &&
         document.at(kJsonKeyLogLevel).is_number_integer()) {
       session.log_level = document.at(kJsonKeyLogLevel).get<int>();
@@ -172,6 +280,25 @@ struct UiSession {
     document[kJsonKeyLastRoot] = last_root;
     document[kJsonKeyOpenGraphNames] = open_graph_names;
     document[kJsonKeyViewWindows] = view_windows;
+    nlohmann::json monitor_windows_json = nlohmann::json::array();
+    for (const MonitorWindowRecord& window : monitor_windows) {
+      nlohmann::json tabs = nlohmann::json::array();
+      for (const MonitorTabRecord& record : window.tabs) {
+        nlohmann::json item = nlohmann::json::object();
+        item["id"] = record.id;
+        item["kind"] = record.kind;
+        item["title"] = record.title;
+        tabs.push_back(std::move(item));
+      }
+      nlohmann::json entry = nlohmann::json::object();
+      entry["id"] = window.id;
+      entry["title"] = window.title;
+      entry["active_tab"] = window.active_tab;
+      entry["tabs"] = std::move(tabs);
+      monitor_windows_json.push_back(std::move(entry));
+    }
+    document[kJsonKeyMonitorWindows] = std::move(monitor_windows_json);
+    document[kJsonKeyMonitorNextWindow] = monitor_next_window_ordinal;
     document[kJsonKeyLogLevel] = log_level;
     document[kJsonKeyLogCategories] = log_categories;
     document[kJsonKeyLogAutoScroll] = log_auto_scroll;

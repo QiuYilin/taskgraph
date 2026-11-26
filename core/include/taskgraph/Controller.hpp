@@ -1,5 +1,6 @@
 #pragma once
 #include <algorithm>
+#include <chrono>
 #include <filesystem>
 #include <functional>
 #include <memory>
@@ -9,6 +10,7 @@
 #include <thread>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 #include <taskflow/taskflow.hpp>
 
@@ -18,10 +20,22 @@
 #include "taskgraph_export.h"
 
 namespace tg {
+/** \brief 一次异步运行结束时交给界面的结果。 */
+struct FinishedGraphRun {
+  Graph* graph = nullptr;
+  std::optional<std::string> error;
+  std::optional<double> milliseconds;
+};
+
 /** \brief 工程入口（Facade）：多张 Graph、节点工厂表、工程目录与执行器。 */
 class TASKGRAPH_EXPORT Controller {
  public:
   using NodeFactory = NodeRegistry::Factory;
+
+  Controller();
+  ~Controller();
+  Controller(const Controller&) = delete;
+  Controller& operator=(const Controller&) = delete;
 
   void addGraph(std::shared_ptr<Graph> graph);
 
@@ -42,8 +56,24 @@ class TASKGRAPH_EXPORT Controller {
   void clearGraphs();
   const std::vector<std::shared_ptr<Graph>>& getGraphs() const;
 
-  /** \brief 运行一张图；节点抛出的异常会原样向调用方传播。 */
+  /** \brief 运行一张图；节点抛出的异常会原样向调用方传播。
+   *
+   *  调用线程会等到这张图结束。这张图已经在跑时抛出 GraphError。
+   */
   void run(tg::Graph& graph);
+
+  /** \brief 提交一张图后立刻返回。同一 executor 可以同时跑多张图。
+   *
+   *  这张图已经在跑时返回 false，不提交第二次。界面下一帧用 pollRuns 收回结果。
+   *  \return 已提交时返回 true。
+   */
+  bool startRun(tg::Graph& graph);
+
+  /** \brief 收回已经结束的图。没结束的留着，调用线程不等待。
+   *
+   *  每张结束的图带错误或耗时。节点输出在该节点任务返回时已经写入发布缓冲。
+   */
+  std::vector<FinishedGraphRun> pollRuns();
 
   /** \brief 运行一张图，异常不外抛：失败时记日志并返回错误消息。
    *
@@ -130,7 +160,16 @@ class TASKGRAPH_EXPORT Controller {
   std::filesystem::path _project_root;
   std::string _project_name{"Untitled"};
   bool _dirty = false;
+  struct InFlightRun {
+    Graph* graph = nullptr;
+    tf::Future<void> future;
+    std::chrono::steady_clock::time_point started{};
+  };
+
+  bool hasRunningGraph() const;
+
   std::optional<double> _last_run_ms;
+  std::vector<InFlightRun> _inflight;
   tf::Executor _executor{std::max(
       1u, std::thread::hardware_concurrency())}; /**< 至少 1 个 worker，hardware_concurrency() 可能返回 0。 */
 };

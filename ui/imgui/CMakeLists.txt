@@ -6,7 +6,12 @@ set(HPP_HEADER_FILES
     UiWidgets.hpp
     WorkbenchIcons.hpp
     CanvasViewLock.hpp
+    ActivityBarView.hpp
+    EditorTabsView.hpp
+    MonitorWindows.hpp
     PortTypeVisual.hpp
+    ViewWindows.hpp
+    WindowChrome.hpp
     )
 
 find_package(OpenGL REQUIRED)

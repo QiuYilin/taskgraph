@@ -78,6 +78,7 @@ cmake --build build --config Release
 | `TASKGRAPH_UI` | `imgui`, `qt`, `none` | `imgui` | Workbench backend; `none` builds core only. |
 | `BUILD_EXAMPLES` | `ON` / `OFF` | `ON` | Build `simple-core` and the matching `simple-ui` or `simple-qt`. |
 | `BUILD_TESTING` | `ON` / `OFF` | `ON` | Build the tests that match the backend. |
+| `TASKGRAPH_BUILD_DOCS` | `ON` / `OFF` | `OFF` | Add the `doc` target; `ON` requires Doxygen and fails configure without it. |
 
 Executables land in `bin/<config>/` under the build directory (`out/build/<preset>/bin/<config>/` when using the presets). On Windows the Qt example runs `windeployqt` after linking, so Qt DLLs and the platform plugin sit next to the executable.
 
@@ -139,13 +140,13 @@ int main() {
 
 ## core + ui
 
-Same `tg::Controller`: register kinds and open a project on **core**, then wrap with `Ui` and `Run()` for a VS Code–style workbench. Two backends share the same core and models; the interaction details for both are in [`docs/ui.md`](docs/ui.md).
+Same `tg::Controller`: register kinds and open a project on **core**, then wrap with `Ui` and `Run()` for the workbench. Two backends share the same core and models; the interaction details for both are in [`docs/ui.md`](docs/ui.md). Run in the workbench only starts the current graph and returns to the event loop. `tryRun` still waits until that graph finishes. A graph that is still running cannot be edited; other graphs can run at the same time. The next paint shows a node's output in Monitor once that node's task returns.
 
-![simple-ui example (ImGui build)](docs/images/simple-ui.png)
+![simple-ui example (ImGui build)](docs/images/simple-ui.gif)
 
 ### ImGui build
 
-The default backend: a docking workbench with an activity bar, Explorer/Search, an imgui-node-editor canvas, the Properties table, the Output panel, and the Dark Modern / Light Modern themes. Its dependencies are lightweight — imgui, imgui-node-editor, and GLFW/OpenGL — so it does not pull in a full widget toolkit like the Qt build.
+The default backend: a docking workbench with an activity bar, Explorer/Search, an imgui-node-editor canvas, the Properties table, the Output panel, and the Dark / Light themes. Its dependencies are lightweight — imgui, imgui-node-editor, and GLFW/OpenGL — so it does not pull in a full widget toolkit like the Qt build. They are also permissively licensed (MIT/zlib), so there is no LGPL/GPL obligation or commercial Qt license to work around.
 
 ```
 #include "taskgraph/taskgraph.hpp"
@@ -189,4 +190,4 @@ int main(int argc, char** argv) {
 
 ### Why two UI backends
 
-One reason for writing two is to show that the core is not tied to any UI framework: `taskgraph::Core` has no UI dependency, and both backends are just observers over the same models. ImGui's immediate mode makes UI code easy to keep refining with AI: the frame is rebuilt from the current state every time, so a change stays local and shows up at once. The Qt build follows model/view, and the latest QtNodes supports MVD, so the canvas is only an adapter over the same project and graph models that the tree, tabs and property table observe. With that separation, AI can implement and extend the UI very quickly.
+One reason for writing two is to show that the core is not tied to any UI framework: `taskgraph::Core` has no UI dependency, and both backends are just observers over the same models. ImGui's immediate mode makes UI code easy to keep refining with AI: the frame is rebuilt from the current state every time, so a change stays local and shows up at once. The Qt build follows model/view, and the latest QtNodes supports MVD. With that separation, AI can implement and extend the UI very quickly. For reuse, the ImGui frontend uses specs and adapters over native `ImGui::Begin` windows (panels, monitors, and view windows) and a native tab bar for editor tabs. Qt uses object-oriented MVD (model / view / delegate) for the workbench, and ADS docks for Monitor windows.

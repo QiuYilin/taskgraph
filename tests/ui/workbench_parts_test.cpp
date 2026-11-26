@@ -94,7 +94,7 @@ TEST(WorkbenchParts, ViewWindowIdentity) {
 
 TEST(WorkbenchChrome, ActivityIconFitsInCell) {
   EXPECT_FLOAT_EQ(kActivityIconEpx, kActivityIconReferenceEpx)
-      << "line icon box stays the VS Code 24px glyph";
+      << "line icon box stays the 24px glyph";
   EXPECT_GT(kActivityBarWidthEpx, kActivityIconEpx)
       << "glyph is smaller than the 48px activity cell";
   EXPECT_LE(ExplorerActivityIconExtent(kActivityIconEpx),
@@ -286,14 +286,51 @@ TEST(WorkbenchParts, DefaultsShowAllRegions) {
   EXPECT_TRUE(parts.status_bar_visible) << "status bar visible by default";
 }
 
+TEST(WorkbenchParts, MonitorInstanceIdentity) {
+  EXPECT_EQ(MonitorInstanceTitle("Point Cloud"), "Point Cloud")
+      << "window title keeps the kind title";
+  EXPECT_EQ(MonitorInstanceTitle(""), "Monitor")
+      << "empty kind title falls back to Monitor";
+  EXPECT_EQ(MonitorInstanceId("pcl.point-cloud", 3),
+            "monitor.pcl.point-cloud.3")
+      << "instance id keeps kind id and ordinal";
+}
+
+TEST(WorkbenchChrome, TopRightFloatingRect) {
+  const ScreenRect area{Vec2(100.0f, 50.0f), Vec2(800.0f, 600.0f)};
+  const ScreenRect rect =
+      TopRightFloatingRect(area, Vec2(400.0f, 300.0f), 24.0f);
+  EXPECT_FLOAT_EQ(rect.pos.x, 476.0f) << "right edge inset by margin";
+  EXPECT_FLOAT_EQ(rect.pos.y, 74.0f) << "top edge inset by margin";
+  EXPECT_FLOAT_EQ(rect.size.x, 400.0f) << "requested width fits";
+  EXPECT_FLOAT_EQ(rect.size.y, 300.0f) << "requested height fits";
+}
+
+TEST(WorkbenchChrome, TopRightFloatingRectClampsToArea) {
+  const ScreenRect area{Vec2(0.0f, 0.0f), Vec2(400.0f, 300.0f)};
+  const ScreenRect rect =
+      TopRightFloatingRect(area, Vec2(2000.0f, 2000.0f), 20.0f);
+  EXPECT_FLOAT_EQ(rect.size.x, 360.0f) << "width clamped to usable area";
+  EXPECT_FLOAT_EQ(rect.size.y, 260.0f) << "height clamped to usable area";
+  EXPECT_FLOAT_EQ(rect.pos.x, 20.0f) << "clamped rect starts at left inset";
+  EXPECT_FLOAT_EQ(rect.pos.y, 20.0f) << "clamped rect starts at top inset";
+}
+
+TEST(WorkbenchChrome, TopRightFloatingRectRejectsEmpty) {
+  const ScreenRect empty =
+      TopRightFloatingRect(ScreenRect{}, Vec2(400.0f, 300.0f), 24.0f);
+  EXPECT_FLOAT_EQ(empty.size.x, 0.0f) << "empty area gives no rect";
+  EXPECT_FLOAT_EQ(empty.size.y, 0.0f) << "empty area gives no rect";
+}
+
 namespace {
 
-// 与 examples/simple-ui/demo-project/graphs/graph-000.json 一致。
-constexpr float kTemplateIntNodeX = 120.0f;
-constexpr float kTemplateFirstIntNodeY = 80.0f;
-constexpr float kTemplateSecondIntNodeY = 220.0f;
-constexpr float kTemplateAddNodeX = 420.0f;
-constexpr float kTemplateAddNodeY = 140.0f;
+// 与 examples/simple-ui/demo-project/graphs/graph-000.json 的三个角一致。
+constexpr float kTemplateFib0X = 120.0f;
+constexpr float kTemplateFib0Y = 80.0f;
+constexpr float kTemplateFib1Y = 280.0f;
+constexpr float kTemplateFib6X = 720.0f;
+constexpr float kTemplateFib6Y = 80.0f;
 // 与 UiBase 恢复后的客户区相同。
 constexpr float kReferenceClientWidth = 1280.0f;
 constexpr float kReferenceClientHeight = 720.0f;
@@ -314,9 +351,9 @@ struct LayoutCase {
 void ExpectTemplateNodesInEditor(const WorkbenchRegions& regions) {
   const Vec2 view_origin(0.0f, 0.0f);
   const Vec2 canvas_points[] = {
-      Vec2(kTemplateIntNodeX, kTemplateFirstIntNodeY),
-      Vec2(kTemplateIntNodeX, kTemplateSecondIntNodeY),
-      Vec2(kTemplateAddNodeX, kTemplateAddNodeY),
+      Vec2(kTemplateFib0X, kTemplateFib0Y),
+      Vec2(kTemplateFib0X, kTemplateFib1Y),
+      Vec2(kTemplateFib6X, kTemplateFib6Y),
   };
   for (const Vec2 canvas_point : canvas_points) {
     const Vec2 screen = CanvasPointToScreen(regions.editor_content.pos,
@@ -371,7 +408,7 @@ TEST(WorkbenchRegions, CanvasPointUsedAsScreenPointHitsPrimarySidebar) {
       {"restored client without activity bar", kReferenceClientWidth,
        kReferenceClientHeight, kReferenceUiScale, false},
   };
-  const Vec2 canvas_point(kTemplateIntNodeX, kTemplateFirstIntNodeY);
+  const Vec2 canvas_point(kTemplateFib0X, kTemplateFib0Y);
   for (const LayoutCase& layout : layouts) {
     SCOPED_TRACE(layout.name);
     const WorkbenchRegions regions = RegionsFor(layout);

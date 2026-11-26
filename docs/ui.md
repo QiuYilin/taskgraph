@@ -1,6 +1,6 @@
 # 界面说明
 
-`Ui::Run()` 打开一套 VS Code 风格的工作台，两个后端共用 core 与 `ui/model`。界面字符串用英文。本文先写 **ImGui 版**（默认后端），再写 **Qt 版**。
+`Ui::Run()` 打开一套工作台，两个后端共用 core 与 `ui/model`。界面字符串用英文。本文先写 **ImGui 版**（默认后端），再写 **Qt 版**。
 
 工程是目录：`project.json`、`graphs/`、`assets/`。工程内路径存相对路径；会话在用户配置目录的 `taskgraph/session.json`。`simple-ui` 与 `simple-qt` 都把源码里的 `demo-project` 复制到可执行文件旁再打开，改图不会弄脏仓库。
 
@@ -8,11 +8,11 @@
 
 # ImGui 版
 
-分区从外到内是：标题栏、活动栏、主侧栏、编辑区、辅助侧栏、面板、状态栏。主题是 **Dark Modern** 或 **Light Modern**，色值来自随仓库附带的 VS Code 官方主题 JSON。
+分区从外到内是：标题栏、活动栏、主侧栏、编辑区、辅助侧栏、面板、状态栏。主题是 **Dark** 或 **Light**，色值来自随仓库附带的主题 JSON。
 
 ```text
 ┌──────────────────────────────────────────────────────────────┐
-│ 标题栏   File  Run  Help          工程名           — □ ×   │
+│ 标题栏  File … Help  New Monitor    工程名          — □ ×    │
 ├────┬────────────┬────────────────────────────┬──────────────┤
 │活动│ 主侧栏     │ 编辑区                      │ 辅助侧栏     │
 │栏  │ Explorer   │ 页签                        │ Properties   │
@@ -30,12 +30,12 @@
 
 从左到右三块：菜单栏、命令中心、窗口按钮。菜单栏里没有活动栏，也没有第二条工具栏。
 
-菜单栏从左到右是 **File**、**Edit**、**View**、**Run**、**Help**。
+菜单栏从左到右是 **File**、**Edit**、**View**、**Run**、**Help**。注册了 monitor kind 时，**New Monitor** 紧挨在 **Help** 右边；每次点击都再新建一个独立窗口，用第一个注册 kind。没有注册 kind 时不显示。
 
-- **File**：New Project...、Open Project...、Open Recent、Save、Save As...。**Preferences > Theme** 在 Dark Modern 与 Light Modern 之间切换，立刻生效，并写入用户配置目录的 `taskgraph/session.json`。**Preferences > Keyboard Shortcuts** 在编辑区打开快捷键页签。
+- **File**：New Project...、Open Project...、Open Recent、Save、Save As...。**Preferences > Theme** 在 Dark 与 Light 之间切换，立刻生效，并写入用户配置目录的 `taskgraph/session.json`。**Preferences > Keyboard Shortcuts** 在编辑区打开快捷键页签。
 - **Edit**：Undo、Redo、Cut、Copy、Paste、Delete。Undo/Redo 走全局栈（图操作与各页签节点操作统一排序），其余命令作用于当前选中的节点。
-- **View**：Appearance、Explorer、Search、Properties、Output、Primary Side Bar、Status Bar、Show Type Names。
-- **Run**：**Run Graph** 跑当前 graph。没有 graph 时这项不可用。
+- **View**：Appearance、Explorer、Search、Properties、Output、Monitor、Primary Side Bar、Status Bar、Show Type Names。**Monitor** 在还没有 Monitor 窗口时，用第一个注册 kind 新建一个独立窗口；已经有窗口时不变。另外注册的独立视图窗口也列在这里：每个是可停靠的 ImGui 原生窗口，用标题栏上的关闭按钮关掉，没有铺满工作区的按钮。第一次出现在工作区中央。
+- **Run**：**Run Graph** 启动当前 graph 后立刻返回，不堵住这一帧。没有 graph，或当前 graph 已在跑时，这项不可用。其它 graph 可以同时跑。节点任务一返回，下一帧 Monitor 就能显示该节点的新输出。
 - **Help**：**Welcome** 打开 Welcome 页签。
 
 命令中心只显示工程名。没有工程时显示 **Untitled**。点击没有动作。
@@ -78,13 +78,13 @@
 
 启动后如果没有可恢复的页签，这里打开 **Welcome**。**Welcome** 里是 **Start**（New Project...、Open Project...）和 **Recent**。从菜单打开工程时不自动打开 graph 页签；下次启动会按会话恢复上次打开的 graph 页签。
 
-页签从左到右排在编辑区顶部，可以点掉关闭。关掉页签不删除 graph。全部关掉之后不显示画布，中间提示 **No editor is open**，并说明从 Explorer 打开 graph，或用 **+ Graph** 新建。
+页签从左到右排在编辑区顶部，用 ImGui 页签栏：可以拖动重排、点关闭或用中键关掉，放不下时按 ImGui 的默认策略收缩。重排只在这次运行里保持，下次启动仍按打开顺序恢复。关掉页签不删除 graph。全部关掉之后不显示画布，中间提示 **No editor is open**，并说明从 Explorer 打开 graph，或用 **+ Graph** 新建。页签高度跟 ImGui 的页签栏，不再使用单独的 35px 自绘条。整行底色仍是编辑区页签底色：明亮模式是浅灰，选中页签是编辑区白底。
 
 页签有三种：
 
 - **Welcome**
 - **Keyboard Shortcuts**：过滤框在上，下面三列是 Command、Keybinding、When。这一页只列出快捷键，不能在这里改键。
-- graph：页签名是图名。这一页的右侧、与页签同一行，有 **Show Type Names**。打开后，引脚功能名上方叠类型名，节点 identifier 上方补一行 kind。类型名用类型色，引脚仍和功能名对齐。关闭时悬停节点 identifier 总会显示 kind；identifier 与 kind 相同时显示相同文字。悬停引脚功能名则显示对应的类型名。
+- graph：页签名是图名。这一页激活时，**Show Type Names** 贴在页签栏这一行的最右边，和最后一个页签之间留空。打开后，引脚功能名上方叠类型名，节点 identifier 上方补一行 kind。类型名用类型色，引脚仍和功能名对齐。关闭时悬停节点 identifier 总会显示 kind；identifier 与 kind 相同时显示相同文字。悬停引脚功能名则显示对应的类型名。按钮在打开时用选中页签的底色。
 
 graph 页签下面是画布。节点第一次出现时，工程里有坐标就用那个坐标，否则按列排开。之后的位置写回工程。针脚默认画成圆，颜色由类型 id 哈希；作者可在 `NodeData_` 上可选指定 `PinShape` / `PortTypeColor`。
 
@@ -111,25 +111,29 @@ graph 页签下面是画布。节点第一次出现时，工程里有坐标就�
 
 这里是 **Properties**。
 
-标题栏右侧有**最大化/还原**和**关闭**按钮。最大化时隐藏所有其它停靠（主侧栏、编辑区、Output），只留活动栏、标题栏和状态栏；再点还原回到最大化前的布局。关闭等同于取消勾选 **View > Properties**，之后可从菜单重开。
+标题栏右侧有**最大化/还原**和**关闭**按钮。最大化时隐藏所有其它停靠（主侧栏、编辑区、Output），只留活动栏、标题栏和状态栏；再点还原回到最大化前的布局。关闭等同于取消勾选 **View > Properties**，之后可从菜单重开。浮动时标题栏自绘最大化/还原和关闭字形，两个按钮同尺寸；停靠时仍用页签栏按钮。
 
-选中节点时，表有三列：**Name**、**Type**、**Value**。原生属性可以直接改。整数是 `int`，布尔是勾选框，字符串可以手输；数字直接输入，没有 `-` / `+` 步进按钮（与 Qt 版一致）。File / Directory 的路径框占满值列，**Browse...** 在下一行右对齐，打开系统选择框。按钮用 VS Code 的 secondary 样式（2px 圆角、1px 半透明描边）；工程路径弹窗里 **OK** 是 primary，**Cancel** 是 secondary。图像和点云的值是导入文件的路径。
+选中节点时，表有三列：**Name**、**Type**、**Value**。原生属性可以直接改。整数是 `int`，布尔是勾选框，字符串可以手输；数字直接输入，没有 `-` / `+` 步进按钮（与 Qt 版一致）。File / Directory 的路径框占满值列，**Browse...** 在下一行右对齐，打开系统选择框。按钮用 secondary 样式（2px 圆角、1px 半透明描边）；工程路径弹窗里 **OK** 是 primary，**Cancel** 是 secondary。图像和点云的值是导入文件的路径。
 
 有固定输入口时，每个输入槽默认以端口露面：画布上有引脚，属性表仍列出这一行，但只读。右键 **Convert to Property** 后，画布不再画这只引脚，属性表可以改；指向该口的入边会断开，口上的上游数据清空。右键 **Convert to Port** 改回端口露面。属性露面时，不能再把线连到这个口。节点一开始就没有固定输入口时，没有这套切换，只有原生属性。
 
 选中连线时，表改成两列：**Type**、**Value**。这是这根线代表的变量。变量目前没有名称。输出已经算出、并且能写成属性值时，**Value** 里有值。
 
-## 节点监视窗口
+## Monitor 窗口
 
-节点输出监视窗口由 taskgraph 提供窗口 chrome 和来源选择，领域内容由注册的 monitor 画。默认浮动，也可拖进停靠区。
+每个 Monitor 实例是一个 ImGui 原生独立窗口，默认可浮动，也可以拖进主停靠区，不再用自绘页签栏。
 
-- 标题栏右侧动作：**Source**、**Follow Selection**、**最大化/还原**；默认关闭按钮和折叠箭头保留。停靠时最大化置灰并提示先浮出。
+- **View > Monitor**：还没有实例时，用第一个注册 kind 新建一个窗口；已经有实例时不变，不聚焦、不新建。
+- **New Monitor** 紧挨在标题栏 **Help** 右边。每次点击都再新建一个窗口，同样用第一个注册 kind。多种 kind 时暂不选择。没有注册 kind 时这个动作不出现。
+- 窗口使用 ImGui 标题栏和关闭按钮，可以拖进主停靠区。编辑区和 Explorer 不能叠进去，拖到边缘仍能劈出新格；Output 和 Properties 可以接收页签。首次出现时浮动在编辑区右上角（页签栏下方）；之后的位置和停靠由 ImGui ini 记住。刚新建的窗口会放到最前。停靠后关闭按钮在页签上，浮动时在标题栏上。
+- 关闭按钮销毁该实例。一个模型窗口里如果还留着旧 session 的多个实例，每个实例仍各开一个原生窗口。
+- 内容首行工具栏：**Source**、**Follow Selection**。Source 先缩短，再窄时 Follow 变无标签复选框；必要时才进 `...` 菜单。
 - **Source** 打开带过滤框的 Quick Pick，按 `图名 / 节点 / 端口` 列出当前可用的输出；选择后关闭 Follow 并固定该来源。
-- **Follow Selection** 默认开启，跟随主侧栏/画布选中的节点；关闭时固定当前来源。固定节点删除后清空来源。
-- 空状态：`Run the graph to compute an output.`、`No node selected.`、`Selected node has no matching output.`、`Pinned node has no matching output.`。
+- **Follow Selection** 默认开启，跟随主侧栏/画布选中的节点；关闭时固定当前来源。固定节点删除后清空来源。每个实例各自保存 Source / Follow / 过滤状态。新建窗口不继承其它窗口的固定来源。
+- 空状态：`Run the graph to compute an output.`、`No node selected.`、`Selected node has no matching output.`、`Pinned node has no matching output.`。kind 已不在注册表里时显示 `This monitor kind is no longer registered.`。
 - 内容区拿到 taskgraph 算好的 `width/height`，窗口禁用滚动条；有 `status` 时底部留一行小字。
-- 最大化只在浮动时生效：铺满应用标题栏下方、活动栏右侧、状态栏上方的工作区；还原回原矩形。
-- `simple-ui` 注册 **Custom Monitor** 窗口（默认隐藏，从 View 菜单打开），同时接受 `IntData` / `DoubleData`，演示 `accepts` / `draw` / `status` 三个回调的最小写法。
+- session 按窗口保存实例、活动实例和下一实例序号；重启后已保存的窗口会再打开。旧 `monitor_tabs` 会迁移成单个 `monitor` 窗口。
+- `simple-ui` 注册 **Custom Monitor** kind（`open_on_first_run` 为 false，启动时没有窗口），同时接受 `IntData` / `DoubleData`，演示 `accepts` / `draw` / `status`。Qt 用同一套字段里的 `text`，不调用 `draw`。
 
 注册接口：
 
@@ -148,19 +152,21 @@ ui.AddMonitorView(std::move(view));
 
 | 字段 | 含义 |
 | --- | --- |
-| `id` / `title` | 稳定 id 与窗口标题；开合状态按 id 写 session |
-| `open_on_first_run` | 没有 session 记录时是否默认打开 |
-| `accepts` | 过滤该 monitor 接受的 NodeData；空表示全部 |
-| `draw` | 内容区渲染，`width/height` 是 taskgraph 算好的可用尺寸 |
+| `id` / `title` | monitor kind 的稳定 id 和窗口标题；实例 id 由 taskgraph 生成 |
+| `open_on_first_run` | 保留在注册结构里；当前启动不按它自动开窗口 |
+| `accepts` | 过滤该 kind 接受的 NodeData；空表示全部 |
+| `draw` | ImGui 内容区渲染，`width/height` 是 taskgraph 算好的可用尺寸 |
+| `text` | Qt 内容区的纯文本。空则 Qt 显示 `debugSummary()`。ImGui 不调用它 |
 | `status` | 有来源时的底部短状态；返回空则不占行 |
+| `open` | 旧字段，保留兼容；打开哪些窗口以 session 里的 monitor 窗口为准 |
 
 ## 面板
 
-状态栏上面、编辑区下面是面板。默认只有 **Output**，按行显示日志。页签栏右侧有**最大化/还原**和**关闭**；最大化时隐藏主侧栏、辅助侧栏和编辑区，只留活动栏、标题栏和状态栏。关闭等同于取消勾选 **View > Output**。Output 顶部是 22px 紧凑单行工具栏（窄面板时过滤框换行），有 **Detail**（Off / Errors / Timing / Summary / Detailed / Everything，配置不匹配预设时显示 **Custom**）、**Categories** 多选、**Clear**、**Auto-scroll** 和文本过滤框；Categories/Clear 是无底色文字动作，复选框 16px。日志表分四列：**Level**、**Category**、**Context**（`Graph` 或 `Graph/Node`）、**Message**；Message 自动换行，Level/Message 按级别着色。节点类型只在 start 消息出现。过滤匹配 Context + Message。超过内存 1000 条时显示 **Dropped N**。级别、类别和 Auto-scroll 写入 session；**Off 只停止新记录，已有行保留，Clear 才清空**。
+状态栏上面、编辑区下面是面板。默认只有 **Output**，按行显示日志。页签栏右侧有**最大化/还原**和**关闭**；浮动时标题栏自绘最大化/还原和关闭字形，两个按钮同尺寸；停靠时仍用页签栏按钮。最大化时隐藏主侧栏、辅助侧栏和编辑区，只留活动栏、标题栏和状态栏。关闭等同于取消勾选 **View > Output**。Output 顶部是 22px 紧凑单行工具栏，有 **Detail**（Off / Errors / Timing / Summary / Detailed / Everything，配置不匹配预设时显示 **Custom**）、**Categories** 多选、**Clear**、**Auto-scroll** 和文本过滤框；Categories/Clear 是无底色文字动作，复选框 16px。窄面板时 Auto-scroll 先变无标签复选框，再依次把 Categories、Clear、Auto-scroll 收进 `...` 菜单；过滤框优先放右侧，放不下换行。日志表分四列：**Level**、**Category**、**Context**（`Graph` 或 `Graph/Node`）、**Message**；Message 自动换行，Level/Message 按级别着色。节点类型只在 start 消息出现。过滤匹配 Context + Message。超过内存 1000 条时显示 **Dropped N**。级别、类别和 Auto-scroll 写入 session；**Off 只停止新记录，已有行保留，Clear 才清空**。
 
 ## 状态栏
 
-通栏贴在最下面。从左到右是：工程名（有工程时）、**Run**、当前图名、上次成功运行的 `Last run: X ms`。点 **Run** 跑当前 graph，没有 graph 时不可用。点图名弹出列表，用来切换当前图，并在编辑区打开它。右侧是选中节点的 identifier；没选节点时右侧是空的。
+通栏贴在最下面。从左到右是：工程名（有工程时）、**Run**、当前图名、运行状态。当前图正在跑时这里是 **Running**，**Run** 不可用；否则是这张图上次成功的 `Last run: X ms`。点 **Run** 只启动当前 graph。点图名弹出列表，用来切换当前图，并在编辑区打开它。右侧是选中节点的 identifier；没选节点时右侧是空的。正在跑的图不能改节点、连线和属性。
 
 ## 快捷键
 
@@ -230,7 +236,7 @@ ui.AddMonitorView(std::move(view));
 
 ### 画布坐标
 
-节点在工程里的 `position` 是画布坐标。`simple-ui` 模板里第一颗 IntNode 是 `(120, 80)`，第二颗是 `(120, 220)`，AddNode 是 `(420, 140)`。
+节点在工程里的 `position` 是画布坐标。`simple-ui` 模板第一张图是斐波那契：`fib0` 在 `(120, 80)`，`fib1` 在 `(120, 280)`，`fib6` 在 `(720, 80)`。
 
 画布可以平移和缩放。换成屏幕坐标：
 
@@ -274,11 +280,11 @@ ui.AddMonitorView(std::move(view));
 
 ## 菜单
 
-- **File**：New Project...、Open Project...、Open Recent、Save、Save As...；**Preferences > Keyboard Shortcuts** 打开只读快捷键页签；**Preferences > Theme** 在 **Dark Modern** / **Light Modern** 间即时切换，选择写入 `session.json`，下次启动恢复。
+- **File**：New Project...、Open Project...、Open Recent、Save、Save As...；**Preferences > Keyboard Shortcuts** 打开只读快捷键页签；**Preferences > Theme** 在 **Dark** / **Light** 间即时切换，选择写入 `session.json`，下次启动恢复。
 - **Edit**：Undo、Redo、Cut、Copy、Paste、Delete，作用于当前画布。
-- **View**：Zoom In、Zoom Out、Fit All、Fit Selected；**Activity Bar**、**Explorer**、**Search**；**Properties** / **Output** 开关右侧属性表和底部面板。
-- **Run**：**Run Graph**（F5）跑当前页签的图。
-- **Help**：**Welcome**（暂不可用）。
+- **View**：Zoom In、Zoom Out、Fit All、Fit Selected；**Activity Bar**、**Explorer**、**Search**；**Properties** / **Output** 开关右侧属性表和底部面板。**Monitor** 在还没有 Monitor 窗口时，用第一个注册 kind 新建一个浮动窗口；已经有窗口时不变。
+- **Run**：**Run Graph**（F5）启动当前页签的图后立刻返回。这张图已在跑时这项不可用。其它图可以同时跑。
+- **Help**：**Welcome**（暂不可用）。注册了 monitor kind 时，**New Monitor** 紧挨在菜单栏 **Help** 右边；每次点击都再新建一个浮动窗口，用第一个注册 kind。没有注册 kind 时 **Monitor** 和 **New Monitor** 都不显示。
 
 ## 主侧栏
 
@@ -302,9 +308,22 @@ ui.AddMonitorView(std::move(view));
 
 选中节点时三列：**Name**、**Type**、**Value**。int 用数字框，bool 用勾选框，string 可直接输入；路径值右键 **Browse...** 选文件。端口露面的输入行只读；右键 **Convert to Property**，改回时用 **Convert to Port**。标题栏的最大化/还原动作见「外壳」；关闭后可从 **View > Properties** 重开。
 
+## Monitor 窗口
+
+每个 Monitor 实例是一个可停靠的 ADS 窗口，默认浮动，也可以拖进主停靠区。编辑区是中央窗口，Monitor 作为新页签或新格子停进去。
+
+- **View > Monitor** 和菜单栏 **New Monitor** 的规则与 ImGui 版相同：前者只在还没有实例时新建，后者每次都新建。多种 kind 时暂不选择，用第一个注册 kind。
+- 首次出现在编辑区页签栏下方的右上角。关闭按钮销毁该实例。
+- 内容首行：**Source**、**Follow Selection**。窗口变窄时 Source 文字缩短，Follow 先去掉标签，再收进 `...`。
+- **Source** 打开带过滤框的列表，按 `图名 / 节点 / 端口` 列出当前可用的输出；选择后关闭 Follow 并固定该来源。
+- **Follow Selection** 默认开启，跟随主侧栏或画布选中的节点。空状态文案与 ImGui 版相同。
+- 正文用注册时的 `text`；没有 `text` 时显示 `debugSummary()`。有 `status` 时底部留一行。
+- session 与 ImGui 共用 `monitor_windows`。重启后已保存的实例会再打开。
+- `simple-qt` 注册 **Custom Monitor**（`open_on_first_run` 为 false），接受 `IntData` / `DoubleData`。
+
 ## 面板与状态栏
 
-**Output** 只读，按行追加 core 日志；每行带 `[级别][类别]` 前缀。级别、类别由 core 日志配置决定，Qt 暂不提供 Output 细节控件。状态栏从左到右：工程名、**Run**、当前图名、运行提示；成功时提示 `Run finished in X ms`，失败显示错误。右侧是选中节点的 identifier。没有图时 **Run** 不可用。Output 的最大化/还原动作见「外壳」；标题栏关闭后从 **View > Output** 重开。
+**Output** 只读，按行追加 core 日志；每行带 `[级别][类别]` 前缀。级别、类别由 core 日志配置决定，Qt 暂不提供 Output 细节控件。状态栏从左到右：工程名、**Run**、当前图名、运行提示。点 **Run** 后提示 `Running ...`，槽函数立刻返回；当前图还在跑时 **Run** 不可用。日志定时器收回结束状态：成功时 `Run finished in X ms`，失败显示错误。Monitor 也在同一次定时器回调里读已经算完的节点。右侧是选中节点的 identifier。没有图时 **Run** 不可用。正在跑的图不能改节点、连线和属性。Output 的最大化/还原动作见「外壳」；标题栏关闭后从 **View > Output** 重开。
 
 ## 还没做
 

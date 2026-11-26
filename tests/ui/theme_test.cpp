@@ -1,5 +1,5 @@
 // ui 测试：工作台主题。
-// 内置 Dark Modern / Light Modern、未知主题拒绝、主题 token。
+// 内置 Dark / Light、未知主题拒绝、主题 token。
 
 #include "Theme.hpp"
 #include "ThemeStyle.hpp"
@@ -32,10 +32,10 @@ TEST(Theme, BundledDarkAndLight) {
 
   const Theme* dark = FindTheme("dark-modern");
   const Theme* light = FindTheme("light-modern");
-  ASSERT_NE(dark, nullptr) << "dark modern theme exists";
-  ASSERT_NE(light, nullptr) << "light modern theme exists";
-  EXPECT_EQ(dark->display_name, "Dark Modern") << "dark modern display name";
-  EXPECT_EQ(light->display_name, "Light Modern") << "light modern display name";
+  ASSERT_NE(dark, nullptr) << "dark theme exists";
+  ASSERT_NE(light, nullptr) << "light theme exists";
+  EXPECT_EQ(dark->display_name, "Dark") << "dark display name";
+  EXPECT_EQ(light->display_name, "Light") << "light display name";
 }
 
 TEST(Theme, UnknownThemeRejected) {
@@ -45,10 +45,10 @@ TEST(Theme, UnknownThemeRejected) {
 TEST(Theme, Tokens) {
   const Theme* dark = FindTheme("dark-modern");
   const Theme* light = FindTheme("light-modern");
-  ASSERT_NE(dark, nullptr) << "dark modern theme exists";
-  ASSERT_NE(light, nullptr) << "light modern theme exists";
+  ASSERT_NE(dark, nullptr) << "dark theme exists";
+  ASSERT_NE(light, nullptr) << "light theme exists";
 
-  // Dark Modern / Light Modern 的 token 来自官方主题 JSON。
+  // Dark / Light 的 token 来自内置主题 JSON。
   EXPECT_TRUE(SameColor(dark->tokens.editor_background,
                         theme_detail::Rgb255(31, 31, 31)))
       << "dark editor background";

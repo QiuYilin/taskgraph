@@ -1,38 +1,83 @@
 #include "taskgraph/taskgraph.hpp"
 #include "AddNode.hpp"
-#include "CastNode.hpp"
-#include "DoubleNode.hpp"
 #include "GainNode.hpp"
 #include "IntNode.hpp"
 #include "LabelNode.hpp"
 
 #include <cstdlib>
 #include <iostream>
+#include <memory>
+
+namespace {
+
+constexpr int kFibSeed0 = 0;
+constexpr int kFibSeed1 = 1;
+constexpr int kExpectedFib6 = 8;
+constexpr const char* kFibGraphName = "Fibonacci";
+
+bool RenameNode(tg::Graph& graph, const std::shared_ptr<tg::Node>& node,
+                const char* name) {
+  if (!graph.renameNode(node, name)) {
+    std::cerr << "failed to rename " << name << '\n';
+    return false;
+  }
+  return true;
+}
+
+bool ConnectInt(tg::Graph& graph, const tg::Out<IntData_t>& from,
+                const tg::In<IntData_t>& to, const char* label) {
+  if (!graph.connect<IntData_t>(from, to)) {
+    std::cerr << "failed to connect " << label << '\n';
+    return false;
+  }
+  return true;
+}
+
+}  // namespace
 
 int main() {
   tg::Controller project;
 
-  // 图 1：double 经显式 CastNode 接到 int 输入（严格类型，不隐式转换）。
-  auto graph = project.createGraph();
-  auto double_node = graph->createNode<DoubleNode>();
-  auto cast_node = graph->createNode<CastNode>();
-  auto int_node = graph->createNode<IntNode>();
-  int_node->setProperty<IntData_t>(int_node->inport.value, 2);
-  auto add_node = graph->createNode<AddNode>();
-
-  if (!graph->connect<DoubleData_t>(double_node->outport.out,
-                                    cast_node->inport.value)) {
-    std::cerr << "failed to connect double -> cast\n";
+  // 图 1：静态斐波那契。fib0=0，fib1=1，后面每一项是前两项之和。
+  auto fib_graph = project.createGraph(kFibGraphName);
+  auto fib0 = fib_graph->createNode<IntNode>();
+  auto fib1 = fib_graph->createNode<IntNode>();
+  fib0->setProperty<IntData_t>(fib0->inport.value, kFibSeed0);
+  fib1->setProperty<IntData_t>(fib1->inport.value, kFibSeed1);
+  auto fib2 = fib_graph->createNode<AddNode>();
+  auto fib3 = fib_graph->createNode<AddNode>();
+  auto fib4 = fib_graph->createNode<AddNode>();
+  auto fib5 = fib_graph->createNode<AddNode>();
+  auto fib6 = fib_graph->createNode<AddNode>();
+  if (!RenameNode(*fib_graph, fib0, "fib0") ||
+      !RenameNode(*fib_graph, fib1, "fib1") ||
+      !RenameNode(*fib_graph, fib2, "fib2") ||
+      !RenameNode(*fib_graph, fib3, "fib3") ||
+      !RenameNode(*fib_graph, fib4, "fib4") ||
+      !RenameNode(*fib_graph, fib5, "fib5") ||
+      !RenameNode(*fib_graph, fib6, "fib6")) {
     return EXIT_FAILURE;
   }
-  if (!graph->connect<IntData_t>(cast_node->outport.out,
-                                 add_node->inport.lhs)) {
-    std::cerr << "failed to connect cast -> lhs\n";
-    return EXIT_FAILURE;
-  }
-  if (!graph->connect<IntData_t>(int_node->outport.out_data,
-                                 add_node->inport.rhs)) {
-    std::cerr << "failed to connect rhs\n";
+  if (!ConnectInt(*fib_graph, fib1->outport.out_data, fib2->inport.lhs,
+                  "fib1 -> fib2") ||
+      !ConnectInt(*fib_graph, fib0->outport.out_data, fib2->inport.rhs,
+                  "fib0 -> fib2") ||
+      !ConnectInt(*fib_graph, fib2->outport.sum, fib3->inport.lhs,
+                  "fib2 -> fib3") ||
+      !ConnectInt(*fib_graph, fib1->outport.out_data, fib3->inport.rhs,
+                  "fib1 -> fib3") ||
+      !ConnectInt(*fib_graph, fib3->outport.sum, fib4->inport.lhs,
+                  "fib3 -> fib4") ||
+      !ConnectInt(*fib_graph, fib2->outport.sum, fib4->inport.rhs,
+                  "fib2 -> fib4") ||
+      !ConnectInt(*fib_graph, fib4->outport.sum, fib5->inport.lhs,
+                  "fib4 -> fib5") ||
+      !ConnectInt(*fib_graph, fib3->outport.sum, fib5->inport.rhs,
+                  "fib3 -> fib5") ||
+      !ConnectInt(*fib_graph, fib5->outport.sum, fib6->inport.lhs,
+                  "fib5 -> fib6") ||
+      !ConnectInt(*fib_graph, fib4->outport.sum, fib6->inport.rhs,
+                  "fib4 -> fib6")) {
     return EXIT_FAILURE;
   }
 
@@ -53,17 +98,20 @@ int main() {
     return EXIT_FAILURE;
   }
 
-  if (const auto error = project.tryRun(*graph)) {
+  if (const auto error = project.tryRun(*fib_graph)) {
     std::cerr << *error << '\n';
     return EXIT_FAILURE;
   }
-  const auto sum = add_node->outport.sum.nodeData();
-  if (sum == nullptr) {
-    std::cerr << "no sum computed\n";
+  const auto fib6_value = fib6->outport.sum.nodeData();
+  if (fib6_value == nullptr) {
+    std::cerr << "no fib6 computed\n";
     return EXIT_FAILURE;
   }
-  std::cout << "double factor: " << double_node->factor() << '\n';
-  std::cout << "sum: " << sum->data() << '\n';
+  if (fib6_value->data() != kExpectedFib6) {
+    std::cerr << "fib6: " << fib6_value->data() << '\n';
+    return EXIT_FAILURE;
+  }
+  std::cout << "fib6: " << fib6_value->data() << '\n';
 
   if (const auto error = project.tryRun(*gain_graph)) {
     std::cerr << *error << '\n';

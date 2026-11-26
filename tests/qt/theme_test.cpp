@@ -1,5 +1,5 @@
 // ui 测试：工作台主题（QtTest）。
-// 内置 Dark Modern / Light Modern、未知主题拒绝、主题 token 与当前 token 切换。
+// 内置 Dark / Light、未知主题拒绝、主题 token 与当前 token 切换。
 
 #include "Theme.hpp"
 
@@ -44,8 +44,8 @@ void ThemeTest::bundledDarkAndLight() {
   const Theme* light = FindTheme("light-modern");
   QVERIFY(dark != nullptr);
   QVERIFY(light != nullptr);
-  QVERIFY(dark->display_name == "Dark Modern");
-  QVERIFY(light->display_name == "Light Modern");
+  QVERIFY(dark->display_name == "Dark");
+  QVERIFY(light->display_name == "Light");
 }
 
 void ThemeTest::unknownThemeRejected() {
@@ -58,7 +58,7 @@ void ThemeTest::tokens() {
   QVERIFY(dark != nullptr);
   QVERIFY(light != nullptr);
 
-  // Dark Modern / Light Modern 的 token 来自官方主题 JSON。
+  // Dark / Light 的 token 来自内置主题 JSON。
   QVERIFY(IsColor(dark->tokens.editor_background,
                   theme_detail::Rgb255(31, 31, 31)));
   QVERIFY(IsColor(dark->tokens.editor_type_foreground,

@@ -77,9 +77,13 @@ if(TASKGRAPH_UI STREQUAL "imgui" OR TASKGRAPH_UI STREQUAL "qt")
 add_subdirectory(ui)
 endif()
 
-# Doxygen 可选：装了 Doxygen 才生成 doc 目标，不装不影响构建。
-find_package(Doxygen QUIET)
-if(Doxygen_FOUND)
+# 文档目标默认关闭；显式开启且找到 Doxygen 才创建，不影响正常构建。
+option(TASKGRAPH_BUILD_DOCS "Build API documentation with Doxygen" OFF)
+if(TASKGRAPH_BUILD_DOCS)
+  find_package(Doxygen QUIET)
+  if(NOT Doxygen_FOUND)
+    message(FATAL_ERROR "TASKGRAPH_BUILD_DOCS=ON requires Doxygen")
+  endif()
   set(DOXYGEN_OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}/docs")
   set(DOXYGEN_INPUT "\"${PROJECT_SOURCE_DIR}/core/include\" \"${PROJECT_SOURCE_DIR}/examples\"")
   configure_file(${PROJECT_SOURCE_DIR}/docs/Doxyfile.in

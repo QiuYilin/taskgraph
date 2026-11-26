@@ -12,11 +12,14 @@
 #include <vector>
 
 // 工作台视觉主题（Strategy 入口）。
-// 色值只从 VS Code 官方主题 JSON 派生，集中到 ThemeTokens；前端只读语义 token。
-// 当前内置 Dark Modern / Light Modern，可在运行中切换。
+// 色值从内置主题 JSON 派生，集中到 ThemeTokens；前端只读语义 token。
+// 当前内置 Dark / Light，可在运行中切换。
+
+inline constexpr const char* kDarkThemeName = "Dark";
+inline constexpr const char* kLightThemeName = "Light";
 
 // --- 中性名 metrics（布局可读）---
-// VS Code 默认 editor.fontSize。
+// 正文默认字号。
 inline constexpr float kBodyFontSizeEpx = 14.0f;
 inline constexpr float kControlCornerRadiusEpx = 4.0f;
 inline constexpr float kOverlayCornerRadiusEpx = 8.0f;
@@ -25,54 +28,47 @@ inline constexpr float kBetweenControlsEpx = 8.0f;
 inline constexpr float kControlLabelSpacingEpx = 12.0f;
 inline constexpr float kStandardControlHeightEpx = 32.0f;
 inline constexpr float kFramePaddingSideCount = 2.0f;
-// VS Code button.border 是 10% 前景色；主题 JSON 缺这一项时用它兜底。
+// 按钮描边是 10% 前景色；主题 JSON 缺这一项时用它兜底。
 inline constexpr float kButtonBorderAlpha = 0.1f;
-// https://github.com/microsoft/vscode/blob/main/src/vs/workbench/browser/parts/statusbar/statusbarPart.ts
-// StatusbarPart.HEIGHT
+// 状态栏高度。
 inline constexpr float kStatusBarHeightEpx = 22.0f;
-// https://github.com/microsoft/vscode/blob/main/src/vs/workbench/browser/parts/titlebar/titlebarPart.ts
 // 命令中心和窗口控件叠加都没开时，标题栏高度是 30。
 inline constexpr float kTitleBarHeightEpx = 30.0f;
-// https://github.com/microsoft/vscode/blob/main/src/vs/workbench/browser/parts/editor/editor.ts
-// 默认编辑器页签高度（window.density.editorTabHeight = default）。
+// 默认编辑器页签高度。
 inline constexpr float kEditorTabHeightEpx = 35.0f;
 inline constexpr float kEditorTabHorizontalPaddingEpx = 10.0f;
-inline constexpr float kEditorTabCloseSizeEpx = 16.0f;
-inline constexpr float kEditorTabLabelCloseGapEpx = 6.0f;
-inline constexpr float kEditorTabCloseGlyphHalfEpx = 3.5f;
 inline constexpr float kEditorTabSeparatorThicknessEpx = 1.0f;
 inline constexpr float kExplorerTreeRowHeightEpx = 22.0f;
-// VS Code workbench.tree.indent 默认 8。
+// 树缩进。
 inline constexpr float kExplorerTreeIndentEpx = 8.0f;
 inline constexpr float kExplorerTreeBasePaddingEpx = 8.0f;
 inline constexpr float kExplorerTreeHorizontalPaddingEpx = 4.0f;
-// Explorer 树文字用 VS Code 侧栏字号 13，chevron 占 16 的固定框。
+// Explorer 树文字用侧栏字号 13，chevron 占 16 的固定框。
 inline constexpr float kExplorerTreeFontSizeEpx = 13.0f;
 inline constexpr float kExplorerTreeChevronBoxEpx = 16.0f;
 inline constexpr float kExplorerChevronArmEpx = 4.0f;
 inline constexpr float kExplorerChevronDepthEpx = 2.0f;
 inline constexpr float kExplorerChevronStrokeEpx = 1.0f;
-// 侧栏视图标题：VS Code 用 11px 全大写。
+// 侧栏视图标题：11px 全大写。
 inline constexpr float kExplorerViewTitleFontSizeEpx = 11.0f;
-// Explorer 就地重命名：贴紧文字，细边框（对照 VS Code 侧栏改名框）。
+// Explorer 就地重命名：贴紧文字，细边框。
 inline constexpr float kExplorerRenameFramePadXEpx = 4.0f;
 inline constexpr float kExplorerRenameFramePadYEpx =
     (kExplorerTreeRowHeightEpx - kBodyFontSizeEpx) / kFramePaddingSideCount;
 inline constexpr float kExplorerRenameRoundingEpx = 0.0f;
 inline constexpr float kExplorerRenameBorderSizeEpx = 1.0f;
-// https://github.com/microsoft/vscode/blob/main/src/vs/workbench/browser/parts/titlebar/media/titlebarpart.css
 // Windows 标题栏里每个窗口按钮的宽度。
 inline constexpr float kWindowCaptionButtonWidthEpx = 46.0f;
 inline constexpr int kWindowCaptionButtonCount = 3;
-// 对照 VS Code 标题栏命令中心宽度与圆角。
+// 标题栏命令中心宽度与圆角。
 inline constexpr float kCommandCenterMaxWidthEpx = 360.0f;
 inline constexpr float kCommandCenterMinWidthEpx = 120.0f;
 inline constexpr float kCommandCenterHeightEpx = 22.0f;
-// 对照 VS Code Quick Pick：扁矩形、过滤框、紧凑列表行。
+// Quick Pick：扁矩形、过滤框、紧凑列表行。
 inline constexpr float kPickNodeKindMinWidthEpx = 240.0f;
 inline constexpr float kPickNodeKindListSpacingYEpx = 2.0f;
 inline constexpr float kPickNodeKindWindowPaddingEpx = 6.0f;
-// 属性表：扁输入、发丝分隔（对照 VS Code 设置/属性）。
+// 属性表：扁输入、发丝分隔。
 inline constexpr float kPropertyFrameRounding = 0.0f;
 inline constexpr float kPropertyCellPadXEpx = 8.0f;
 inline constexpr float kPropertyCellPadYEpx = 3.0f;
@@ -81,16 +77,14 @@ inline constexpr float kPropertyFramePadYEpx = 2.0f;
 inline constexpr float kPropertyItemSpacingYEpx = 0.0f;
 // 工作台扩展点：标题动作和面板工具栏的方形按钮。
 inline constexpr float kViewActionSizeEpx = 22.0f;
-// https://github.com/microsoft/vscode/blob/main/src/vs/workbench/browser/parts/activitybar/activitybarPart.ts
-// ActivitybarPart.ACTIVITYBAR_WIDTH。默认宽度，不按窗口比例切。
+// 活动栏默认宽度，不按窗口比例切。
 inline constexpr float kActivityBarWidthEpx = 48.0f;
-// ActivitybarPart.ICON_SIZE。线标外框，小于格子，四周留白。
+// 活动栏线标外框，小于格子，四周留白。
 inline constexpr float kActivityIconEpx = 24.0f;
 
 namespace theme_detail {
 
-// https://code.visualstudio.com/api/references/theme-color
-// VS Code 主题色板（按 0–255 通道写成 0–1 颜色），由内置 JSON 解析。
+// 主题色板（按 0–255 通道写成 0–1 颜色），由内置 JSON 解析。
 inline constexpr float kRgbChannelMax = 255.0f;
 
 // 把 0–255 的 RGB 转成 0–1 颜色。
@@ -161,7 +155,7 @@ struct ThemeTokens {
   Color input_border;
   Color input_foreground;
   Color input_active_background;
-  // 无前缀的 button_* 是 VS Code secondary button；primary 见 button_primary_*。
+  // 无前缀的 button_* 是次要按钮；primary 见 button_primary_*。
   Color button_background;
   Color button_hover_background;
   Color button_foreground;
@@ -249,7 +243,7 @@ static bool ParseColor(const std::string& text, Color& out) {
   return true;
 }
 
-// 从 VS Code colors 对象取一个颜色；缺失或解析失败时用 fallback。
+// 从主题 colors 对象取一个颜色；缺失或解析失败时用 fallback。
 static Color Lookup(const nlohmann::json& colors, const char* key,
                     const Color& fallback) {
   // colors 不是对象时没有可查的 token。
@@ -312,13 +306,13 @@ static Color TokenColorForScope(const nlohmann::json& token_colors,
   return fallback;
 }
 
-// 主题 JSON 缺 token 时的兜底：Dark Modern / Light Modern 的已知默认。
+// 主题 JSON 缺 token 时的兜底：Dark / Light 的已知默认。
 static ThemeTokens FallbackTokens(ThemeKind kind) {
   const bool light = kind == ThemeKind::Light;
   ThemeTokens t;
   t.editor_background = light ? Rgb255(255, 255, 255) : Rgb255(31, 31, 31);
   t.editor_foreground = light ? Rgb255(59, 59, 59) : Rgb255(204, 204, 204);
-  // Dark+ / Light+ tokenColors 的 entity.name.type。
+  // 类型名前景色，对应 tokenColors 里的 entity.name.type。
   t.editor_type_foreground =
       light ? Rgb255(38, 127, 153) : Rgb255(78, 201, 176);
   t.editor_group_border =
@@ -426,7 +420,7 @@ static ThemeTokens FallbackTokens(ThemeKind kind) {
   return t;
 }
 
-// 从合并后的 VS Code colors / tokenColors 生成主题 token；缺项由 fallback 补齐。
+// 从合并后的 colors / tokenColors 生成主题 token；缺项由 fallback 补齐。
 static ThemeTokens ResolveTokens(const nlohmann::json& colors,
                                  const nlohmann::json& token_colors,
                                  ThemeKind kind) {
@@ -531,7 +525,7 @@ static ThemeTokens ResolveTokens(const nlohmann::json& colors,
   if (!colors.is_object() || !colors.contains("scrollbarSlider.background")) {
     t.resize_grip = t.scrollbar_grab;
   }
-  // VS Code 的 secondary button 在深色主题里是透明的；属性表按钮需要可见底。
+  // 次要按钮在 Dark 里是透明的；属性表按钮需要可见底。
   if (t.button_background.a < 0.01f) {
     t.button_background = FallbackTokens(kind).button_background;
     // 透明底被改成实底后，hover 也要比底更亮，而不是主题里的透明叠加色。
@@ -634,7 +628,8 @@ static ThemeJsonData MergeThemeFromFile(const std::string& file_name,
 static Theme LoadTheme(std::string id, const char* file_name, ThemeKind kind) {
   Theme theme;
   theme.id = std::move(id);
-  theme.display_name = theme.id;
+  theme.display_name =
+      kind == ThemeKind::Light ? kLightThemeName : kDarkThemeName;
   theme.kind = kind;
   const std::string* text = EmbeddedJson(file_name);
   // 没有内嵌文件就不能用 JSON 主题。
@@ -648,9 +643,6 @@ static Theme LoadTheme(std::string id, const char* file_name, ThemeKind kind) {
   if (document.is_discarded()) {
     theme.tokens = FallbackTokens(kind);
     return theme;
-  }
-  if (document.contains("name") && document.at("name").is_string()) {
-    theme.display_name = document.at("name").get<std::string>();
   }
   std::unordered_set<std::string> stack;
   const ThemeJsonData data = MergeThemeFromFile(file_name, stack);

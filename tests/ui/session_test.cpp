@@ -44,6 +44,17 @@ TEST(Session, SessionSaveLoadRoundtrip) {
   written.open_graph_names = {"Graph", "Graph 2"};
   written.view_windows["point-cloud"] = true;
   written.view_windows["inspector"] = false;
+  MonitorWindowRecord primary;
+  primary.id = "monitor";
+  primary.title = "Monitor";
+  primary.active_tab = "monitor.custom.1";
+  primary.tabs.push_back(
+      MonitorTabRecord{"monitor.custom.1", "custom", "Custom Monitor"});
+  MonitorWindowRecord detached;
+  detached.id = "monitor-2";
+  detached.title = "Monitor 2";
+  written.monitor_windows = {primary, detached};
+  written.monitor_next_window_ordinal = 3;
   written.log_level = static_cast<int>(tg::LogLevel::Debug);
   written.log_categories =
       static_cast<tg::LogCategoryMask>(tg::LogCategory::App) |
@@ -69,6 +80,21 @@ TEST(Session, SessionSaveLoadRoundtrip) {
   ASSERT_EQ(loaded.view_windows.count("inspector"), std::size_t{1})
       << "closed view roundtrips";
   EXPECT_FALSE(loaded.view_windows.at("inspector")) << "closed view stays closed";
+  ASSERT_EQ(loaded.monitor_windows.size(), std::size_t{2})
+      << "monitor window list roundtrips";
+  EXPECT_EQ(loaded.monitor_windows[0].id, "monitor")
+      << "primary monitor window id";
+  EXPECT_EQ(loaded.monitor_windows[0].active_tab, "monitor.custom.1")
+      << "active monitor tab roundtrips";
+  ASSERT_EQ(loaded.monitor_windows[0].tabs.size(), std::size_t{1});
+  EXPECT_EQ(loaded.monitor_windows[0].tabs[0].kind, "custom")
+      << "monitor tab kind roundtrips";
+  EXPECT_EQ(loaded.monitor_windows[0].tabs[0].title, "Custom Monitor")
+      << "monitor tab title roundtrips";
+  EXPECT_EQ(loaded.monitor_windows[1].id, "monitor-2")
+      << "detached monitor window id";
+  EXPECT_EQ(loaded.monitor_next_window_ordinal, 3)
+      << "next monitor window ordinal roundtrips";
   EXPECT_EQ(loaded.log_level, static_cast<int>(tg::LogLevel::Debug))
       << "log_level roundtrips";
   EXPECT_EQ(loaded.log_categories,

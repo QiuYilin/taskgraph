@@ -240,7 +240,8 @@ bool PropertyModel::setData(const QModelIndex& index, const QVariant& value,
       _graph == nullptr || _node == nullptr) {
     return false;
   }
-  if (IsInputAsPort(index.row())) {
+  if (IsInputAsPort(index.row()) ||
+      (_graph->graph() != nullptr && _graph->graph()->isRunning())) {
     return false;
   }
   const auto property = PropertyAt(index.row());
@@ -268,7 +269,10 @@ Qt::ItemFlags PropertyModel::flags(const QModelIndex& index) const {
     return Qt::NoItemFlags;
   }
   Qt::ItemFlags result = Qt::ItemIsEnabled | Qt::ItemIsSelectable;
-  if (index.column() == 2 && !IsInputAsPort(index.row())) {
+  const bool graph_running =
+      _graph != nullptr && _graph->graph() != nullptr &&
+      _graph->graph()->isRunning();
+  if (index.column() == 2 && !IsInputAsPort(index.row()) && !graph_running) {
     result |= Qt::ItemIsEditable;
   }
   return result;

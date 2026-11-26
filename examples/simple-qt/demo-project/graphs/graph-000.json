@@ -1,28 +1,46 @@
 {
-  "name": "Graph",
+  "name": "Fibonacci",
   "nodes": [
     {
       "id": 0,
       "type": "IntNode",
-      "name": "IntNode",
+      "name": "fib0",
       "properties": [],
       "inputs": [
         {
           "index": 0,
           "presentation": "property",
           "valueType": "int",
-          "value": 2
+          "value": 0
         }
       ],
       "position": {
         "x": 120.0,
-        "y": 220.0
+        "y": 80.0
       }
     },
     {
       "id": 1,
+      "type": "IntNode",
+      "name": "fib1",
+      "properties": [],
+      "inputs": [
+        {
+          "index": 0,
+          "presentation": "property",
+          "valueType": "int",
+          "value": 1
+        }
+      ],
+      "position": {
+        "x": 120.0,
+        "y": 280.0
+      }
+    },
+    {
+      "id": 2,
       "type": "AddNode",
-      "name": "AddNode",
+      "name": "fib2",
       "properties": [],
       "inputs": [
         {
@@ -39,49 +57,118 @@
         }
       ],
       "position": {
-        "x": 760.0,
-        "y": 240.0
-      }
-    },
-    {
-      "id": 2,
-      "type": "DoubleNode",
-      "name": "DoubleNode",
-      "properties": [
-        {
-          "name": "factor",
-          "valueType": "double",
-          "value": 1.5
-        }
-      ],
-      "inputs": [],
-      "position": {
-        "x": 120.0,
-        "y": 380.0
+        "x": 320.0,
+        "y": 80.0
       }
     },
     {
       "id": 3,
-      "type": "CastNode",
-      "name": "CastNode",
+      "type": "AddNode",
+      "name": "fib3",
       "properties": [],
       "inputs": [
         {
           "index": 0,
-          "presentation": "port"
+          "presentation": "port",
+          "valueType": "int",
+          "value": 0
+        },
+        {
+          "index": 1,
+          "presentation": "port",
+          "valueType": "int",
+          "value": 0
         }
       ],
       "position": {
-        "x": 420.0,
-        "y": 380.0
+        "x": 320.0,
+        "y": 280.0
+      }
+    },
+    {
+      "id": 4,
+      "type": "AddNode",
+      "name": "fib4",
+      "properties": [],
+      "inputs": [
+        {
+          "index": 0,
+          "presentation": "port",
+          "valueType": "int",
+          "value": 0
+        },
+        {
+          "index": 1,
+          "presentation": "port",
+          "valueType": "int",
+          "value": 0
+        }
+      ],
+      "position": {
+        "x": 520.0,
+        "y": 80.0
+      }
+    },
+    {
+      "id": 5,
+      "type": "AddNode",
+      "name": "fib5",
+      "properties": [],
+      "inputs": [
+        {
+          "index": 0,
+          "presentation": "port",
+          "valueType": "int",
+          "value": 0
+        },
+        {
+          "index": 1,
+          "presentation": "port",
+          "valueType": "int",
+          "value": 0
+        }
+      ],
+      "position": {
+        "x": 520.0,
+        "y": 280.0
+      }
+    },
+    {
+      "id": 6,
+      "type": "AddNode",
+      "name": "fib6",
+      "properties": [],
+      "inputs": [
+        {
+          "index": 0,
+          "presentation": "port",
+          "valueType": "int",
+          "value": 0
+        },
+        {
+          "index": 1,
+          "presentation": "port",
+          "valueType": "int",
+          "value": 0
+        }
+      ],
+      "position": {
+        "x": 720.0,
+        "y": 80.0
       }
     }
   ],
   "connections": [
     {
+      "from": 1,
+      "out": 0,
+      "to": 2,
+      "in": 0
+    },
+    {
       "from": 0,
       "out": 0,
-      "to": 1,
+      "to": 2,
       "in": 1
     },
     {
@@ -91,10 +178,46 @@
       "in": 0
     },
     {
+      "from": 1,
+      "out": 0,
+      "to": 3,
+      "in": 1
+    },
+    {
       "from": 3,
       "out": 0,
-      "to": 1,
+      "to": 4,
       "in": 0
+    },
+    {
+      "from": 2,
+      "out": 0,
+      "to": 4,
+      "in": 1
+    },
+    {
+      "from": 4,
+      "out": 0,
+      "to": 5,
+      "in": 0
+    },
+    {
+      "from": 3,
+      "out": 0,
+      "to": 5,
+      "in": 1
+    },
+    {
+      "from": 5,
+      "out": 0,
+      "to": 6,
+      "in": 0
+    },
+    {
+      "from": 4,
+      "out": 0,
+      "to": 6,
+      "in": 1
     }
   ]
 }
