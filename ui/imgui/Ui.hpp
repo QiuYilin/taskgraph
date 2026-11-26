@@ -537,6 +537,9 @@ class ImGuiUndoTarget : public ui::UndoTarget {
   ax::NodeEditor::EditorContext* editor = nullptr;
 
   bool AddNode(const ClipboardNode& snapshot) override {
+    if (graph != nullptr && graph->isRunning()) {
+      return false;
+    }
     // 命令重放时同名节点已经存在，不再加第二个。
     if (FindNode(snapshot.name) != nullptr) {
       return false;
@@ -567,6 +570,9 @@ class ImGuiUndoTarget : public ui::UndoTarget {
   }
 
   bool RemoveNode(const std::string& name) override {
+    if (graph != nullptr && graph->isRunning()) {
+      return false;
+    }
     auto node = FindNode(name);
     if (node == nullptr) {
       return false;
@@ -585,6 +591,9 @@ class ImGuiUndoTarget : public ui::UndoTarget {
   }
 
   bool Connect(const ui::LinkSnapshot& link) override {
+    if (graph != nullptr && graph->isRunning()) {
+      return false;
+    }
     auto from = FindNode(link.from);
     auto to = FindNode(link.to);
     if (from == nullptr || to == nullptr) {
@@ -599,6 +608,9 @@ class ImGuiUndoTarget : public ui::UndoTarget {
   }
 
   bool Disconnect(const ui::LinkSnapshot& link) override {
+    if (graph != nullptr && graph->isRunning()) {
+      return false;
+    }
     auto from = FindNode(link.from);
     auto to = FindNode(link.to);
     if (from == nullptr || to == nullptr) {
@@ -634,6 +646,9 @@ class ImGuiUndoTarget : public ui::UndoTarget {
 
   bool SetProperty(const std::string& node_name, int property_index,
                    const tg::PropertyValue& value) override {
+    if (graph != nullptr && graph->isRunning()) {
+      return false;
+    }
     auto node = FindNode(node_name);
     if (node == nullptr) {
       return false;
@@ -650,6 +665,9 @@ class ImGuiUndoTarget : public ui::UndoTarget {
   }
 
   bool RenameNode(const std::string& from, const std::string& to) override {
+    if (graph != nullptr && graph->isRunning()) {
+      return false;
+    }
     auto node = FindNode(from);
     if (node == nullptr) {
       return false;
@@ -663,6 +681,9 @@ class ImGuiUndoTarget : public ui::UndoTarget {
 
   bool SetPresentation(const std::string& node_name, unsigned int index,
                        tg::InputPresentation presentation) override {
+    if (graph != nullptr && graph->isRunning()) {
+      return false;
+    }
     auto node = FindNode(node_name);
     if (node == nullptr) {
       return false;
@@ -1007,12 +1028,26 @@ class Ui : public UiBase<Ui> {
     AddCommand({"project.saveAs", "Save As...", "File", "", {}, {},
                 [this] { BeginProjectPathDialog(ProjectPathAction::SaveAs); }});
     AddCommand({"graph.run", "Run Graph", "Run", "",
-                [this] { return !_controller.getGraphs().empty(); }, {},
                 [this] {
                   const auto& graphs = _controller.getGraphs();
-                  // 命令执行与菜单使用同一份选中下标。
+                  if (graphs.empty()) {
+                    return false;
+                  }
+                  const int index = std::clamp(
+                      _focus.selected_graph_index(), 0,
+                      static_cast<int>(graphs.size()) - 1);
+                  return !graphs[static_cast<std::size_t>(index)]->isRunning();
+                },
+                {},
+                [this] {
+                  const auto& graphs = _controller.getGraphs();
+                  // 命令执行与菜单使用同一份选中下标。只启动，这一帧继续画。
                   if (!graphs.empty()) {
-                    _controller.tryRun(*graphs[_focus.selected_graph_index()]);
+                    const int index = std::clamp(
+                        _focus.selected_graph_index(), 0,
+                        static_cast<int>(graphs.size()) - 1);
+                    _controller.startRun(
+                        *graphs[static_cast<std::size_t>(index)]);
                   }
                 }});
     AddCommand({"help.welcome", "Welcome", "Help", "", {}, {},
@@ -1630,6 +1665,8 @@ class Ui : public UiBase<Ui> {
   }
 
   void Update() {
+    // 收回已经结束的图。没结束的留在 worker 上，这一帧继续画。
+    _controller.pollRuns();
     const auto& graphs = _controller.getGraphs();
     // 图可能被删空或变短，先把选中下标夹回有效范围，后面取图才不会越界。
     if (!graphs.empty()) {
@@ -2113,7 +2150,7 @@ class Ui : public UiBase<Ui> {
               }
               ImGui::Separator();
               // 选 Run 跑这张图（不必是当前选中的图）。
-              if (ImGui::MenuItem("Run")) {
+              if (ImGui::MenuItem("Run", nullptr, false, !graph->isRunning())) {
                 RunGraph(graph);
               }
               // 选 Rename 就地改图名。
@@ -2336,7 +2373,8 @@ class Ui : public UiBase<Ui> {
           const tg::Node::Port* const output =
               link_source->outputPort(selected_link->port_out);
           const std::shared_ptr<tg::NodeData> data =
-              link_source->getOutPortData(selected_link->port_out);
+              graphs[_focus.selected_graph_index()]->visibleOutput(
+                  *link_source, selected_link->port_out);
           const LinkVariableFields fields =
               DescribeLinkVariable(output, data.get());
           constexpr int kLinkVariableColumnCount = 2;
@@ -2489,8 +2527,11 @@ class Ui : public UiBase<Ui> {
               ImGui::PopStyleColor();
               ImGui::TableSetColumnIndex(2);
               ImGui::PushID(property_index);
-              // 端口露面：属性表仍列出，但不可改（对照输入口即属性）。
-              if (input_as_port) {
+              // 端口露面或这张图正在跑：属性表仍列出，但不可改。
+              const bool graph_running =
+                  !graphs.empty() &&
+                  graphs[_focus.selected_graph_index()]->isRunning();
+              if (input_as_port || graph_running) {
                 ImGui::AlignTextToFramePadding();
                 ImGui::PushStyleColor(
                     ImGuiCol_Text,
@@ -2651,7 +2692,7 @@ class Ui : public UiBase<Ui> {
                 }
               }
               // 绑定输入槽：口模式右键改为属性，属性模式右键改为端口。
-              if (bound_input &&
+              if (bound_input && !graph_running &&
                   ImGui::BeginPopupContextItem("input_presentation_menu")) {
                 if (input_as_port) {
                   const bool can_convert =
@@ -2814,9 +2855,21 @@ class Ui : public UiBase<Ui> {
           ImGui::EndPopup();
         }
       }
-      // 最近一次成功 run 的总耗时；没有成功记录时不显示。
-      if (const std::optional<double> last_run =
-              _controller.lastRunMilliseconds()) {
+      // 当前图正在跑时显示 Running；否则显示这张图上次成功的耗时。
+      if (!graphs.empty() &&
+          graphs[_focus.selected_graph_index()]->isRunning()) {
+        ImGui::SameLine(0.0f, kBetweenControlsEpx * ui_scale);
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextDisabled("Running");
+      } else if (!graphs.empty()) {
+        if (const std::optional<double> last_run =
+                graphs[_focus.selected_graph_index()]->lastRunMilliseconds()) {
+          ImGui::SameLine(0.0f, kBetweenControlsEpx * ui_scale);
+          ImGui::AlignTextToFramePadding();
+          ImGui::TextDisabled("Last run: %.2f ms", *last_run);
+        }
+      } else if (const std::optional<double> last_run =
+                     _controller.lastRunMilliseconds()) {
         ImGui::SameLine(0.0f, kBetweenControlsEpx * ui_scale);
         ImGui::AlignTextToFramePadding();
         ImGui::TextDisabled("Last run: %.2f ms", *last_run);
@@ -3500,10 +3553,10 @@ class Ui : public UiBase<Ui> {
 
   // 跑指定的一张图（图右键 Run；不必是当前选中的图）。
   void RunGraph(const std::shared_ptr<tg::Graph>& graph) {
-    if (graph == nullptr) {
+    if (graph == nullptr || graph->isRunning()) {
       return;
     }
-    _controller.tryRun(*graph);
+    _controller.startRun(*graph);
   }
 
   // 工程级撤销目标：新建一张图（含节点/边/坐标）。
@@ -3625,8 +3678,8 @@ class Ui : public UiBase<Ui> {
   void DeleteSamplesFromUi(const std::shared_ptr<tg::Graph>& graph,
                            const std::vector<ClipboardSample>& samples,
                            std::shared_ptr<tg::Node>* selected_node = nullptr) {
-    // 空图或没有要删的节点。
-    if (graph == nullptr || samples.empty()) {
+    // 空图或没有要删的节点。正在跑的图不改节点。
+    if (graph == nullptr || samples.empty() || graph->isRunning()) {
       return;
     }
     std::vector<ClipboardNode> nodes;
@@ -4907,7 +4960,7 @@ class Ui : public UiBase<Ui> {
                         const std::shared_ptr<tg::Node>& node,
                         std::shared_ptr<tg::Node>* selected_node) {
     // 空图或空节点不删。
-    if (graph == nullptr || node == nullptr) {
+    if (graph == nullptr || node == nullptr || graph->isRunning()) {
       return;
     }
     tg::Node* const raw = node.get();
@@ -5091,7 +5144,7 @@ class Ui : public UiBase<Ui> {
   void RemoveGraphFromUi(const std::shared_ptr<tg::Graph>& graph,
                          std::shared_ptr<tg::Node>* selected_node) {
     // 空图指针不删。
-    if (graph == nullptr) {
+    if (graph == nullptr || graph->isRunning()) {
       return;
     }
     const auto& graphs = _controller.getGraphs();

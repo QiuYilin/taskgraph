@@ -140,7 +140,7 @@ int main() {
 
 ## core + ui
 
-仍用同一个 `tg::Controller`：在 **core** 上登记种类并打开工程，再套上 `Ui` 调用 `Run()`，得到工作台。两个后端共用同一份 core 和模型；两边的交互细节都在 [`docs/ui.md`](docs/ui.md)。
+仍用同一个 `tg::Controller`：在 **core** 上登记种类并打开工程，再套上 `Ui` 调用 `Run()`，得到工作台。两个后端共用同一份 core 和模型；两边的交互细节都在 [`docs/ui.md`](docs/ui.md)。工作台里的 Run 只启动当前图并立刻回到事件循环。`tryRun` 仍会等到这张图结束。一张图还在跑时不能改它；其它图可以同时跑。节点一算完，下一次绘制就能在 Monitor 里看到它的输出。
 
 ![simple-ui 示例界面（imgui 版）](docs/images/simple-ui.png)
 

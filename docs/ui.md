@@ -35,7 +35,7 @@
 - **File**：New Project...、Open Project...、Open Recent、Save、Save As...。**Preferences > Theme** 在 Dark 与 Light 之间切换，立刻生效，并写入用户配置目录的 `taskgraph/session.json`。**Preferences > Keyboard Shortcuts** 在编辑区打开快捷键页签。
 - **Edit**：Undo、Redo、Cut、Copy、Paste、Delete。Undo/Redo 走全局栈（图操作与各页签节点操作统一排序），其余命令作用于当前选中的节点。
 - **View**：Appearance、Explorer、Search、Properties、Output、Monitor、Primary Side Bar、Status Bar、Show Type Names。**Monitor** 在还没有 Monitor 窗口时，用第一个注册 kind 新建一个独立窗口；已经有窗口时不变。另外注册的独立视图窗口也列在这里：每个是可停靠的 ImGui 原生窗口，用标题栏上的关闭按钮关掉，没有铺满工作区的按钮。第一次出现在工作区中央。
-- **Run**：**Run Graph** 跑当前 graph。没有 graph 时这项不可用。
+- **Run**：**Run Graph** 启动当前 graph 后立刻返回，不堵住这一帧。没有 graph，或当前 graph 已在跑时，这项不可用。其它 graph 可以同时跑。节点任务一返回，下一帧 Monitor 就能显示该节点的新输出。
 - **Help**：**Welcome** 打开 Welcome 页签。
 
 命令中心只显示工程名。没有工程时显示 **Untitled**。点击没有动作。
@@ -166,7 +166,7 @@ ui.AddMonitorView(std::move(view));
 
 ## 状态栏
 
-通栏贴在最下面。从左到右是：工程名（有工程时）、**Run**、当前图名、上次成功运行的 `Last run: X ms`。点 **Run** 跑当前 graph，没有 graph 时不可用。点图名弹出列表，用来切换当前图，并在编辑区打开它。右侧是选中节点的 identifier；没选节点时右侧是空的。
+通栏贴在最下面。从左到右是：工程名（有工程时）、**Run**、当前图名、运行状态。当前图正在跑时这里是 **Running**，**Run** 不可用；否则是这张图上次成功的 `Last run: X ms`。点 **Run** 只启动当前 graph。点图名弹出列表，用来切换当前图，并在编辑区打开它。右侧是选中节点的 identifier；没选节点时右侧是空的。正在跑的图不能改节点、连线和属性。
 
 ## 快捷键
 
@@ -283,7 +283,7 @@ ui.AddMonitorView(std::move(view));
 - **File**：New Project...、Open Project...、Open Recent、Save、Save As...；**Preferences > Keyboard Shortcuts** 打开只读快捷键页签；**Preferences > Theme** 在 **Dark** / **Light** 间即时切换，选择写入 `session.json`，下次启动恢复。
 - **Edit**：Undo、Redo、Cut、Copy、Paste、Delete，作用于当前画布。
 - **View**：Zoom In、Zoom Out、Fit All、Fit Selected；**Activity Bar**、**Explorer**、**Search**；**Properties** / **Output** 开关右侧属性表和底部面板。**Monitor** 在还没有 Monitor 窗口时，用第一个注册 kind 新建一个浮动窗口；已经有窗口时不变。
-- **Run**：**Run Graph**（F5）跑当前页签的图。
+- **Run**：**Run Graph**（F5）启动当前页签的图后立刻返回。这张图已在跑时这项不可用。其它图可以同时跑。
 - **Help**：**Welcome**（暂不可用）。注册了 monitor kind 时，**New Monitor** 紧挨在菜单栏 **Help** 右边；每次点击都再新建一个浮动窗口，用第一个注册 kind。没有注册 kind 时 **Monitor** 和 **New Monitor** 都不显示。
 
 ## 主侧栏
@@ -323,7 +323,7 @@ ui.AddMonitorView(std::move(view));
 
 ## 面板与状态栏
 
-**Output** 只读，按行追加 core 日志；每行带 `[级别][类别]` 前缀。级别、类别由 core 日志配置决定，Qt 暂不提供 Output 细节控件。状态栏从左到右：工程名、**Run**、当前图名、运行提示；成功时提示 `Run finished in X ms`，失败显示错误。右侧是选中节点的 identifier。没有图时 **Run** 不可用。Output 的最大化/还原动作见「外壳」；标题栏关闭后从 **View > Output** 重开。
+**Output** 只读，按行追加 core 日志；每行带 `[级别][类别]` 前缀。级别、类别由 core 日志配置决定，Qt 暂不提供 Output 细节控件。状态栏从左到右：工程名、**Run**、当前图名、运行提示。点 **Run** 后提示 `Running ...`，槽函数立刻返回；当前图还在跑时 **Run** 不可用。日志定时器收回结束状态：成功时 `Run finished in X ms`，失败显示错误。Monitor 也在同一次定时器回调里读已经算完的节点。右侧是选中节点的 identifier。没有图时 **Run** 不可用。正在跑的图不能改节点、连线和属性。Output 的最大化/还原动作见「外壳」；标题栏关闭后从 **View > Output** 重开。
 
 ## 还没做
 

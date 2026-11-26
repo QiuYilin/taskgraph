@@ -1,6 +1,12 @@
 #pragma once
-#include <taskflow/taskflow.hpp>
+#include <atomic>
+#include <mutex>
+#include <optional>
+#include <unordered_map>
 #include <utility>
+#include <vector>
+
+#include <taskflow/taskflow.hpp>
 
 #include "taskgraph/Node.hpp"
 #include "taskgraph_export.h"
@@ -138,6 +144,25 @@ class TASKGRAPH_EXPORT Graph {
 
   std::string dump();
 
+  /** \brief 这张图已经提交给 executor、这次运行还没收回。 */
+  bool isRunning() const {
+    return _running.load(std::memory_order_acquire);
+  }
+
+  /** \brief 界面读输出。
+   *
+   *  正在跑时读发布缓冲里的 shared_ptr，不碰节点上 worker 可能正在写的那份。
+   *  还没轮到的节点保持启动前的快照；该节点任务返回后换成新输出。
+   */
+  std::shared_ptr<NodeData> visibleOutput(Node& node,
+                                          unsigned int index) const;
+
+  /** \brief 这张图最近一次成功运行的耗时（毫秒）。失败或尚未成功时为空。 */
+  std::optional<double> lastRunMilliseconds() const { return _last_run_ms; }
+
+  /** \brief 这张图最近一次运行的错误。成功或尚未跑完时为空。 */
+  std::optional<std::string> lastRunError() const { return _last_run_error; }
+
  private:
   /** \brief 按下标写连边，供端口对象重载复用；不对外公开。 */
   bool connectPorts(std::shared_ptr<Node> from, unsigned int port_out,
@@ -154,14 +179,34 @@ class TASKGRAPH_EXPORT Graph {
   void dropScheduleIfUnbound(const std::shared_ptr<Node>& from,
                              const std::shared_ptr<Node>& to);
 
+  /** \brief 启动前在调用线程拍下当前输出，并标记正在跑。 */
+  void beginRunPublication();
+
+  /** \brief worker 在 computeAndUpdateData 成功返回后换入该节点的输出。 */
+  void publishOutputs(Node& node);
+
+  /** \brief future 已收回后卸下发布缓冲。之后界面直接读节点。 */
+  void finishRunPublication();
+
+  /** \brief 记下这次运行的耗时或错误。耗时与错误只留其一。 */
+  void recordRunResult(std::optional<double> milliseconds,
+                       std::optional<std::string> error);
+
   std::vector<std::shared_ptr<Node>> _nodes;
   tf::Taskflow _taskflow;
   std::string _name{"Graph"};
+  // 发布缓冲：worker 写完输出后把 shared_ptr 交到这里，界面线程只读这张表。
+  mutable std::mutex _output_mutex;
+  mutable std::unordered_map<Node*, std::vector<std::shared_ptr<NodeData>>>
+      _published;
+  std::atomic<bool> _running{false};
+  std::optional<double> _last_run_ms;
+  std::optional<std::string> _last_run_error;
 };
 
 template <typename DataT>
 bool Node::setProperty(const In<DataT>& in, const typename DataT::Payload& value) {
-  if (in.node() != this) {
+  if (in.node() != this || !acceptsEdits()) {
     return false;
   }
   const bool presented =

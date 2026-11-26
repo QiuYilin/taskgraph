@@ -411,6 +411,10 @@ namespace tg {
     return true;
   }
 
+  bool Node::acceptsEdits() const {
+    return _graph == nullptr || !_graph->isRunning();
+  }
+
   bool Node::refreshPortTypes() {
     if (!_ports_ready) {
       return false;

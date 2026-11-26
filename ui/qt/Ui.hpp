@@ -20,6 +20,7 @@
 namespace tg {
 class Controller;
 class Node;
+struct FinishedGraphRun;
 struct NodePose;
 }
 namespace ui {
@@ -126,6 +127,7 @@ class Ui : public QMainWindow {
   void NewGraph();
   void RunActiveGraph();
   void UpdateStatusBar();
+  void ShowFinishedRun(const tg::FinishedGraphRun& finished);
   void PollLogLines();
   void NewProject();
   void OpenProject();

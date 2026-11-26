@@ -1,14 +1,40 @@
 #include "taskgraph/Controller.hpp"
 
+#include <algorithm>
 #include <chrono>
 #include <exception>
+#include <future>
 #include <optional>
+#include <utility>
 
+#include "taskgraph/Error.hpp"
 #include "taskgraph/Log.hpp"
 #include "taskgraph/ProjectIo.hpp"
 
+namespace {
+
+constexpr const char* kGraphAlreadyRunning = "Graph is already running";
+constexpr const char* kNonStandardRunError =
+    "graph run failed with a non-standard exception";
+
+}  // namespace
+
 namespace tg {
+Controller::Controller() = default;
+
+Controller::~Controller() {
+  // 成员图还在。先等 worker 离开 publishOutputs，再析构成员。
+  for (InFlightRun& flight : _inflight) {
+    if (flight.future.valid()) {
+      flight.future.wait();
+    }
+  }
+}
+
 void Controller::run(tg::Graph& graph) {
+  if (graph.isRunning()) {
+    throw GraphError(kGraphAlreadyRunning);
+  }
   const bool log_graph = logEnabled(LogLevel::Info, LogCategory::Graph);
   const bool log_timing = logEnabled(LogLevel::Info, LogCategory::Timing);
   const bool log_dump = logEnabled(LogLevel::Debug, LogCategory::Graph);
@@ -58,10 +84,92 @@ std::optional<std::string> Controller::tryRun(tg::Graph& graph) {
   } catch (const std::exception& error) {
     return error.what();
   } catch (...) {
-    constexpr const char* kNonStandardError =
-        "graph run failed with a non-standard exception";
-    return kNonStandardError;
+    return kNonStandardRunError;
   }
+}
+
+bool Controller::startRun(tg::Graph& graph) {
+  if (graph.isRunning()) {
+    return false;
+  }
+  if (logEnabled(LogLevel::Info, LogCategory::Graph)) {
+    TG_LOG_INFO(LogCategory::Graph, "graph '{}': start ({} nodes)",
+                graph.getName(), graph.getNodes().size());
+  }
+  graph.beginRunPublication();
+  InFlightRun flight;
+  flight.graph = &graph;
+  flight.started = std::chrono::steady_clock::now();
+  try {
+    flight.future = _executor.run(graph._taskflow);
+  } catch (const std::exception& error) {
+    graph.recordRunResult(std::nullopt, error.what());
+    graph.finishRunPublication();
+    return false;
+  } catch (...) {
+    graph.recordRunResult(std::nullopt, kNonStandardRunError);
+    graph.finishRunPublication();
+    return false;
+  }
+  _inflight.push_back(std::move(flight));
+  return true;
+}
+
+std::vector<FinishedGraphRun> Controller::pollRuns() {
+  std::vector<FinishedGraphRun> finished;
+  for (auto flight = _inflight.begin(); flight != _inflight.end();) {
+    if (!flight->future.valid() ||
+        flight->future.wait_for(std::chrono::seconds(0)) !=
+            std::future_status::ready) {
+      ++flight;
+      continue;
+    }
+    FinishedGraphRun result;
+    result.graph = flight->graph;
+    try {
+      flight->future.get();
+    } catch (const std::exception& error) {
+      result.error = error.what();
+    } catch (...) {
+      result.error = kNonStandardRunError;
+    }
+    const auto elapsed = std::chrono::steady_clock::now() - flight->started;
+    if (!result.error.has_value()) {
+      result.milliseconds =
+          std::chrono::duration<double, std::milli>(elapsed).count();
+      _last_run_ms = result.milliseconds;
+    }
+    if (result.graph != nullptr) {
+      if (result.error.has_value()) {
+        TG_LOG_ERROR(LogCategory::Graph, "graph '{}': failed: {}",
+                     result.graph->getName(), *result.error);
+        result.graph->recordRunResult(std::nullopt, result.error);
+      } else {
+        result.graph->recordRunResult(result.milliseconds, std::nullopt);
+        if (logEnabled(LogLevel::Info, LogCategory::Timing)) {
+          TG_LOG_INFO(LogCategory::Timing, "graph '{}': took {:.3f} ms",
+                      result.graph->getName(), *result.milliseconds);
+        }
+        if (logEnabled(LogLevel::Info, LogCategory::Graph)) {
+          TG_LOG_INFO(LogCategory::Graph, "graph '{}': end",
+                      result.graph->getName());
+        }
+      }
+      result.graph->finishRunPublication();
+    }
+    finished.push_back(std::move(result));
+    flight = _inflight.erase(flight);
+  }
+  return finished;
+}
+
+bool Controller::hasRunningGraph() const {
+  for (const InFlightRun& flight : _inflight) {
+    if (flight.graph != nullptr && flight.graph->isRunning()) {
+      return true;
+    }
+  }
+  return false;
 }
 
 void Controller::addGraph(std::shared_ptr<Graph> graph) {
@@ -70,13 +178,21 @@ void Controller::addGraph(std::shared_ptr<Graph> graph) {
 }
 
 void Controller::removeGraph(std::shared_ptr<Graph> graph) {
+  if (graph != nullptr && graph->isRunning()) {
+    return;
+  }
   _graphs.erase(std::remove(_graphs.begin(), _graphs.end(), graph),
                 _graphs.end());
   _dirty = true;
 }
 
 void Controller::clearGraphs() {
-  _graphs.clear();
+  // 正在跑的图留在列表里，避免 future 指向已经销毁的 taskflow。
+  _graphs.erase(std::remove_if(_graphs.begin(), _graphs.end(),
+                               [](const std::shared_ptr<Graph>& graph) {
+                                 return graph == nullptr || !graph->isRunning();
+                               }),
+                _graphs.end());
   _dirty = true;
 }
 
@@ -110,7 +226,7 @@ const std::vector<NodeTypeInfo>& Controller::nodeTypes() const {
 
 bool Controller::newProject(const std::filesystem::path& root,
                             std::string project_name) {
-  if (root.empty()) {
+  if (root.empty() || hasRunningGraph()) {
     return false;
   }
   if (project_name.empty()) {
@@ -128,7 +244,7 @@ bool Controller::newProject(const std::filesystem::path& root,
 
 bool Controller::openProject(const std::filesystem::path& root,
                              const NodePoseSetter& pose_setter) {
-  if (root.empty()) {
+  if (root.empty() || hasRunningGraph()) {
     return false;
   }
   std::string name;

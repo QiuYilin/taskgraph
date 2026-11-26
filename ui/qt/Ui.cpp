@@ -14,7 +14,6 @@
 #include <QApplication>
 #include <QColor>
 #include <QCursor>
-#include <QEventLoop>
 #include <QHeaderView>
 #include <QHBoxLayout>
 #include <QItemSelectionModel>
@@ -1034,6 +1033,8 @@ void Ui::BuildWorkbench() {
                             ShowNodeKindMenu(graph, global_position);
                           });
                 } else if (label == "Run") {
+                  action->setEnabled(graph->graph() == nullptr ||
+                                     !graph->graph()->isRunning());
                   connect(action, &QAction::triggered, this, [this, graph] {
                     RunGraph(graph);
                   });
@@ -1254,46 +1255,27 @@ void Ui::RunActiveGraph() {
 }
 
 void Ui::RunGraph(GraphModel* graph) {
-  if (graph == nullptr) {
+  if (graph == nullptr || graph->graph() == nullptr ||
+      graph->graph()->isRunning()) {
     return;
   }
-  if (_run_action != nullptr) {
-    _run_action->setEnabled(false);
+  if (!_project.startRun(*graph->graph())) {
+    return;
   }
-  if (_run_button != nullptr) {
-    _run_button->setEnabled(false);
+  if (_status_timer != nullptr) {
+    _status_timer->stop();
   }
   if (_status_message != nullptr) {
     _status_message->setText(QString::fromLatin1("Running ") + graph->name() +
                              QString::fromLatin1("..."));
-  }
-  QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
-
-  const std::optional<std::string> error = _project.tryRun(*graph->graph());
-  PollLogLines();
-
-  if (_status_message != nullptr) {
-    QString message = QString::fromLatin1("Run finished");
-    if (const std::optional<double> elapsed =
-            _project.lastRunMilliseconds()) {
-      message = QString::fromLatin1("Run finished in %1 ms")
-                    .arg(*elapsed, 0, 'f', 2);
-    }
-    _status_message->setText(
-        error.has_value()
-            ? QString::fromLatin1("Run failed: ") +
-                  QString::fromStdString(*error)
-            : message);
-  }
-  if (_status_timer != nullptr) {
-    _status_timer->start(kRunStatusTimeoutMs);
   }
   UpdateStatusBar();
 }
 
 void Ui::UpdateStatusBar() {
   GraphModel* graph = _editor_model->activeGraph();
-  const bool can_run = graph != nullptr;
+  const bool can_run = graph != nullptr && graph->graph() != nullptr &&
+                       !graph->graph()->isRunning();
   if (_run_action != nullptr) {
     _run_action->setEnabled(can_run);
   }
@@ -1311,7 +1293,30 @@ void Ui::UpdateStatusBar() {
   }
 }
 
+void Ui::ShowFinishedRun(const tg::FinishedGraphRun& finished) {
+  if (_status_message == nullptr || finished.graph == nullptr) {
+    return;
+  }
+  if (finished.error.has_value()) {
+    _status_message->setText(QString::fromLatin1("Run failed: ") +
+                             QString::fromStdString(*finished.error));
+  } else if (finished.milliseconds.has_value()) {
+    _status_message->setText(
+        QString::fromLatin1("Run finished in %1 ms")
+            .arg(*finished.milliseconds, 0, 'f', 2));
+  } else {
+    _status_message->setText(QString::fromLatin1("Run finished"));
+  }
+  if (_status_timer != nullptr) {
+    _status_timer->start(kRunStatusTimeoutMs);
+  }
+}
+
 void Ui::PollLogLines() {
+  for (const tg::FinishedGraphRun& finished : _project.pollRuns()) {
+    ShowFinishedRun(finished);
+  }
+  UpdateStatusBar();
   std::vector<tg::LogRecord> records;
   _log_cursor = tg::copyLogRecordsSince(_log_cursor, records);
   if (_output != nullptr) {

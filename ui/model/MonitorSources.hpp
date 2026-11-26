@@ -73,7 +73,8 @@ inline std::vector<MonitorSourceEntry> CollectMonitorSources(
     for (const auto& node : graph->getNodes()) {
       const unsigned int count = node->nFixedPorts(tg::PortType::Out);
       for (unsigned int index = 0; index < count; ++index) {
-        std::shared_ptr<tg::NodeData> data = node->getOutPortData(index);
+        std::shared_ptr<tg::NodeData> data =
+            graph->visibleOutput(*node, index);
         // 没有算出的输出不进入来源列表。
         if (data == nullptr) {
           continue;

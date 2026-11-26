@@ -75,7 +75,9 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <list>
+#include <thread>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -1701,6 +1703,63 @@ class SwitchInputNode : public tg::Node {
   std::shared_ptr<Property> _kind;
 };
 
+// 进入 compute 后停住，直到 gate 变为放行值。用来看图还在跑时的输出。
+class HoldPassNode : public tg::Node {
+ public:
+  explicit HoldPassNode(std::shared_ptr<std::atomic<int>> gate)
+      : _gate(std::move(gate)) {}
+
+  unsigned int nFixedPorts(tg::PortType port_type) const override {
+    constexpr unsigned int kPortCount = 1;
+    if (port_type == tg::PortType::In || port_type == tg::PortType::Out) {
+      return kPortCount;
+    }
+    return 0;
+  }
+
+  tg::NodeDataType fixedDataType(tg::PortType, unsigned int) const override {
+    return TestIntData{}.type();
+  }
+
+  const char* fixedPortId(tg::PortType, unsigned int) const override {
+    return "value";
+  }
+
+  const char* fixedPortCaption(tg::PortType port_type,
+                               unsigned int index) const override {
+    return fixedPortId(port_type, index);
+  }
+
+  void onSetInPortData(unsigned int,
+                       std::shared_ptr<tg::NodeData> data) override {
+    _in = std::move(data);
+  }
+
+  std::shared_ptr<tg::NodeData> getOutPortData(unsigned int) override {
+    return _out;
+  }
+
+  void compute() override {
+    constexpr int kEntered = 1;
+    constexpr int kRelease = 2;
+    constexpr int kHoldSliceMs = 1;
+    constexpr int kMaxHoldMs = 5000;
+    _gate->store(kEntered);
+    const auto deadline = std::chrono::steady_clock::now() +
+                          std::chrono::milliseconds(kMaxHoldMs);
+    while (_gate->load() < kRelease &&
+           std::chrono::steady_clock::now() < deadline) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(kHoldSliceMs));
+    }
+    _out = _in;
+  }
+
+ private:
+  std::shared_ptr<std::atomic<int>> _gate;
+  std::shared_ptr<tg::NodeData> _in;
+  std::shared_ptr<tg::NodeData> _out;
+};
+
 }  // namespace
 
 TEST(GraphPortTypes, RefreshesAndDropsIncompatibleEdges) {
@@ -1742,5 +1801,87 @@ TEST(GraphPortTypes, ResetsPropertyPresentationOnTypeChange) {
   EXPECT_TRUE(
       std::get<std::string>(node->inputProperty(kFirstPort)->value).empty())
       << "类型变化后 Property 露面的输入应重置默认";
+}
+
+TEST(GraphRun, PublishesFinishedNodeWhileTheGraphStillRuns) {
+  constexpr int kRelease = 2;
+  constexpr int kWaitMs = 2000;
+  constexpr int kSliceMs = 1;
+  const auto wait_until = [kWaitMs, kSliceMs](const auto& done) {
+    const auto deadline = std::chrono::steady_clock::now() +
+                          std::chrono::milliseconds(kWaitMs);
+    while (std::chrono::steady_clock::now() < deadline) {
+      if (done()) {
+        return true;
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(kSliceMs));
+    }
+    return done();
+  };
+
+  auto first_gate = std::make_shared<std::atomic<int>>(0);
+  auto second_gate = std::make_shared<std::atomic<int>>(0);
+  tg::Graph graph;
+  auto source = std::make_shared<IntSourceNode>(kLeftInt);
+  auto first = std::make_shared<HoldPassNode>(first_gate);
+  auto second = std::make_shared<HoldPassNode>(second_gate);
+  graph.addNode(source);
+  graph.addNode(first);
+  graph.addNode(second);
+  ASSERT_TRUE(graph.connect(source->outputPort(kFirstPort),
+                            first->inputPort(kFirstPort)));
+  ASSERT_TRUE(graph.connect(first->outputPort(kFirstPort),
+                            second->inputPort(kFirstPort)));
+
+  tg::Controller controller;
+  ASSERT_TRUE(controller.startRun(graph));
+  EXPECT_FALSE(controller.startRun(graph));
+  const auto already = controller.tryRun(graph);
+  ASSERT_TRUE(already.has_value());
+  EXPECT_EQ(*already, "Graph is already running");
+  EXPECT_FALSE(graph.connect(source->outputPort(kFirstPort),
+                             second->inputPort(kFirstPort)));
+  const std::size_t node_count = graph.getNodes().size();
+  graph.addNode(std::make_shared<IntSourceNode>(kRightInt));
+  EXPECT_EQ(graph.getNodes().size(), node_count);
+
+  ASSERT_TRUE(wait_until(
+      [&] { return first_gate->load() == 1; }));
+  controller.pollRuns();
+  ASSERT_TRUE(graph.isRunning());
+  const auto source_data = std::dynamic_pointer_cast<TestIntData>(
+      graph.visibleOutput(*source, kFirstPort));
+  ASSERT_NE(source_data, nullptr);
+  EXPECT_EQ(source_data->data(), kLeftInt);
+  EXPECT_EQ(graph.visibleOutput(*first, kFirstPort), nullptr);
+
+  first_gate->store(kRelease);
+  ASSERT_TRUE(wait_until([&] {
+    controller.pollRuns();
+    const auto data = std::dynamic_pointer_cast<TestIntData>(
+        graph.visibleOutput(*first, kFirstPort));
+    return graph.isRunning() && data != nullptr && data->data() == kLeftInt;
+  }));
+
+  tg::Graph other;
+  auto other_source = std::make_shared<IntSourceNode>(kRightInt);
+  other.addNode(other_source);
+  ASSERT_TRUE(controller.startRun(other));
+  ASSERT_TRUE(wait_until([&] {
+    controller.pollRuns();
+    return !other.isRunning() && other.lastRunMilliseconds().has_value();
+  }));
+  EXPECT_TRUE(graph.isRunning());
+
+  second_gate->store(kRelease);
+  ASSERT_TRUE(wait_until([&] {
+    controller.pollRuns();
+    return !graph.isRunning();
+  }));
+  ASSERT_TRUE(graph.lastRunMilliseconds().has_value());
+  const auto finished = std::dynamic_pointer_cast<TestIntData>(
+      second->getOutPortData(kFirstPort));
+  ASSERT_NE(finished, nullptr);
+  EXPECT_EQ(finished->data(), kLeftInt);
 }
 

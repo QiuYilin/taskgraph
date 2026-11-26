@@ -140,7 +140,7 @@ int main() {
 
 ## core + ui
 
-Same `tg::Controller`: register kinds and open a project on **core**, then wrap with `Ui` and `Run()` for the workbench. Two backends share the same core and models; the interaction details for both are in [`docs/ui.md`](docs/ui.md).
+Same `tg::Controller`: register kinds and open a project on **core**, then wrap with `Ui` and `Run()` for the workbench. Two backends share the same core and models; the interaction details for both are in [`docs/ui.md`](docs/ui.md). Run in the workbench only starts the current graph and returns to the event loop. `tryRun` still waits until that graph finishes. A graph that is still running cannot be edited; other graphs can run at the same time. The next paint shows a node's output in Monitor once that node's task returns.
 
 ![simple-ui example (ImGui build)](docs/images/simple-ui.png)
 

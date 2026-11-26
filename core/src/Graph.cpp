@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <functional>
+#include <utility>
 #include <vector>
 
 #include "taskgraph/ConnectionInfo.hpp"
@@ -38,6 +39,17 @@ bool reaches(const tg::Node* start, const tg::Node* target) {
   return false;
 }
 
+// 按固定输出口复制当前 NodeData。调用方负责线程同步。
+std::vector<std::shared_ptr<tg::NodeData>> CaptureOutputs(tg::Node& node) {
+  const unsigned int count = node.nFixedPorts(tg::PortType::Out);
+  std::vector<std::shared_ptr<tg::NodeData>> outputs;
+  outputs.reserve(count);
+  for (unsigned int index = 0; index < count; ++index) {
+    outputs.push_back(node.getOutPortData(index));
+  }
+  return outputs;
+}
+
 }  // namespace
 
 namespace tg {
@@ -50,7 +62,7 @@ Graph::~Graph() {
 }
 
 void Graph::addNode(std::shared_ptr<Node> node) {
-  if (node == nullptr) {
+  if (node == nullptr || isRunning()) {
     return;
   }
   // 已在本图，或任务句柄说明它已经挂在别的图上。
@@ -64,7 +76,13 @@ void Graph::addNode(std::shared_ptr<Node> node) {
     node->setName(uniqueNodeName(base));
   }
   _nodes.push_back(node);
-  std::function<void()> task = [node] { node->computeAndUpdateData(); };
+  // 成功返回后才发布输出。compute 抛出时保留启动前的快照。
+  std::function<void()> task = [node] {
+    node->computeAndUpdateData();
+    if (node->_graph != nullptr) {
+      node->_graph->publishOutputs(*node);
+    }
+  };
   node->_task =
       _taskflow.emplace(task);  // Node保存一个task_主要是删除的时候有用
   node->_task.name(node->getName());
@@ -109,6 +127,10 @@ bool Graph::renameNode(std::shared_ptr<Node> node, const std::string& name) {
   if (node->getName() == name) {
     return true;
   }
+  // 运行中不改任务名。
+  if (isRunning()) {
+    return false;
+  }
   if (isNodeNameTaken(name, node.get())) {
     return false;
   }
@@ -117,7 +139,7 @@ bool Graph::renameNode(std::shared_ptr<Node> node, const std::string& name) {
 }
 
 void Graph::removeNode(std::shared_ptr<Node> node) {
-  if (node == nullptr) {
+  if (node == nullptr || isRunning()) {
     return;
   }
   // 节点不在图里就直接返回，重复删除不做第二次清理。
@@ -153,6 +175,10 @@ void Graph::removeNode(std::shared_ptr<Node> node) {
 }
 
 bool Graph::canConnect(const Node::Port* from, const Node::Port* to) const {
+  // 运行中不改 taskflow 拓扑，预览也拒绝。
+  if (isRunning()) {
+    return false;
+  }
   // 必须先有输出、后有输入，且两端端口都挂在节点上。
   if (from == nullptr || to == nullptr || !from->is_output || to->is_output ||
       from->node == nullptr || to->node == nullptr) {
@@ -196,7 +222,7 @@ bool Graph::canConnect(const Node::Port* from, const Node::Port* to) const {
 bool Graph::connectPorts(std::shared_ptr<Node> from, unsigned int port_out,
                          std::shared_ptr<Node> to, unsigned int port_in) {
   // 空指针不连；同一节点、类型、露面方式和重复边由 canConnect 统一判断。
-  if (from == nullptr || to == nullptr) {
+  if (from == nullptr || to == nullptr || isRunning()) {
     return false;
   }
   const Node::Port* output = from->outputPort(port_out);
@@ -228,7 +254,7 @@ bool Graph::connect(const Node::Port* from, const Node::Port* to) {
 
 bool Graph::disconnectPorts(std::shared_ptr<Node> from, unsigned int port_out,
                             std::shared_ptr<Node> to, unsigned int port_in) {
-  if (from == nullptr || to == nullptr) {
+  if (from == nullptr || to == nullptr || isRunning()) {
     return false;
   }
   const auto is_this_edge = [&](const ConnectionInfo& conn) {
@@ -304,7 +330,7 @@ void Graph::disconnectInputsTo(std::shared_ptr<Node> node,
 
 bool Graph::setInputPresentation(std::shared_ptr<Node> node, unsigned int index,
                                  InputPresentation presentation) {
-  if (node == nullptr) {
+  if (node == nullptr || isRunning()) {
     return false;
   }
   // 先查露面策略再断边：被拒时不能把现有入边拆掉。
@@ -320,7 +346,7 @@ bool Graph::setInputPresentation(std::shared_ptr<Node> node, unsigned int index,
 }
 
 bool Graph::refreshPortTypes(std::shared_ptr<Node> node) {
-  if (node == nullptr) {
+  if (node == nullptr || isRunning()) {
     return false;
   }
   // 先记下旧输入类型，用来判断 Property 露面的绑定属性是否要重置。
@@ -385,6 +411,61 @@ bool Graph::refreshPortTypes(std::shared_ptr<Node> node) {
     disconnectPorts(edge.from, edge.port_out, edge.to, edge.port_in);
   }
   return changed || !to_drop.empty();
+}
+
+void Graph::beginRunPublication() {
+  _last_run_ms.reset();
+  _last_run_error.reset();
+  std::unordered_map<Node*, std::vector<std::shared_ptr<NodeData>>> captured;
+  for (const auto& node : _nodes) {
+    if (node == nullptr) {
+      continue;
+    }
+    captured[node.get()] = CaptureOutputs(*node);
+  }
+  {
+    std::lock_guard<std::mutex> lock(_output_mutex);
+    _published = std::move(captured);
+  }
+  // 置位之后 worker 才会被 run 拉起；置位前没有人读这张表。
+  _running.store(true, std::memory_order_release);
+}
+
+void Graph::publishOutputs(Node& node) {
+  if (!_running.load(std::memory_order_acquire)) {
+    return;
+  }
+  auto outputs = CaptureOutputs(node);
+  std::lock_guard<std::mutex> lock(_output_mutex);
+  if (!_running.load(std::memory_order_relaxed)) {
+    return;
+  }
+  _published[&node] = std::move(outputs);
+}
+
+void Graph::finishRunPublication() {
+  _running.store(false, std::memory_order_release);
+  std::lock_guard<std::mutex> lock(_output_mutex);
+  _published.clear();
+}
+
+void Graph::recordRunResult(std::optional<double> milliseconds,
+                            std::optional<std::string> error) {
+  _last_run_ms = std::move(milliseconds);
+  _last_run_error = std::move(error);
+}
+
+std::shared_ptr<NodeData> Graph::visibleOutput(Node& node,
+                                               unsigned int index) const {
+  if (_running.load(std::memory_order_acquire)) {
+    std::lock_guard<std::mutex> lock(_output_mutex);
+    const auto found = _published.find(&node);
+    if (found == _published.end() || index >= found->second.size()) {
+      return nullptr;
+    }
+    return found->second[index];
+  }
+  return node.getOutPortData(index);
 }
 
 std::string Graph::dump() { return _taskflow.dump(); }
