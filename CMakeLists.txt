@@ -21,7 +21,7 @@ if(NOT CMAKE_CONFIGURATION_TYPES AND NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type")
 endif()
 
-project(${project_name} VERSION 0.3.0)
+project(${project_name} VERSION 0.4.0)
 
 # Without this, MSVC reads UTF-8 sources as the system code page.
 if(MSVC)
