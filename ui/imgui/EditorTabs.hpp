@@ -30,7 +30,7 @@ inline constexpr int kEditorTabBarColorCount = 1;
 inline constexpr int kShowTypeNamesColorCount = 2;
 
 // 编辑区页签只需要这些外部动作，不依赖 Ui 的私有成员。
-struct EditorTabsViewContext {
+struct EditorTabsContext {
   WorkbenchFocus* focus = nullptr;
   bool show_port_type_names = false;
   const char* welcome_label = "Welcome";
@@ -60,7 +60,7 @@ inline std::string EditorGraphTabId(const tg::Graph* graph) {
 
 // 画编辑区页签：切换、关闭和重排交给 ImGui TabBar。
 // Show Type Names 是这一行最右边的按钮，不跟在最后一个页签后面。
-inline void DrawEditorTabsView(const EditorTabsViewContext& context) {
+inline void DrawEditorTabs(const EditorTabsContext& context) {
   if (context.tab_bar_height != nullptr) {
     *context.tab_bar_height = 0.0f;
   }

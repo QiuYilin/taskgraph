@@ -7,7 +7,7 @@
 
 #include "taskgraph/taskgraph.hpp"
 
-/** \brief 端口类型色形 Facade：针脚与连线按数据 id 着色，失败状态用错误色。 */
+// 针脚与连线按数据 id 着色，失败状态用错误色。
 
 // 连线失败（类型不符、方向不对、属性露面等）用当前主题的 errorForeground。
 inline ImVec4 LinkFailureColor() {

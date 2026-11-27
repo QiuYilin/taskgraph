@@ -34,11 +34,11 @@ inline constexpr float kOutputCheckboxCheckEndY = 0.28f;
 inline constexpr float kOutputCheckboxBorderEpx = 1.0f;
 inline constexpr float kOutputCheckboxLineThicknessEpx = 2.0f;
 // 浮动工具窗口：离视口边留两倍边距，默认位置居中。
-inline constexpr float kViewWindowMarginCount = 2.0f;
-inline constexpr float kViewWindowCenterRatio = 0.5f;
-inline constexpr float kViewWindowDefaultWidthEpx = 720.0f;
-inline constexpr float kViewWindowDefaultHeightEpx = 540.0f;
-inline constexpr float kViewWindowMarginEpx = 24.0f;
+inline constexpr float kFloatingWindowMarginCount = 2.0f;
+inline constexpr float kFloatingWindowCenterRatio = 0.5f;
+inline constexpr float kFloatingWindowDefaultWidthEpx = 720.0f;
+inline constexpr float kFloatingWindowDefaultHeightEpx = 540.0f;
+inline constexpr float kFloatingWindowMarginEpx = 24.0f;
 // 按钮：2epx 圆角、1epx 描边。
 inline constexpr float kButtonCornerRadiusEpx = 2.0f;
 inline constexpr float kButtonBorderSizeEpx = 1.0f;

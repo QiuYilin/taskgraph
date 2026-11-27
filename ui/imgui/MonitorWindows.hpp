@@ -221,13 +221,13 @@ inline MonitorWorkspaceActions ShowMonitorWindows(
     MonitorWindowsState& windows_state, MonitorWindowsHost& host) {
   MonitorWorkspaceActions out;
   const float ui_scale = ImGui::GetStyle().FontScaleMain;
-  const ImVec2 default_size(kViewWindowDefaultWidthEpx * ui_scale,
-                            kViewWindowDefaultHeightEpx * ui_scale);
+  const ImVec2 default_size(kFloatingWindowDefaultWidthEpx * ui_scale,
+                            kFloatingWindowDefaultHeightEpx * ui_scale);
   ScreenRect first_use;
   if (host.first_use_area.size.x > 0.0f && host.first_use_area.size.y > 0.0f) {
     first_use = TopRightFloatingRect(
         host.first_use_area, Vec2{default_size.x, default_size.y},
-        kViewWindowMarginEpx * ui_scale);
+        kFloatingWindowMarginEpx * ui_scale);
   }
   const ImGuiWindowFlags window_flags =
       ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse;

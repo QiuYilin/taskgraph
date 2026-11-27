@@ -42,8 +42,8 @@
 
 #include "WorkbenchParts.hpp"
 
-// NodeEditor::Begin 之前或 End 之后调用。把滚动和缩放写回身份视图。
-inline void HoldIdentityCanvasView(ax::NodeEditor::EditorContext* editor) {
+// NodeEditor::Begin 之前或 End 之后调用。滚动归零，缩放回到 1。
+inline void HoldIdentityCanvas(ax::NodeEditor::EditorContext* editor) {
   if (editor == nullptr) {
     return;
   }
