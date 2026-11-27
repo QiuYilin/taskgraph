@@ -4,14 +4,27 @@ set(HPP_HEADER_FILES
     UiBase.hpp
     Ui.hpp
     UiWidgets.hpp
-    WorkbenchIcons.hpp
-    CanvasViewLock.hpp
-    ActivityBarView.hpp
-    EditorTabsView.hpp
+    ActivityIcons.hpp
+    IdentityCanvas.hpp
+    ActivityBar.hpp
+    EditorTabs.hpp
     MonitorWindows.hpp
-    PortTypeVisual.hpp
-    ViewWindows.hpp
-    WindowChrome.hpp
+    PortPin.hpp
+    FloatingWindows.hpp
+    DockTab.hpp
+    PortRow.hpp
+    ExplorerRow.hpp
+    DockHost.hpp
+    PrimarySideBar.hpp
+    PickNodeKind.hpp
+    EditorArea.hpp
+    FlowCanvas.hpp
+    CanvasRename.hpp
+    Properties.hpp
+    Output.hpp
+    StatusBar.hpp
+    TitleBar.hpp
+    ProjectPathDialog.hpp
     )
 
 find_package(OpenGL REQUIRED)

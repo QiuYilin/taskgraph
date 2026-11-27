@@ -1,7 +1,7 @@
 #pragma once
 
 #include "ThemeStyle.hpp"
-#include "WorkbenchIcons.hpp"
+#include "ActivityIcons.hpp"
 #include "WorkbenchParts.hpp"
 
 #include <functional>
@@ -9,7 +9,7 @@
 #include <string_view>
 #include <vector>
 
-struct ActivityBarViewContext {
+struct ActivityBarContext {
   bool visible = false;
   ImVec2 pos{};
   ImVec2 size{};
@@ -20,7 +20,7 @@ struct ActivityBarViewContext {
 };
 
 // 活动栏：只负责画图标和把点击翻译成命令，不持有任何工作台状态。
-inline void DrawActivityBarView(const ActivityBarViewContext& context) {
+inline void DrawActivityBar(const ActivityBarContext& context) {
   if (!context.visible || context.items == nullptr || context.size.x <= 0.0f ||
       context.size.y <= 0.0f) {
     return;
