@@ -514,8 +514,14 @@ void TaskGraphModel::SetShowPortTypeNames(bool show) {
     return;
   }
   _show_port_type_names = show;
-  // 端口标签宽度变化，重算节点几何。
-  emit modelReset();
+  // 标签行数变化只让节点重算几何，不重建场景：保留选中、缩放和拖动状态。
+  RefreshNodeGeometry();
+}
+
+void TaskGraphModel::RefreshNodeGeometry() {
+  for (const QtNodes::NodeId node_id : allNodeIds()) {
+    emit nodeUpdated(node_id);
+  }
 }
 
 QVariant TaskGraphModel::portData(QtNodes::NodeId node_id,
@@ -546,29 +552,11 @@ QVariant TaskGraphModel::portData(QtNodes::NodeId node_id,
           ToQtNodeDataType(node->fixedDataType(tg_type, fixed)));
     case QtNodes::PortRole::Caption: {
       const char* caption = node->fixedPortCaption(tg_type, fixed);
-      const QString caption_text =
-          caption != nullptr ? QString::fromUtf8(caption) : QString();
-      if (!_show_port_type_names) {
-        return caption_text;
-      }
-      const QString type_name =
-          QString::fromStdString(node->fixedDataType(tg_type, fixed).name);
-      if (type_name.isEmpty()) {
-        return caption_text;
-      }
-      if (caption_text.isEmpty()) {
-        return type_name;
-      }
-      return QStringLiteral("%1 (%2)").arg(caption_text, type_name);
+      return caption != nullptr ? QString::fromUtf8(caption) : QString();
     }
     case QtNodes::PortRole::CaptionVisible: {
       const char* caption = node->fixedPortCaption(tg_type, fixed);
-      const bool has_caption = caption != nullptr && caption[0] != '\0';
-      if (!_show_port_type_names) {
-        return has_caption;
-      }
-      return has_caption ||
-             !node->fixedDataType(tg_type, fixed).name.empty();
+      return caption != nullptr && caption[0] != '\0';
     }
     case QtNodes::PortRole::ConnectionPolicyRole:
       return QVariant::fromValue(port_type == QtNodes::PortType::In

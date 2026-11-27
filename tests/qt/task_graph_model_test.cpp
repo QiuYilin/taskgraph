@@ -59,6 +59,7 @@ class TaskGraphModelTest : public QObject {
   void nodeDataRoles();
   void portDataRoles();
   void portTypeNamesCaption();
+  void showPortTypeNamesDoesNotResetModel();
   void visibleInputRemapping();
   void connectAndDisconnect();
   void deleteNodeEmitsConnectionsFirst();
@@ -178,22 +179,53 @@ void TaskGraphModelTest::portTypeNamesCaption() {
         ->portData(id, type, index, QtNodes::PortRole::Caption)
         .toString();
   };
+  const auto caption_visible = [&](QtNodes::PortType type,
+                                   QtNodes::PortIndex index) {
+    return fixture.model
+        ->portData(id, type, index, QtNodes::PortRole::CaptionVisible)
+        .toBool();
+  };
 
+  // 无论开关状态，Caption 都只给功能名，不再拼接 "caption (type)"。
   QCOMPARE(caption(QtNodes::PortType::In, 0),
            QString::fromStdString(tgtest::kFirstInputCaption));
+  QVERIFY(caption_visible(QtNodes::PortType::In, 0));
+
   fixture.model->SetShowPortTypeNames(true);
   QCOMPARE(caption(QtNodes::PortType::In, 0),
-           QStringLiteral("%1 (%2)")
-               .arg(QString::fromStdString(tgtest::kFirstInputCaption),
-                    QString::fromStdString(tgtest::kTestDataName)));
+           QString::fromStdString(tgtest::kFirstInputCaption));
   QCOMPARE(caption(QtNodes::PortType::Out, 0),
-           QStringLiteral("%1 (%2)")
-               .arg(QString::fromStdString(tgtest::kOutputCaption),
-                    QString::fromStdString(tgtest::kTestDataName)));
+           QString::fromStdString(tgtest::kOutputCaption));
+  QVERIFY(caption_visible(QtNodes::PortType::In, 0));
 
   fixture.model->SetShowPortTypeNames(false);
   QCOMPARE(caption(QtNodes::PortType::In, 0),
            QString::fromStdString(tgtest::kFirstInputCaption));
+}
+
+void TaskGraphModelTest::showPortTypeNamesDoesNotResetModel() {
+  Fixture fixture;
+  QSignalSpy reset(fixture.model.get(),
+                   &QtNodes::AbstractGraphModel::modelReset);
+  QSignalSpy updated(fixture.model.get(),
+                     &QtNodes::AbstractGraphModel::nodeUpdated);
+
+  QVERIFY(!fixture.model->showPortTypeNames());
+
+  fixture.model->SetShowPortTypeNames(true);
+  QVERIFY(fixture.model->showPortTypeNames());
+  // 只让节点重算几何，不重建场景：modelReset 为 0，nodeUpdated 每节点一次。
+  QCOMPARE(reset.count(), 0);
+  QCOMPARE(updated.count(), kTestNodeCount);
+
+  // 值没变时不再发信号，避免无谓重算。
+  fixture.model->SetShowPortTypeNames(true);
+  QCOMPARE(updated.count(), kTestNodeCount);
+
+  fixture.model->SetShowPortTypeNames(false);
+  QVERIFY(!fixture.model->showPortTypeNames());
+  QCOMPARE(reset.count(), 0);
+  QCOMPARE(updated.count(), kTestNodeCount * 2);
 }
 
 void TaskGraphModelTest::visibleInputRemapping() {

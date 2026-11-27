@@ -15,6 +15,8 @@ set(PRIVATE_HEADER_FILES
     ProjectRowDelegate.hpp
     TaskGraphModel.hpp
     GraphCanvasView.hpp
+    NodeLabelGeometry.hpp
+    NodeLabelPainter.hpp
     PropertyModel.hpp
     PropertyValueDelegate.hpp
     ThemeStyleQt.hpp
@@ -35,6 +37,8 @@ set(SOURCE_FILES
     ProjectRowDelegate.cpp
     TaskGraphModel.cpp
     GraphCanvasView.cpp
+    NodeLabelGeometry.cpp
+    NodeLabelPainter.cpp
     PropertyModel.cpp
     PropertyValueDelegate.cpp
     ThemeStyleQt.cpp

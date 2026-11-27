@@ -143,5 +143,14 @@ QString BuildThemeStyleSheet(const ThemeTokens& tokens) {
   qss += "#ActivityBar QToolButton:hover { background: " + hover_bg + "; } ";
   qss += "#ActivityBar QToolButton:checked { border-left: 2px solid " +
          focus_border + "; }";
+  // 页签栏右侧的 Show Type Names：checked 用页签选中底色，和 ImGui 一致。
+  qss += "QToolButton#showTypeNamesButton { background: transparent; color: " +
+         tab_inactive_fg + "; border: 1px solid transparent; padding: 0 8px; "
+         "margin: 0 4px; } ";
+  qss += "QToolButton#showTypeNamesButton:hover { background: " + tab_hover_bg +
+         "; } ";
+  qss += "QToolButton#showTypeNamesButton:checked { background: " +
+         tab_active_bg + "; color: " + tab_active_fg + "; border: 1px solid " +
+         tab_border + "; } ";
   return qss;
 }

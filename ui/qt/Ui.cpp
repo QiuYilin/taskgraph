@@ -27,6 +27,7 @@
 #include <QPoint>
 #include <QPushButton>
 #include <QShortcut>
+#include <QSignalBlocker>
 #include <QStackedWidget>
 #include <QStatusBar>
 #include <QStyle>
@@ -668,6 +669,7 @@ void Ui::BuildMenuBar() {
   QAction* type_names = view->addAction("Show Type Names");
   type_names->setCheckable(true);
   type_names->setChecked(_show_port_type_names);
+  _show_type_names_action = type_names;
   connect(type_names, &QAction::toggled, this, [this](bool show) {
     _show_port_type_names = show;
     if (_tabs != nullptr) {
@@ -754,6 +756,15 @@ void Ui::BuildWorkbench() {
   _editor_dock = editor_dock;
   _tabs = new EditorTabsView(_editor_model, editor_dock);
   _tabs->setObjectName("EditorTabs");
+  // 页签栏按钮切换后同步 View 菜单勾选；用 blocker 防双向循环。
+  connect(_tabs, &EditorTabsView::showPortTypeNamesToggled, this,
+          [this](bool show) {
+            _show_port_type_names = show;
+            if (_show_type_names_action != nullptr) {
+              const QSignalBlocker blocker(_show_type_names_action);
+              _show_type_names_action->setChecked(show);
+            }
+          });
   editor_dock->setWidget(_tabs);
   _dock_manager->setCentralWidget(editor_dock);
 

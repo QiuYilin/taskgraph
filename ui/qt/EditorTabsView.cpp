@@ -3,6 +3,7 @@
 #include <QList>
 #include <QModelIndex>
 #include <QSignalBlocker>
+#include <QToolButton>
 
 #include <utility>
 
@@ -17,6 +18,24 @@ EditorTabsView::EditorTabsView(EditorModel* model, QWidget* parent)
   setDocumentMode(true);
   // 空编辑区也要能看见边界，便于确认这块就是编辑区。
   setStyleSheet("QTabWidget::pane { border: 1px solid palette(mid); }");
+
+  // 页签栏右侧的 Show Type Names 开关，和 View 菜单双向同步。
+  _show_type_names_button = new QToolButton(this);
+  _show_type_names_button->setObjectName("showTypeNamesButton");
+  _show_type_names_button->setText(QStringLiteral("Show Type Names"));
+  _show_type_names_button->setAutoRaise(true);
+  _show_type_names_button->setCheckable(true);
+  setCornerWidget(_show_type_names_button, Qt::TopRightCorner);
+  connect(_show_type_names_button, &QToolButton::toggled, this,
+          [this](bool show) {
+            _show_port_type_names = show;
+            for (GraphCanvasView* canvas : _canvases) {
+              if (canvas != nullptr) {
+                canvas->SetShowPortTypeNames(show);
+              }
+            }
+            Q_EMIT showPortTypeNamesToggled(show);
+          });
 
   connect(_model, &QAbstractItemModel::rowsInserted, this,
           [this](const QModelIndex&, int, int) { RefreshTabs(); });
@@ -34,12 +53,15 @@ EditorTabsView::EditorTabsView(EditorModel* model, QWidget* parent)
   connect(_model, &EditorModel::activeChanged, this, [this](int row) {
     const QSignalBlocker blocker(this);
     setCurrentIndex(row);
+    // 这里是外部激活页签：信号被挡住，按钮状态得自己补一次。
+    UpdateShowTypeNamesButton();
   });
 
   connect(this, &QTabWidget::currentChanged, this, [this](int index) {
     if (index >= 0) {
       _model->activateRow(index);
     }
+    UpdateShowTypeNamesButton();
   });
   connect(this, &QTabWidget::tabCloseRequested, this, [this](int index) {
     _model->closeRow(index);
@@ -106,6 +128,7 @@ void EditorTabsView::RefreshTabs() {
   }
 
   setCurrentIndex(_model->activeRow());
+  UpdateShowTypeNamesButton();
 }
 
 void EditorTabsView::SetSceneClickHandler(SceneClickHandler handler) {
@@ -139,11 +162,26 @@ void EditorTabsView::SetUndoStackHandler(UndoStackHandler handler) {
 
 void EditorTabsView::SetShowPortTypeNames(bool show) {
   _show_port_type_names = show;
+  // 先同步按钮勾选，别再让它发一次 toggled 绕回来。
+  if (_show_type_names_button != nullptr) {
+    const QSignalBlocker blocker(_show_type_names_button);
+    _show_type_names_button->setChecked(show);
+  }
   for (GraphCanvasView* canvas : _canvases) {
     if (canvas != nullptr) {
       canvas->SetShowPortTypeNames(show);
     }
   }
+}
+
+void EditorTabsView::UpdateShowTypeNamesButton() {
+  if (_show_type_names_button == nullptr) {
+    return;
+  }
+  const QSignalBlocker blocker(_show_type_names_button);
+  _show_type_names_button->setChecked(_show_port_type_names);
+  // 快捷键页签没有图，按钮一起隐藏。
+  _show_type_names_button->setVisible(currentCanvas() != nullptr);
 }
 
 GraphCanvasView* EditorTabsView::currentCanvas() const {

@@ -282,7 +282,7 @@ ui.AddMonitorView(std::move(view));
 
 - **File**：New Project...、Open Project...、Open Recent、Save、Save As...；**Preferences > Keyboard Shortcuts** 打开只读快捷键页签；**Preferences > Theme** 在 **Dark** / **Light** 间即时切换，选择写入 `session.json`，下次启动恢复。
 - **Edit**：Undo、Redo、Cut、Copy、Paste、Delete，作用于当前画布。
-- **View**：Zoom In、Zoom Out、Fit All、Fit Selected；**Activity Bar**、**Explorer**、**Search**；**Properties** / **Output** 开关右侧属性表和底部面板。**Monitor** 在还没有 Monitor 窗口时，用第一个注册 kind 新建一个浮动窗口；已经有窗口时不变。
+- **View**：Zoom In、Zoom Out、Fit All、Fit Selected；**Activity Bar**、**Explorer**、**Search**；**Show Type Names** 控制画布端口标签是否画类型名；**Properties** / **Output** 开关右侧属性表和底部面板。**Monitor** 在还没有 Monitor 窗口时，用第一个注册 kind 新建一个浮动窗口；已经有窗口时不变。
 - **Run**：**Run Graph**（F5）启动当前页签的图后立刻返回。这张图已在跑时这项不可用。其它图可以同时跑。
 - **Help**：**Welcome**（暂不可用）。注册了 monitor kind 时，**New Monitor** 紧挨在菜单栏 **Help** 右边；每次点击都再新建一个浮动窗口，用第一个注册 kind。没有注册 kind 时 **Monitor** 和 **New Monitor** 都不显示。
 
@@ -301,6 +301,8 @@ ui.AddMonitorView(std::move(view));
 选中种类后进入落点：下一次在画布左键才创建节点。**Esc** 或画布右键取消；没有落点时，画布空白处右键弹出 **New Node** / **Paste**：**New Node** 打开种类列表；**Paste** 在剪贴板非空时可用，贴到右键位置。
 
 画布操作：拖动节点写回坐标；从引脚拖到另一个引脚连线；**Delete** / **Backspace** 删除选中的节点或连线；**View** 菜单里缩放、适配全部、适配选中。节点右键 **Cut** / **Copy** / **Rename** / **Delete**；**Rename** 弹输入框改名，改后画布与主侧栏同步、进撤销栈可 Ctrl+Z，撞名被拒。
+
+**Show Type Names** 在页签栏右侧也有一个开关，与 **View > Show Type Names** 双向同步；没有 graph 页签（例如快捷键页签）时隐藏。打开后端口标签分两行，类型名在上、功能名在下，引脚对齐功能名，节点 identifier 上方补一行 kind；关闭后悬停端口功能名显示类型名，悬停节点 identifier 显示 kind（即使文字相同）。切换只重算节点尺寸，不重建场景，选中、缩放和滚动位置都保留。
 
 **Ctrl+Z** 撤销、**Ctrl+Y** 重做画布上的创建/删除/移动/连线，以及属性表修改、Explorer 节点改名和 Convert to Property/Port；**Ctrl+C** / **Ctrl+X** / **Ctrl+V** 与 **Edit** 菜单、画布右键都走同一份进程内剪贴板，复制、剪切、粘贴选中的节点。macOS 上 Ctrl 换成 Command，重做用 **Cmd+Shift+Z**。剪贴板不写系统剪贴板，Explorer 与画布共用，能跨页签粘贴，换工程时清空；同图粘贴撞名时用 `<原名>_copy`（再撞加序号 `_copy2`、`_copy3`…）生成图内唯一名。复制只写剪贴板，不标脏；粘贴、剪切和删除标脏，粘贴后选中新节点。历史跟着页签：关页签、删图、切工程会清掉；所以撤销删图只恢复图本身（删图时的快照），不能再撤该图此前的节点操作。没有打开页签时，Explorer 的粘贴、剪切和删除会先打开页签，再进同一份撤销历史；Explorer 改名仍只在有页签时入栈。撤销不恢复选中、剪贴板和运行时端口数据；撤销回到保存点也不清标题栏的 `*`。
 

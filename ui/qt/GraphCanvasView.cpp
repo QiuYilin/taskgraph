@@ -10,14 +10,17 @@
 #include <QBrush>
 #include <QContextMenuEvent>
 #include <QEvent>
+#include <QHelpEvent>
 #include <QInputDialog>
 #include <QKeySequence>
 #include <QLineEdit>
 #include <QMenu>
 #include <QMouseEvent>
 #include <QPointF>
+#include <QPolygon>
 #include <QShortcut>
 #include <QTimer>
+#include <QToolTip>
 #include <QUndoCommand>
 #include <QUndoStack>
 #include <QVBoxLayout>
@@ -28,6 +31,8 @@
 
 #include "ContextMenuSpec.hpp"
 #include "GraphModel.hpp"
+#include "NodeLabelGeometry.hpp"
+#include "NodeLabelPainter.hpp"
 #include "TaskGraphModel.hpp"
 #include "Theme.hpp"
 #include "UiColors.hpp"
@@ -41,6 +46,14 @@ GraphCanvasView::GraphCanvasView(GraphModel* graph, QWidget* parent)
   _scene = new QtNodes::BasicGraphicsScene(*_model);
   _view = new QtNodes::GraphicsView(_scene, this);
   _view->viewport()->installEventFilter(this);
+
+  // 自定义几何要用视图字体量文本，必须在 GraphicsView 建好之后替换；
+  // 替换后主动让所有节点按新几何重算一次，否则首屏还是默认尺寸。
+  _scene->setNodeGeometry(
+      std::make_unique<NodeLabelGeometry>(*_model, _view->font()));
+  _geometry = dynamic_cast<NodeLabelGeometry*>(&_scene->nodeGeometry());
+  _scene->setNodePainter(std::make_unique<NodeLabelPainter>(*_model));
+  _model->RefreshNodeGeometry();
 
   auto* layout = new QVBoxLayout(this);
   layout->setContentsMargins(0, 0, 0, 0);
@@ -204,9 +217,16 @@ GraphCanvasView::GraphCanvasView(GraphModel* graph, QWidget* parent)
 }
 
 void GraphCanvasView::SetShowPortTypeNames(bool show) {
-  if (_model != nullptr) {
-    _model->SetShowPortTypeNames(show);
+  if (_model == nullptr) {
+    return;
   }
+  _model->SetShowPortTypeNames(show);
+  // 行数变了，旧的悬停提示可能指向已移动的文字。
+  QToolTip::hideText();
+}
+
+bool GraphCanvasView::showPortTypeNames() const {
+  return _model != nullptr && _model->showPortTypeNames();
 }
 
 GraphCanvasView::~GraphCanvasView() {
@@ -240,9 +260,81 @@ bool GraphCanvasView::eventFilter(QObject* watched, QEvent* event) {
         on_scene_context_menu(scene_position);
         return true;
       }
+    } else if (event->type() == QEvent::ToolTip &&
+               HandleToolTip(static_cast<QHelpEvent*>(event))) {
+      // 自己弹了节点/端口 tooltip；不返回 true 会被 QtNodes 的空提示覆盖。
+      return true;
     }
   }
   return QWidget::eventFilter(watched, event);
+}
+
+bool GraphCanvasView::HandleToolTip(QHelpEvent* event) {
+  if (event == nullptr || _view == nullptr || _model == nullptr ||
+      _geometry == nullptr || _model->showPortTypeNames()) {
+    return false;
+  }
+  const QPoint view_pos = event->pos();
+  const QPointF scene_pos = _view->mapToScene(view_pos);
+  const QList<QGraphicsItem*> items = _view->items(view_pos);
+  for (QGraphicsItem* item : items) {
+    if (item == nullptr || item->type() != QtNodes::NodeGraphicsObject::Type) {
+      continue;
+    }
+    auto* node = static_cast<QtNodes::NodeGraphicsObject*>(item);
+    const QtNodes::NodeId node_id = node->nodeId();
+    const QPointF node_pos = node->mapFromScene(scene_pos);
+
+    // 关闭类型名时，悬停节点名给 kind（即使文字相同），悬停端口功能名给类型名。
+    QString text;
+    QRectF hit_rect;
+    const QRectF kind_rect = _geometry->NodeKindRect(node_id);
+    const QRectF caption_rect = _geometry->NodeCaptionRect(node_id);
+    if (!kind_rect.isEmpty() && kind_rect.contains(node_pos)) {
+      text = _geometry->NodeKindText(node_id);
+      hit_rect = kind_rect;
+    } else if (!caption_rect.isEmpty() && caption_rect.contains(node_pos)) {
+      text = _geometry->NodeKindText(node_id);
+      hit_rect = caption_rect;
+    } else {
+      for (QtNodes::PortType port_type :
+           {QtNodes::PortType::In, QtNodes::PortType::Out}) {
+        const unsigned int count =
+            _model->nodeData(node_id, port_type == QtNodes::PortType::Out
+                                          ? QtNodes::NodeRole::OutPortCount
+                                          : QtNodes::NodeRole::InPortCount)
+                .value<unsigned int>();
+        for (QtNodes::PortIndex index = 0; index < count; ++index) {
+          const QRectF caption_rect =
+              _geometry->PortCaptionRect(node_id, port_type, index);
+          if (caption_rect.isEmpty() || !caption_rect.contains(node_pos)) {
+            continue;
+          }
+          const QString type_name =
+              _geometry->PortTypeName(node_id, port_type, index);
+          const QString caption =
+              _geometry->PortCaptionText(node_id, port_type, index);
+          // 类型名与功能名相同、或没有类型名时不弹，和 ImGui 一致。
+          if (!type_name.isEmpty() && type_name != caption) {
+            text = type_name;
+            hit_rect = caption_rect;
+          }
+          break;
+        }
+        if (!text.isEmpty()) {
+          break;
+        }
+      }
+    }
+    if (text.isEmpty()) {
+      return false;
+    }
+    const QPolygon view_poly = _view->mapFromScene(node->mapToScene(hit_rect));
+    QToolTip::showText(event->globalPos(), text, _view,
+                       view_poly.boundingRect());
+    return true;
+  }
+  return false;
 }
 
 void GraphCanvasView::ZoomIn() { _view->scaleUp(); }
@@ -256,6 +348,10 @@ void GraphCanvasView::FitSelected() { _view->zoomFitSelected(); }
 void GraphCanvasView::ApplyTheme() {
   const ThemeTokens& tokens = theme_detail::CurrentTokens();
   _view->setBackgroundBrush(QBrush(ToQColor(tokens.editor_background)));
+  // 自定义绘制每帧从 ThemeTokens 取色，这里触发一次重绘让文字颜色立刻更新。
+  if (_scene != nullptr) {
+    _scene->update();
+  }
 }
 
 void GraphCanvasView::CreateNode(const std::string& type_id,
