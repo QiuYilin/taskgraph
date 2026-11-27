@@ -161,6 +161,7 @@ class Ui : public QMainWindow {
   ads::CDockWidget* _editor_dock = nullptr;
   EditorTabsView* _tabs = nullptr;
   bool _show_port_type_names = false;
+  QAction* _show_type_names_action = nullptr;
   PropertyModel* _property_model = nullptr;
   QTableView* _property_table = nullptr;
   ads::CDockWidget* _properties_dock = nullptr;

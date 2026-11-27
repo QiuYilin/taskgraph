@@ -11,6 +11,7 @@ class EditorModel;
 class GraphCanvasView;
 class GraphModel;
 class KeyboardShortcutsView;
+class QToolButton;
 class QUndoStack;
 enum class NodeClipboardCommand;
 namespace tg {
@@ -24,6 +25,8 @@ class Node;
  *  画布上的点击/空白右键通过回调交给上层，视图不创建节点。
  */
 class EditorTabsView : public QTabWidget {
+  Q_OBJECT
+
  public:
   using SceneClickHandler = std::function<bool(GraphModel*, QPointF)>;
   using SceneContextMenuHandler = std::function<void(GraphModel*, QPointF)>;
@@ -46,15 +49,23 @@ class EditorTabsView : public QTabWidget {
   /** \brief 这张图当前打开的页签画布；没有页签时为 nullptr。 */
   GraphCanvasView* canvasFor(GraphModel* graph) const;
   void ApplyTheme();
-  /** \brief 所有画布（含以后新建的）端口标签是否附带类型名。 */
+  /** \brief 所有画布（含以后新建的）端口标签是否画成两行（类型名 + 功能名）。 */
   void SetShowPortTypeNames(bool show);
+  bool showPortTypeNames() const { return _show_port_type_names; }
+
+ Q_SIGNALS:
+  /** \brief 页签栏右侧按钮切换了 Show Type Names；供 View 菜单同步勾选。 */
+  void showPortTypeNamesToggled(bool show);
 
  private:
   void RefreshTabs();
+  // 页签栏右侧按钮只在有 graph 页签时出现，并跟随当前开关状态。
+  void UpdateShowTypeNamesButton();
 
   EditorModel* _model = nullptr;
   QHash<GraphModel*, GraphCanvasView*> _canvases;
   KeyboardShortcutsView* _shortcuts_view = nullptr;
+  QToolButton* _show_type_names_button = nullptr;
   SceneClickHandler _scene_click;
   SceneContextMenuHandler _scene_context_menu;
   NodeSelectedHandler _node_selected;

@@ -172,6 +172,7 @@ class UiShellTest : public QObject {
   void maximizePropertiesSwitchesTarget();
   void outputViewActionFollowsDock();
   void canvasCreateUndoRedo();
+  void showTypeNamesButtonFollowsTabsAndAction();
   void canvasCopyPasteUndoRedo();
   void canvasCutUndoRestoresLinks();
   void explorerClipboardShortcuts();
@@ -399,7 +400,7 @@ void UiShellTest::canvasCreateUndoRedo() {
   UiHarness harness;
   auto* project_model = harness.ui->findChild<ProjectModel*>();
   auto* editor = harness.ui->findChild<EditorModel*>();
-  // EditorTabsView 不自带 Q_OBJECT，按 QTabWidget 取到再转型。
+  // 按 objectName 取到 QTabWidget，再转型成 EditorTabsView。
   auto* tabs_widget = harness.ui->findChild<QTabWidget*>("EditorTabs");
   auto* tabs = dynamic_cast<EditorTabsView*>(tabs_widget);
   QVERIFY(project_model != nullptr);
@@ -422,6 +423,54 @@ void UiShellTest::canvasCreateUndoRedo() {
 
   canvas->Redo();
   QCOMPARE(graph->nodeCount(), before + 1);
+}
+
+void UiShellTest::showTypeNamesButtonFollowsTabsAndAction() {
+  UiHarness harness;
+  auto* project_model = harness.ui->findChild<ProjectModel*>();
+  auto* editor = harness.ui->findChild<EditorModel*>();
+  auto* tabs = dynamic_cast<EditorTabsView*>(
+      harness.ui->findChild<QTabWidget*>("EditorTabs"));
+  auto* button = harness.ui->findChild<QToolButton*>("showTypeNamesButton");
+  QAction* view_action =
+      FindAction(harness.ui->menuBar(), QString("Show Type Names"));
+  QVERIFY(project_model != nullptr);
+  QVERIFY(editor != nullptr);
+  QVERIFY(tabs != nullptr);
+  QVERIFY(button != nullptr);
+  QVERIFY(view_action != nullptr);
+  QVERIFY(!view_action->isChecked());
+
+  // 没有 graph 页签时按钮不出现。
+  QVERIFY(!button->isVisible());
+
+  GraphModel* graph = project_model->graphModelAt(kGraphRow);
+  QVERIFY(graph != nullptr);
+  editor->openGraph(graph);
+  QCoreApplication::processEvents();
+  GraphCanvasView* canvas = tabs->currentCanvas();
+  QVERIFY(canvas != nullptr);
+  QVERIFY(button->isVisible());
+  QVERIFY(!canvas->showPortTypeNames());
+
+  // 点页签栏按钮：画布打开类型名，View 菜单跟着勾选。
+  button->click();
+  QTRY_VERIFY(canvas->showPortTypeNames());
+  QVERIFY(view_action->isChecked());
+
+  // 用菜单关掉：按钮取消勾选、画布回到单行。
+  view_action->trigger();
+  QTRY_VERIFY(!canvas->showPortTypeNames());
+  QVERIFY(!button->isChecked());
+
+  // 打开快捷键页签后当前不是 graph 画布，按钮隐藏。
+  QAction* shortcuts =
+      FindAction(harness.ui->menuBar(), QString("Keyboard Shortcuts"));
+  QVERIFY(shortcuts != nullptr);
+  shortcuts->trigger();
+  QCoreApplication::processEvents();
+  QVERIFY(tabs->currentCanvas() == nullptr);
+  QVERIFY(!button->isVisible());
 }
 
 void UiShellTest::canvasCopyPasteUndoRedo() {

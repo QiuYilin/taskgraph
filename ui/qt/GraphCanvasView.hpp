@@ -11,6 +11,7 @@
 #include "WorkbenchClipboard.hpp"
 
 class QEvent;
+class QHelpEvent;
 class QUndoStack;
 
 namespace QtNodes {
@@ -19,6 +20,7 @@ class GraphicsView;
 }
 
 class GraphModel;
+class NodeLabelGeometry;
 class TaskGraphModel;
 namespace tg {
 class Node;
@@ -41,8 +43,13 @@ class GraphCanvasView : public QWidget {
 
   GraphModel* graphModel() const { return _graph; }
 
-  /** \brief 端口标签是否附带具体类型名（转发给 TaskGraphModel）。 */
+  /** \brief 端口标签是否画成两行（类型名 + 功能名）；转发给 TaskGraphModel。 */
   void SetShowPortTypeNames(bool show);
+  bool showPortTypeNames() const;
+
+  /** \brief 本页签的画布模型与几何；测试和 tooltip 读取标签状态用。 */
+  TaskGraphModel* model() const { return _model; }
+  NodeLabelGeometry* labelGeometry() const { return _geometry; }
 
   void ZoomIn();
   void ZoomOut();
@@ -90,11 +97,15 @@ class GraphCanvasView : public QWidget {
   bool eventFilter(QObject* watched, QEvent* event) override;
 
  private:
+  bool HandleToolTip(QHelpEvent* event);
+
   GraphModel* _graph = nullptr;
   TaskGraphModel* _model = nullptr;
   std::unique_ptr<ui::QtUndoTarget> _undo_target;
   QtNodes::BasicGraphicsScene* _scene = nullptr;
   QtNodes::GraphicsView* _view = nullptr;
+  // 所有权在 scene；这里只借用，供事件过滤和测试查询矩形。
+  NodeLabelGeometry* _geometry = nullptr;
   QPointF _last_left_click_scene;
   bool _has_last_left_click = false;
 };

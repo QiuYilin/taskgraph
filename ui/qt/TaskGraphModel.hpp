@@ -32,9 +32,12 @@ class TaskGraphModel : public QtNodes::AbstractGraphModel {
   GraphModel* graphModel() const { return _graph_model; }
   std::shared_ptr<tg::Node> node(QtNodes::NodeId node_id) const;
 
-  /** \brief 端口标签是否在功能名后附带具体类型名（如 value (PointXYZ)）。 */
+  /** \brief 端口标签是否在功能名上方另起一行画具体类型名。 */
   void SetShowPortTypeNames(bool show);
   bool showPortTypeNames() const { return _show_port_type_names; }
+
+  /** \brief 让所有节点按当前几何重算一次尺寸；切换标签行数后调用。 */
+  void RefreshNodeGeometry();
 
   QtNodes::NodeId newNodeId() override;
   std::unordered_set<QtNodes::NodeId> allNodeIds() const override;
