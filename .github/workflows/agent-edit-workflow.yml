@@ -1,0 +1,80 @@
+name: 改工作流
+
+on:
+  workflow_dispatch:
+    inputs:
+      task:
+        description: 要做的修改
+        required: true
+        type: string
+
+jobs:
+  edit:
+    if: github.actor == vars.AGENT_ACTOR
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      pull-requests: write
+      workflows: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - run: npm install -g @opencode/cli
+
+      - name: Lock the agent
+        run: |
+          sudo mkdir -p /etc/opencode
+          sudo tee /etc/opencode/opencode.json >/dev/null <<'EOF'
+          {
+            "policies": [
+              { "action": "shell", "resource": "*", "effect": "deny" },
+              { "action": "webfetch", "resource": "*", "effect": "deny" },
+              { "action": "websearch", "resource": "*", "effect": "deny" },
+              { "action": "external_directory", "resource": "*", "effect": "deny" },
+              { "action": "read", "resource": "*.env", "effect": "deny" },
+              { "action": "read", "resource": "*.env.*", "effect": "deny" },
+              { "action": "edit", "resource": "*.env", "effect": "deny" }
+            ]
+          }
+          EOF
+
+      - name: Write the task
+        env:
+          TASK: ${{ inputs.task }}
+        run: printf '%s\n' "$TASK" > .agent-task.md
+
+      - name: Implement
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          OPENCODE_DISABLE_FREE_MODELS: "1"
+          GITHUB_TOKEN: ""
+          GH_TOKEN: ""
+        run: |
+          opencode run --standalone --model deepseek/deepseek-v4-pro \
+            "读 .agent-task.md，按其中的要求修改当前仓库。可以修改 .github/workflows。不要读取 .env，不要把密钥写进文件或日志。改完用三句话说明做了什么。"
+
+      - name: Open a pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          rm -f .agent-task.md
+          git add -A
+          if git diff --cached --quiet; then
+            echo "没有产生改动"
+            exit 0
+          fi
+          branch="agent/workflow-${{ github.run_id }}"
+          git checkout -b "$branch"
+          git commit -m "按手动任务修改工作流"
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" "HEAD:refs/heads/$branch"
+          gh pr create --base "${{ github.event.repository.default_branch }}" --head "$branch" \
+            --title "按手动任务修改工作流" --body "由 Actions 的 Run workflow 触发。"
