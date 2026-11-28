@@ -1,0 +1,161 @@
+name: Issue to PR
+
+on:
+  issues:
+    types: [labeled]
+  issue_comment:
+    types: [created]
+
+concurrency:
+  group: agent-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  implement:
+    if: github.event_name == 'issues' && github.event.label.name == 'agent' && github.actor == vars.AGENT_ACTOR
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - run: npm install -g @opencode/cli
+
+      - name: Lock the agent to edits inside this repo
+        run: |
+          sudo mkdir -p /etc/opencode
+          sudo tee /etc/opencode/opencode.json >/dev/null <<'EOF'
+          {
+            "policies": [
+              { "action": "shell", "resource": "*", "effect": "deny" },
+              { "action": "webfetch", "resource": "*", "effect": "deny" },
+              { "action": "websearch", "resource": "*", "effect": "deny" },
+              { "action": "external_directory", "resource": "*", "effect": "deny" },
+              { "action": "read", "resource": "*.env", "effect": "deny" },
+              { "action": "read", "resource": "*.env.*", "effect": "deny" },
+              { "action": "edit", "resource": "*.env", "effect": "deny" },
+              { "action": "edit", "resource": ".github/workflows/*", "effect": "deny" }
+            ]
+          }
+          EOF
+
+      - name: Read the issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number }}
+        run: gh issue view "$ISSUE" --json title,body --jq '"# " + .title + "\n\n" + .body' > .agent-issue.md
+
+      - name: Implement
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          OPENCODE_DISABLE_FREE_MODELS: "1"
+          GITHUB_TOKEN: ""
+          GH_TOKEN: ""
+        run: |
+          opencode run --standalone --model deepseek/deepseek-v4-pro \
+            "读 .agent-issue.md，按其中的验收标准修改当前仓库。只改完成任务所需的文件。不要改 .github/workflows，不要读取 .env。改完用三句话说明做了什么。"
+
+      - name: Open a pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          rm -f .agent-issue.md
+          git add -A
+          if git diff --cached --quiet; then
+            gh issue comment "$ISSUE" --body "Agent 没有产生代码改动。"
+            exit 0
+          fi
+          branch="agent/issue-$ISSUE"
+          git checkout -b "$branch"
+          git commit -m "实现 #$ISSUE"
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" "HEAD:refs/heads/$branch"
+          gh pr create --base "${{ github.event.repository.default_branch }}" --head "$branch" \
+            --title "实现 #$ISSUE" --body "Closes #$ISSUE"
+
+  follow-up:
+    if: github.event_name == 'issue_comment' && github.event.issue.pull_request && contains(github.event.comment.body, '/agent') && github.actor == vars.AGENT_ACTOR
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    steps:
+      - name: Resolve the pull request branch
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cross=$(gh pr view "${{ github.event.issue.number }}" --json isCrossRepository --jq .isCrossRepository)
+          test "$cross" = "false"
+          echo "branch=$(gh pr view "${{ github.event.issue.number }}" --json headRefName --jq .headRefName)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ steps.pr.outputs.branch }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - run: npm install -g @opencode/cli
+
+      - name: Lock the agent to edits inside this repo
+        run: |
+          sudo mkdir -p /etc/opencode
+          sudo tee /etc/opencode/opencode.json >/dev/null <<'EOF'
+          {
+            "policies": [
+              { "action": "shell", "resource": "*", "effect": "deny" },
+              { "action": "webfetch", "resource": "*", "effect": "deny" },
+              { "action": "websearch", "resource": "*", "effect": "deny" },
+              { "action": "external_directory", "resource": "*", "effect": "deny" },
+              { "action": "read", "resource": "*.env", "effect": "deny" },
+              { "action": "read", "resource": "*.env.*", "effect": "deny" },
+              { "action": "edit", "resource": "*.env", "effect": "deny" },
+              { "action": "edit", "resource": ".github/workflows/*", "effect": "deny" }
+            ]
+          }
+          EOF
+
+      - name: Read the comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api "repos/${{ github.repository }}/issues/comments/${{ github.event.comment.id }}" --jq .body > .agent-issue.md
+
+      - name: Revise
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          OPENCODE_DISABLE_FREE_MODELS: "1"
+          GITHUB_TOKEN: ""
+          GH_TOKEN: ""
+        run: |
+          opencode run --standalone --model deepseek/deepseek-v4-pro \
+            "读 .agent-issue.md，这是对当前分支的修改意见。按意见改代码。不要改 .github/workflows，不要读取 .env。"
+
+      - name: Push to the same branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          rm -f .agent-issue.md
+          git add -A
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "根据评论继续修改"
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" "HEAD:${{ steps.pr.outputs.branch }}"
