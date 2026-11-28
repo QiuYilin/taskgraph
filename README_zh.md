@@ -1,6 +1,6 @@
 [![vcpkg-windows-2025](https://github.com/QiuYilin/taskgraph/actions/workflows/windows-2025.yml/badge.svg)](https://github.com/QiuYilin/taskgraph/actions/workflows/windows-2025.yml)
 
-[![vcpkg-ubuntu-22.04](https://github.com/QiuYilin/taskgraph/actions/workflows/ubuntu-22.04.yml/badge.svg)](https://github.com/QiuYilin/taskgraph/actions/workflows/ubuntu-22.04.yml)
+[![vcpkg-ubuntu-24.04](https://github.com/QiuYilin/taskgraph/actions/workflows/ubuntu-24.04.yml/badge.svg)](https://github.com/QiuYilin/taskgraph/actions/workflows/ubuntu-24.04.yml)
 
 [![vcpkg-macos-15](https://github.com/QiuYilin/taskgraph/actions/workflows/macos-15.yml/badge.svg)](https://github.com/QiuYilin/taskgraph/actions/workflows/macos-15.yml)
 
@@ -99,7 +99,7 @@ target_link_libraries(app PRIVATE taskgraph::Ui)
 ctest --test-dir build -C Debug --output-on-failure
 ```
 
-`tests/core` 在任何后端下都跑。`tests/ui`（gtest）只在 `TASKGRAPH_UI=imgui` 时编译；`tests/qt`（QtTest）只在 `qt` 时编译，ctest 用 `QT_QPA_PLATFORM=offscreen` 无界面运行。CI 在 windows-2025、ubuntu-22.04、macos-15 上构建 ImGui 后端。
+`tests/core` 在任何后端下都跑。`tests/ui`（gtest）只在 `TASKGRAPH_UI=imgui` 时编译；`tests/qt`（QtTest）只在 `qt` 时编译，ctest 用 `QT_QPA_PLATFORM=offscreen` 无界面运行。CI 在 windows-2025、ubuntu-24.04、macos-15 上构建 ImGui 后端。
 
 # 用法
 

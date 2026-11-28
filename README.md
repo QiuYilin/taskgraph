@@ -1,6 +1,6 @@
 [![vcpkg-windows-2025](https://github.com/QiuYilin/taskgraph/actions/workflows/windows-2025.yml/badge.svg)](https://github.com/QiuYilin/taskgraph/actions/workflows/windows-2025.yml)
 
-[![vcpkg-ubuntu-22.04](https://github.com/QiuYilin/taskgraph/actions/workflows/ubuntu-22.04.yml/badge.svg)](https://github.com/QiuYilin/taskgraph/actions/workflows/ubuntu-22.04.yml)
+[![vcpkg-ubuntu-24.04](https://github.com/QiuYilin/taskgraph/actions/workflows/ubuntu-24.04.yml/badge.svg)](https://github.com/QiuYilin/taskgraph/actions/workflows/ubuntu-24.04.yml)
 
 [![vcpkg-macos-15](https://github.com/QiuYilin/taskgraph/actions/workflows/macos-15.yml/badge.svg)](https://github.com/QiuYilin/taskgraph/actions/workflows/macos-15.yml)
 
@@ -99,7 +99,7 @@ Installed headers are flat: `#include <Ui.hpp>`, `#include <WorkbenchParts.hpp>`
 ctest --test-dir build -C Debug --output-on-failure
 ```
 
-`tests/core` runs with any backend. `tests/ui` (gtest) is built only for `TASKGRAPH_UI=imgui`; `tests/qt` (QtTest) is built only for `qt`, and ctest runs those headless with `QT_QPA_PLATFORM=offscreen`. CI builds the ImGui backend on windows-2025, ubuntu-22.04 and macos-15.
+`tests/core` runs with any backend. `tests/ui` (gtest) is built only for `TASKGRAPH_UI=imgui`; `tests/qt` (QtTest) is built only for `qt`, and ctest runs those headless with `QT_QPA_PLATFORM=offscreen`. CI builds the ImGui backend on windows-2025, ubuntu-24.04 and macos-15.
 
 # Usage
 
